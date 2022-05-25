@@ -98,8 +98,8 @@ namespace ts::types {
         DiagnosticCategory category;
         int code;
         SourceFile *file;
-        int start = -1; //-1 = undefined
-        int length = -1; //-1 = undefined
+        int start = - 1; //-1 = undefined
+        int length = - 1; //-1 = undefined
         string messageText;
         DiagnosticMessageChain *messageChain = nullptr;
     };
@@ -161,7 +161,7 @@ namespace ts::types {
         // Starting with node12, node's module resolver has significant departures from traditional cjs resolution
         // to better support ecmascript modules and their use within BaseNode - however more features are still being added.
         // TypeScript's BaseNode ESM support was introduced after BaseNode 12 went end-of-life, and BaseNode 14 is the earliest stable
-        // version that supports both pattern trailers - *but*, BaseNode 16 is the first version that also supports ECMASCript 2022.
+        // version that supports both pattern trailers - *but*, Node 16 is the first version that also supports ECMASCript 2022.
         // In turn, we offer both a `NodeNext` moving resolution target, and a `Node16` version-anchored resolution target
         Node16 = 3,
         NodeNext = 99, // Not simply `Node16` so that compiled code linked against TS can use the `Next` value reliably (same as with `ModuleKind`)
@@ -320,24 +320,24 @@ namespace ts::types {
     enum TokenFlags {
         None = 0,
         /* @internal */
-        PrecedingLineBreak = 1<<0,
+        PrecedingLineBreak = 1 << 0,
         /* @internal */
-        PrecedingJSDocComment = 1<<1,
+        PrecedingJSDocComment = 1 << 1,
         /* @internal */
-        Unterminated = 1<<2,
+        Unterminated = 1 << 2,
         /* @internal */
-        ExtendedUnicodeEscape = 1<<3,
-        Scientific = 1<<4,        // e.g. `10e2`
-        Octal = 1<<5,             // e.g. `0777`
-        HexSpecifier = 1<<6,      // e.g. `0x00000000`
-        BinarySpecifier = 1<<7,   // e.g. `0b0110010000000000`
-        OctalSpecifier = 1<<8,    // e.g. `0o777`
+        ExtendedUnicodeEscape = 1 << 3,
+        Scientific = 1 << 4,        // e.g. `10e2`
+        Octal = 1 << 5,             // e.g. `0777`
+        HexSpecifier = 1 << 6,      // e.g. `0x00000000`
+        BinarySpecifier = 1 << 7,   // e.g. `0b0110010000000000`
+        OctalSpecifier = 1 << 8,    // e.g. `0o777`
         /* @internal */
-        ContainsSeparator = 1<<9, // e.g. `0b1100_0101`
+        ContainsSeparator = 1 << 9, // e.g. `0b1100_0101`
         /* @internal */
-        UnicodeEscape = 1<<10,
+        UnicodeEscape = 1 << 10,
         /* @internal */
-        ContainsInvalidEscape = 1<<11,    // e.g. `\uhello`
+        ContainsInvalidEscape = 1 << 11,    // e.g. `\uhello`
         /* @internal */
         BinaryOrOctalSpecifier = BinarySpecifier | OctalSpecifier,
         /* @internal */
@@ -927,27 +927,27 @@ namespace ts::types {
 
     enum class NodeFlags {
         None = 0,
-        Let = 1<<0,  // Variable declaration
-        Const = 1<<1,  // Variable declaration
-        NestedNamespace = 1<<2,  // Namespace declaration
-        Synthesized = 1<<3,  // BaseNode was synthesized during transformation
-        Namespace = 1<<4,  // Namespace declaration
-        OptionalChain = 1<<5,  // Chained MemberExpression rooted to a pseudo-OptionalExpression
-        ExportContext = 1<<6,  // Export context (initialized by binding)
-        ContainsThis = 1<<7,  // Interface contains references to "this"
-        HasImplicitReturn = 1<<8,  // If function implicitly returns on one of codepaths (initialized by binding)
-        HasExplicitReturn = 1<<9,  // If function has explicit reachable return on one of codepaths (initialized by binding)
-        GlobalAugmentation = 1<<10,  // Set if module declaration is an augmentation for the global scope
-        HasAsyncFunctions = 1<<11, // If the file has async functions (initialized by binding)
-        DisallowInContext = 1<<12, // If BaseNode was parsed in a context where 'in-expressions' are not allowed
-        YieldContext = 1<<13, // If BaseNode was parsed in the 'yield' context created when parsing a generator
-        DecoratorContext = 1<<14, // If BaseNode was parsed as part of a decorator
-        AwaitContext = 1<<15, // If BaseNode was parsed in the 'await' context created when parsing an async function
-        DisallowConditionalTypesContext = 1<<16, // If BaseNode was parsed in a context where conditional types are not allowed
-        ThisNodeHasError = 1<<17, // If the parser encountered an error when parsing the code that created this node
-        JavaScriptFile = 1<<18, // If BaseNode was parsed in a JavaScript
-        ThisNodeOrAnySubNodesHasError = 1<<19, // If this BaseNode or any of its children had an error
-        HasAggregatedChildData = 1<<20, // If we've computed data from children and cached it in this node
+        Let = 1 << 0,  // Variable declaration
+        Const = 1 << 1,  // Variable declaration
+        NestedNamespace = 1 << 2,  // Namespace declaration
+        Synthesized = 1 << 3,  // BaseNode was synthesized during transformation
+        Namespace = 1 << 4,  // Namespace declaration
+        OptionalChain = 1 << 5,  // Chained MemberExpression rooted to a pseudo-OptionalExpression
+        ExportContext = 1 << 6,  // Export context (initialized by binding)
+        ContainsThis = 1 << 7,  // Interface contains references to "this"
+        HasImplicitReturn = 1 << 8,  // If function implicitly returns on one of codepaths (initialized by binding)
+        HasExplicitReturn = 1 << 9,  // If function has explicit reachable return on one of codepaths (initialized by binding)
+        GlobalAugmentation = 1 << 10,  // Set if module declaration is an augmentation for the global scope
+        HasAsyncFunctions = 1 << 11, // If the file has async functions (initialized by binding)
+        DisallowInContext = 1 << 12, // If BaseNode was parsed in a context where 'in-expressions' are not allowed
+        YieldContext = 1 << 13, // If BaseNode was parsed in the 'yield' context created when parsing a generator
+        DecoratorContext = 1 << 14, // If BaseNode was parsed as part of a decorator
+        AwaitContext = 1 << 15, // If BaseNode was parsed in the 'await' context created when parsing an async function
+        DisallowConditionalTypesContext = 1 << 16, // If BaseNode was parsed in a context where conditional types are not allowed
+        ThisNodeHasError = 1 << 17, // If the parser encountered an error when parsing the code that created this node
+        JavaScriptFile = 1 << 18, // If BaseNode was parsed in a JavaScript
+        ThisNodeOrAnySubNodesHasError = 1 << 19, // If this BaseNode or any of its children had an error
+        HasAggregatedChildData = 1 << 20, // If we've computed data from children and cached it in this node
 
         // These flags will be set when the parser encounters a dynamic import expression or 'import.meta' to avoid
         // walking the tree if the flags are not set. However, these flags are just a approximation
@@ -958,15 +958,15 @@ namespace ts::types {
         // removal, it is likely that users will add the import anyway.
         // The advantage of this approach is its simplicity. For the case of batch compilation,
         // we guarantee that users won't have to pay the price of walking the tree if a dynamic import isn't used.
-        /* @internal */ PossiblyContainsDynamicImport = 1<<21,
-        /* @internal */ PossiblyContainsImportMeta = 1<<22,
+        /* @internal */ PossiblyContainsDynamicImport = 1 << 21,
+        /* @internal */ PossiblyContainsImportMeta = 1 << 22,
 
-        JSDoc = 1<<23, // If BaseNode was parsed inside jsdoc
-        /* @internal */ Ambient = 1<<24, // If BaseNode was inside an ambient context -- a declaration file, or inside something with the `declare` modifier.
-        /* @internal */ InWithStatement = 1<<25, // If any ancestor of BaseNode was the `statement` of a WithStatement (not the `expression`)
-        JsonFile = 1<<26, // If BaseNode was parsed in a Json
-        /* @internal */ TypeCached = 1<<27, // If a type was cached for BaseNode at any point
-        /* @internal */ Deprecated = 1<<28, // If has '@deprecated' JSDoc tag
+        JSDoc = 1 << 23, // If BaseNode was parsed inside jsdoc
+        /* @internal */ Ambient = 1 << 24, // If BaseNode was inside an ambient context -- a declaration file, or inside something with the `declare` modifier.
+        /* @internal */ InWithStatement = 1 << 25, // If any ancestor of BaseNode was the `statement` of a WithStatement (not the `expression`)
+        JsonFile = 1 << 26, // If BaseNode was parsed in a Json
+        /* @internal */ TypeCached = 1 << 27, // If a type was cached for BaseNode at any point
+        /* @internal */ Deprecated = 1 << 28, // If has '@deprecated' JSDoc tag
 
         BlockScoped = Let | Const,
 
@@ -987,24 +987,24 @@ namespace ts::types {
 
     enum class ModifierFlags {
         None = 0,
-        Export = 1<<0,  // Declarations
-        Ambient = 1<<1,  // Declarations
-        Public = 1<<2,  // Property/Method
-        Private = 1<<3,  // Property/Method
-        Protected = 1<<4,  // Property/Method
-        Static = 1<<5,  // Property/Method
-        Readonly = 1<<6,  // Property/Method
-        Abstract = 1<<7,  // Class/Method/ConstructSignature
-        Async = 1<<8,  // Property/Method/Function
-        Default = 1<<9,  // Function/Class (export default declaration)
-        Const = 1<<11, // Const enum
-        HasComputedJSDocModifiers = 1<<12, // Indicates the computed modifier flags include modifiers from JSDoc.
+        Export = 1 << 0,  // Declarations
+        Ambient = 1 << 1,  // Declarations
+        Public = 1 << 2,  // Property/Method
+        Private = 1 << 3,  // Property/Method
+        Protected = 1 << 4,  // Property/Method
+        Static = 1 << 5,  // Property/Method
+        Readonly = 1 << 6,  // Property/Method
+        Abstract = 1 << 7,  // Class/Method/ConstructSignature
+        Async = 1 << 8,  // Property/Method/Function
+        Default = 1 << 9,  // Function/Class (export default declaration)
+        Const = 1 << 11, // Const enum
+        HasComputedJSDocModifiers = 1 << 12, // Indicates the computed modifier flags include modifiers from JSDoc.
 
-        Deprecated = 1<<13, // Deprecated tag.
-        Override = 1<<14, // Override method.
-        In = 1<<15, // Contravariance modifier
-        Out = 1<<16, // Covariance modifier
-        HasComputedFlags = 1<<29, // Modifier flags have been computed
+        Deprecated = 1 << 13, // Deprecated tag.
+        Override = 1 << 14, // Override method.
+        In = 1 << 15, // Contravariance modifier
+        Out = 1 << 16, // Covariance modifier
+        HasComputedFlags = 1 << 29, // Modifier flags have been computed
 
         AccessibilityModifier = Public | Private | Protected,
         // Accessibility modifiers and 'readonly' can be attached to a parameter in a constructor to make it a property.
@@ -1021,41 +1021,41 @@ namespace ts::types {
 
         // Facts
         // - Flags used to indicate that a BaseNode or subtree contains syntax that requires transformation.
-        ContainsTypeScript = 1<<0,
-        ContainsJsx = 1<<1,
-        ContainsESNext = 1<<2,
-        ContainsES2022 = 1<<3,
-        ContainsES2021 = 1<<4,
-        ContainsES2020 = 1<<5,
-        ContainsES2019 = 1<<6,
-        ContainsES2018 = 1<<7,
-        ContainsES2017 = 1<<8,
-        ContainsES2016 = 1<<9,
-        ContainsES2015 = 1<<10,
-        ContainsGenerator = 1<<11,
-        ContainsDestructuringAssignment = 1<<12,
+        ContainsTypeScript = 1 << 0,
+        ContainsJsx = 1 << 1,
+        ContainsESNext = 1 << 2,
+        ContainsES2022 = 1 << 3,
+        ContainsES2021 = 1 << 4,
+        ContainsES2020 = 1 << 5,
+        ContainsES2019 = 1 << 6,
+        ContainsES2018 = 1 << 7,
+        ContainsES2017 = 1 << 8,
+        ContainsES2016 = 1 << 9,
+        ContainsES2015 = 1 << 10,
+        ContainsGenerator = 1 << 11,
+        ContainsDestructuringAssignment = 1 << 12,
 
         // Markers
         // - Flags used to indicate that a subtree contains a specific transformation.
-        ContainsTypeScriptClassSyntax = 1<<12, // Decorators, Property Initializers, Parameter Property Initializers
-        ContainsLexicalThis = 1<<13,
-        ContainsRestOrSpread = 1<<14,
-        ContainsObjectRestOrSpread = 1<<15,
-        ContainsComputedPropertyName = 1<<16,
-        ContainsBlockScopedBinding = 1<<17,
-        ContainsBindingPattern = 1<<18,
-        ContainsYield = 1<<19,
-        ContainsAwait = 1<<20,
-        ContainsHoistedDeclarationOrCompletion = 1<<21,
-        ContainsDynamicImport = 1<<22,
-        ContainsClassFields = 1<<23,
-        ContainsPossibleTopLevelAwait = 1<<24,
-        ContainsLexicalSuper = 1<<25,
-        ContainsUpdateExpressionForIdentifier = 1<<26,
+        ContainsTypeScriptClassSyntax = 1 << 12, // Decorators, Property Initializers, Parameter Property Initializers
+        ContainsLexicalThis = 1 << 13,
+        ContainsRestOrSpread = 1 << 14,
+        ContainsObjectRestOrSpread = 1 << 15,
+        ContainsComputedPropertyName = 1 << 16,
+        ContainsBlockScopedBinding = 1 << 17,
+        ContainsBindingPattern = 1 << 18,
+        ContainsYield = 1 << 19,
+        ContainsAwait = 1 << 20,
+        ContainsHoistedDeclarationOrCompletion = 1 << 21,
+        ContainsDynamicImport = 1 << 22,
+        ContainsClassFields = 1 << 23,
+        ContainsPossibleTopLevelAwait = 1 << 24,
+        ContainsLexicalSuper = 1 << 25,
+        ContainsUpdateExpressionForIdentifier = 1 << 26,
         // Please leave this as 1 << 29.
         // It is the maximum bit we can set before we outgrow the size of a v8 small integer (SMI) on an x86 system.
         // It is a good reminder of how much room we have left
-        HasComputedFlags = 1<<29, // Transform flags have been computed.
+        HasComputedFlags = 1 << 29, // Transform flags have been computed.
 
         // Assertions
         // - Bitmasks that are used to assert facts about the syntax of a BaseNode and its subtree.
@@ -1086,7 +1086,7 @@ namespace ts::types {
         PropertyExcludes = NodeExcludes | ContainsLexicalThis | ContainsLexicalSuper,
         ClassExcludes = NodeExcludes | ContainsTypeScriptClassSyntax | ContainsComputedPropertyName,
         ModuleExcludes = NodeExcludes | ContainsTypeScriptClassSyntax | ContainsLexicalThis | ContainsLexicalSuper | ContainsBlockScopedBinding | ContainsHoistedDeclarationOrCompletion | ContainsPossibleTopLevelAwait,
-        TypeExcludes = ~ContainsTypeScript,
+        TypeExcludes = ~ ContainsTypeScript,
         ObjectLiteralExcludes = NodeExcludes | ContainsTypeScriptClassSyntax | ContainsComputedPropertyName | ContainsObjectRestOrSpread,
         ArrayLiteralOrCallOrNewExcludes = NodeExcludes | ContainsRestOrSpread,
         VariableDeclarationListExcludes = NodeExcludes | ContainsBindingPattern | ContainsObjectRestOrSpread,
@@ -1132,22 +1132,12 @@ namespace ts {
         int end;
     };
 
-//    class NodeArray;
-
     struct Decorator;
     struct Modifier;
 
-    struct BaseNodeStructure;
-
-    template<SyntaxKind Kind>
-    struct BrandKind {
-        constexpr static auto KIND = Kind;
-        SyntaxKind kind = Kind;
-    };
-
-    struct Unknown {
-        SyntaxKind kind = SyntaxKind::Unknown;
-    };
+//    struct Unknown {
+//        SyntaxKind kind = SyntaxKind::Unknown;
+//    };
 
 //    template<class T>
 //    int extractKind2(){
@@ -1157,63 +1147,84 @@ namespace ts {
 ////        return T::KIND;
 //    }
 
-    struct Node {
-        Unknown *data = nullptr;
-        shared_ptr<Node> parent;
-
-        Node() {
-        }
-
-        Node(Unknown *data) {
-            this->data = data;
-        }
-
-        ~Node();
-        explicit operator bool() const { return data != nullptr; };
-
-        SyntaxKind kind();
-
-        template<class T>
-        bool is() {
-            return data && data->kind == T::KIND;
-        }
-
-        template<typename T>
-        T &to() {
-            auto valid = data && data->kind == T::KIND;
-            if (!valid) throw std::runtime_error("Can not convert Node, invalid kind or no data set");
-            return *reinterpret_cast<T *>(data);
-        }
-
-        BaseNodeStructure & toBase() {
-            if (!data) throw std::runtime_error("Can not convert Node, no data set");
-            return *reinterpret_cast<BaseNodeStructure *>(data);
-        }
-
-        template<typename T>
-        T &toBase() {
-            if (!data) throw std::runtime_error("Can not convert Node, no data set");
-            return *reinterpret_cast<T *>(data);
-        }
-
-//        template<typename T>
-//        NodeType &toUnion() {
-//            T i;
-//            if (!data) throw std::runtime_error("Can not convert Node, no data set");
+//    struct Node {
+//        Unknown *data = nullptr;
+//        shared_ptr<Node> parent;
 //
-//            auto types = i.types();
-//
-//            for (auto kind: i.kinds()) {
-//                if (data->kind == kind) {
-//                    auto t = std::get<0>(types);
-//                    cout << kind << " FOUND " << t.kind << "\n";
-////                    return *dynamic_cast<t *>(data);
-//                }
-//            }
-//
-//            throw std::runtime_error("Can not convert Node, no valid kind");
+//        Node() {
 //        }
+//
+//        Node(Unknown *data) {
+//            this->data = data;
+//        }
+//
+//        ~Node();
+//        explicit operator bool() const { return data != nullptr; };
+//
+//        SyntaxKind kind();
+//
+//        template<class T>
+//        bool is() {
+//            return data && data->kind == T::KIND;
+//        }
+//
+//        template<typename T>
+//        T &to() {
+//            auto valid = data && data->kind == T::KIND;
+//            if (! valid) throw std::runtime_error("Can not convert Node, invalid kind or no data set");
+//            return *reinterpret_cast<T *>(data);
+//        }
+//
+////        BaseNodeStructure &toBase() {
+////            if (! data) throw std::runtime_error("Can not convert Node, no data set");
+////            return *reinterpret_cast<BaseNodeStructure *>(data);
+////        }
+//
+//        template<typename T>
+//        T &toBase() {
+//            if (! data) throw std::runtime_error("Can not convert Node, no data set");
+//            return *reinterpret_cast<T *>(data);
+//        }
+//
+////        template<typename T>
+////        NodeType &toUnion() {
+////            T i;
+////            if (!data) throw std::runtime_error("Can not convert Node, no data set");
+////
+////            auto types = i.types();
+////
+////            for (auto kind: i.kinds()) {
+////                if (data->kind == kind) {
+////                    auto t = std::get<0>(types);
+////                    cout << kind << " FOUND " << t.kind << "\n";
+//////                    return *dynamic_cast<t *>(data);
+////                }
+////            }
+////
+////            throw std::runtime_error("Can not convert Node, no valid kind");
+////        }
+//    };
+
+
+//    template<typename ... T>
+//    struct NodeType: public Node {
+//        using ETypes = std::tuple<decltype(T{})...>;
+//        ETypes types;
+//
+//        vector<int> kinds() {
+//
+//        }
+//    };
+
+    template<SyntaxKind Kind, class ... B>
+    struct BrandKind: B ... {
+        constexpr static auto KIND = Kind;
+        BrandKind() {
+            this->kind = Kind;
+        }
     };
+
+    class Node;
 
     struct BaseNodeArray {
         vector<Node> list;
@@ -1227,40 +1238,16 @@ namespace ts {
     };
 
     template<class ... T>
-    struct NodeArray: BaseNodeArray {
-    };
-//
-//    template<typename ... T>
-//    struct NodeType: public Node {
-//        using ETypes = std::tuple<decltype(T{})...>;
-//        ETypes types;
-//
-//        vector<int> kinds() {
-//
-//        }
-//    };
+    struct NodeArray: BaseNodeArray {};
 
     /**
-     * note: its important to not embed Ts in statically way to not initialize their constructor when Node is crreated.
-     * Otherwise this would mean an insane amount of memory allocation.
+     * Union is like Node, it is the owner of the data
      */
-    template<typename ... Ts>
-    struct NodeType: public Node {
-        auto types() {
-            using ETypes = std::tuple<decltype(Ts{})...>;
-            ETypes types;
-            return types;
-        }
+    struct BaseUnion {
+        shared_ptr<Node> node = make_shared<Node>();
+        SyntaxKind kind();
 
-        vector<SyntaxKind> kinds() {
-            using ETypes = std::tuple<decltype(Ts{})...>;
-            ETypes types;
-            return getKinds(types);
-        }
-
-        bool contains(types::SyntaxKind kind) {
-            return has(kinds(), kind);
-        }
+        bool empty();
     };
 
     /**
@@ -1268,13 +1255,17 @@ namespace ts {
      *
      * There are a big variety of sub types: All have in common that they are the owner of their data (except *parent).
      */
-    struct BaseNodeStructureWithoutDecorators: ReadonlyTextRange {
+    class Node: ReadonlyTextRange {
+    protected:
+        Node &parent = *this;                                 // Parent BaseNode (initialized by binding)
+    public:
+        SyntaxKind kind = SyntaxKind::Unknown;
         /* types::NodeFlags */ int flags;
         /* @internal */ /* types::ModifierFlags */ int modifierFlagsCache;
         optional<NodeArray<Modifier>> modifiers;            // Array of modifiers
+        optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
         /* @internal */ /* types::TransformFlags */ int transformFlags; // Flags for transforms
 ////        /* @internal */ id?: NodeId;                          // Unique id (used to look up NodeLinks)
-        NodeType<Unknown> parent;                                 // Parent BaseNode (initialized by binding)
 //        /* @internal */ original?: Node;                      // The original BaseNode if this is an updated node.
 //        /* @internal */ symbol: Symbol;                       // Symbol declared by BaseNode (initialized by binding)
 //        /* @internal */ locals?: SymbolTable;                 // Locals associated with BaseNode (initialized by binding)
@@ -1284,26 +1275,197 @@ namespace ts {
 //        /* @internal */ emitNode?: EmitNode;                  // Associated EmitNode (initialized by transforms)
 //        /* @internal */ contextualType?: Type;                // Used to temporarily assign a contextual type during overload resolution
 //        /* @internal */ inferenceContext?: InferenceContext;  // Inference context for contextual type
+
+        bool hasParent() {
+            return &parent != this;
+        }
+
+        Node &getParent() {
+            if (! hasParent()) throw std::runtime_error("Node has no parent set");
+            return parent;
+        }
+
+        template<class T>
+        bool is() {
+            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
+            return this->kind == T::KIND;
+        }
+
+        template<typename T>
+        T &to() {
+            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
+            if (kind != T::KIND) throw std::runtime_error(format("Can not convert Node, from kind %d to %d", kind, T::KIND));
+            return *reinterpret_cast<T *>(this);
+        }
+
+        //if you know what you are doing
+        template<typename T>
+        T &cast() {
+            return *reinterpret_cast<T *>(this);
+        }
     };
 
-    struct BaseNodeStructure: BaseNodeStructureWithoutDecorators {
-        optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
+//    template<class T>
+//    bool is(Node &node) {
+//        return data && node.kind == T::KIND;
+//    }
+
+    template<typename Default, typename ... Ts>
+    struct Union: BaseUnion {
+//        std::variant<shared_ptr<Default>, shared_ptr<Ts>...> value = make_shared<Default>();
+//    auto types() {
+//        using ETypes = std::tuple<decltype(Ts{})...>;
+//        ETypes types;
+//        return types;
+//    }
+
+        Union(){
+            this->node = make_shared<Default>();
+        }
+
+        operator Node() {
+            return *this->node;
+        }
+//
+//        operator const Node() {
+//            return *this->node;
+//        }
+
+//        operator Node&() {
+//            return *this->node;
+//        }
+//
+//        operator const Node&() {
+//            return *this->node;
+//        }
+
+        operator optional<const Node>() {
+            if (node->kind == types::Unknown) return nullopt;
+            return *this->node;
+        }
+
+//        operator reference_wrapper<Node>() {
+//            return *this->node;
+//        }
+
+//        operator optional<Node>() {
+//            if (node->kind == types::Unknown) return nullopt;
+//            return *this->node;
+//        }
+
+        optional<Node> lol() {
+            if (node->kind == types::Unknown) return nullopt;
+            return *this->node;
+        }
+
+//        optional<Node> operator=(OptionalNode other) {
+//            if (node->kind == types::Unknown) return nullopt;
+//            return *this->node;
+//        }
+
+        template<typename T>
+        bool is() {
+            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
+            return node->kind == T::KIND; //std::holds_alternative<shared_ptr<T>>(value);
+        }
+
+        template<typename T>
+        T &to() {
+            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
+            if (! is<T>()) {
+                node = make_shared<T>();
+            }
+            return node; //*std::get<shared_ptr<T>>(value);
+        }
     };
 
-    template<typename ...T>
-    struct ParentAccess {
-        NodeType<T...> parent;
+    using OptionalNode = variant<monostate, reference_wrapper<BaseUnion>, optional<reference_wrapper<const BaseUnion>>, optional<reference_wrapper<const Node>>>;
+
+    inline bool empty(OptionalNode v) {
+        if (holds_alternative<monostate>(v)) return true;
+        if (holds_alternative<reference_wrapper<BaseUnion>>(v)) return false;
+        if (holds_alternative<optional<reference_wrapper<const BaseUnion>>>(v)) {
+            auto u = get<optional<reference_wrapper<const BaseUnion>>>(v);
+            if (! u.has_value()) return true;
+            return false;
+        }
+        auto opt = get<optional<reference_wrapper<const Node>>>(v);
+        return opt.has_value();
+    }
+
+    inline Node &resolve(OptionalNode v) {
+        if (holds_alternative<monostate>(v)) {
+            throw runtime_error("OptionalNode is empty");
+        }
+        if (holds_alternative<reference_wrapper<BaseUnion>>(v)) {
+            return *get<reference_wrapper<BaseUnion>>(v).get().node;
+        }
+        if (holds_alternative<optional<reference_wrapper<const BaseUnion>>>(v)) {
+            auto u = get<optional<reference_wrapper<const BaseUnion>>>(v);
+            if (! u.has_value()) throw runtime_error("OptionalNode is empty");
+            return *u->get().node;
+        }
+
+        auto opt = get<optional<reference_wrapper<const Node>>>(v);
+
+        if (! opt.has_value()) throw runtime_error("Optional is empty");
+
+        return *(Node *) (&(opt.value().get()));
+    }
+
+    template<typename Default, typename ... Ts>
+    struct NodeUnion: Union<Default, Ts...> {
+        NodeUnion() {
+            this->node = make_shared<Default>();
+        }
+
+        NodeUnion(auto node) {
+            this->node = make_shared<decltype(node)>();
+        }
+
+        operator OptionalNode () {
+            return *this->node;
+        }
+
+//        operator optional<const Node> () {
+//            throw runtime_error("Ads");
+//        }
+
+//        NodeUnion& operator=(const SourceFile &node) {
+//            this->node = node;
+//            return *this;
+//        }
+
+//        template<typename T>
+//        NodeUnion(const T &node) {
+//            this->node = node;
+//        }
+
+        /**
+         * Casts whatever is current hold as Node.
+         */
+        Node &getNode() {
+            Node *b = nullptr;
+
+            std::visit([&b](auto &arg) {
+                b = reinterpret_cast<Node *>(&(*arg));
+            }, this->value);
+
+            if (! b) throw std::runtime_error("Union does not hold a Node");
+
+            return *b;
+        }
     };
 
     struct DeclarationName;
 
-    struct Declaration: BaseNodeStructure {};
+    struct Statement: Node {};
 
-    struct NamedDeclaration: Declaration {
-        optional<NodeType<DeclarationName>> name;
+    struct NamedDeclaration: Statement {
+        optional<reference_wrapper<DeclarationName>> name;
     };
 
-    struct Expression: BaseNodeStructure {};
+    struct Expression: Node {};
 
     struct UnaryExpression: Expression {};
 
@@ -1315,10 +1477,10 @@ namespace ts {
 
     struct PrimaryExpression: MemberExpression {};
 
-    struct PrivateIdentifier: PrimaryExpression, BrandKind<SyntaxKind::PrivateIdentifier> {};
+    struct PrivateIdentifier: BrandKind<SyntaxKind::PrivateIdentifier, PrimaryExpression> {};
 
     template<SyntaxKind T>
-    struct Token: BaseNodeArray, BrandKind<T> {};
+    struct Token: BrandKind<T, Node> {};
 
     struct DotToken: Token<SyntaxKind::DotToken> {};
     struct DotDotDotToken: Token<SyntaxKind::DotDotDotToken> {};
@@ -1351,71 +1513,70 @@ namespace ts {
     struct OverrideKeyword: Token<SyntaxKind::OverrideKeyword> {};
     struct StaticKeyword: Token<SyntaxKind::StaticKeyword> {};
 
-    struct NullLiteral: PrimaryExpression, BrandKind<SyntaxKind::NullKeyword> {};
+    struct NullLiteral: BrandKind<SyntaxKind::NullKeyword, PrimaryExpression> {};
 
-    struct TrueLiteral: PrimaryExpression, BrandKind<SyntaxKind::TrueKeyword> {};
+    struct TrueLiteral: BrandKind<SyntaxKind::TrueKeyword, PrimaryExpression> {};
 
-    struct FalseLiteral: PrimaryExpression, BrandKind<SyntaxKind::FalseKeyword> {};
+    struct FalseLiteral: BrandKind<SyntaxKind::FalseKeyword, PrimaryExpression> {};
 
-    struct BooleanLiteral: NodeType<TrueLiteral, FalseLiteral> {};
+    struct BooleanLiteral: NodeUnion<TrueLiteral, FalseLiteral> {};
 
-    struct ThisExpression: PrimaryExpression, BrandKind<SyntaxKind::ThisKeyword> {};
+    struct ThisExpression: BrandKind<SyntaxKind::ThisKeyword, PrimaryExpression> {};
 
-    struct SuperExpression: PrimaryExpression, BrandKind<SyntaxKind::SuperKeyword> {};
+    struct SuperExpression: BrandKind<SyntaxKind::SuperKeyword, PrimaryExpression> {};
 
-    struct ImportExpression: PrimaryExpression, BrandKind<SyntaxKind::ImportKeyword> {};
+    struct ImportExpression: BrandKind<SyntaxKind::ImportKeyword, PrimaryExpression> {};
 
     using PostfixUnaryOperator = SyntaxKind; //SyntaxKind.PlusPlusToken | SyntaxKind.MinusMinusToken
 
-    struct PrefixUnaryExpression: UpdateExpression, BrandKind<SyntaxKind::PrefixUnaryExpression> {
-        NodeType<LeftHandSideExpression> operand;
+    struct PrefixUnaryExpression: BrandKind<SyntaxKind::PrefixUnaryExpression, UpdateExpression> {
+        LeftHandSideExpression operand;
         PostfixUnaryOperator operatorKind;
     };
 
-    struct PartiallyEmittedExpression: LeftHandSideExpression, BrandKind<SyntaxKind::PartiallyEmittedExpression> {
-        NodeType <Expression> expression;
+    struct PartiallyEmittedExpression: BrandKind<SyntaxKind::PartiallyEmittedExpression, LeftHandSideExpression> {
+        Expression expression;
     };
 
-    struct PostfixUnaryExpression: UpdateExpression, BrandKind<SyntaxKind::PostfixUnaryExpression> {
-        NodeType<LeftHandSideExpression> operand;
+    struct PostfixUnaryExpression: BrandKind<SyntaxKind::PostfixUnaryExpression, UpdateExpression> {
+        LeftHandSideExpression operand;
         PostfixUnaryOperator operatorKind;
     };
 
-    struct DeleteExpression: UnaryExpression, BrandKind<SyntaxKind::DeleteExpression> {
-        NodeType<UnaryExpression> expression;
+    struct DeleteExpression: BrandKind<SyntaxKind::DeleteExpression, UnaryExpression> {
+        UnaryExpression expression;
     };
 
-    struct TypeOfExpression: UnaryExpression, BrandKind<SyntaxKind::TypeOfExpression> {
-        NodeType<UnaryExpression> expression;
+    struct TypeOfExpression: BrandKind<SyntaxKind::TypeOfExpression, UnaryExpression> {
+        UnaryExpression expression;
     };
 
-    struct VoidExpression: UnaryExpression, BrandKind<SyntaxKind::VoidExpression> {
-        NodeType<UnaryExpression> expression;
+    struct VoidExpression: BrandKind<SyntaxKind::VoidExpression, UnaryExpression> {
+        UnaryExpression expression;
     };
 
-    struct AwaitExpression: UnaryExpression, BrandKind<SyntaxKind::AwaitExpression> {
-        NodeType<UnaryExpression> expression;
+    struct AwaitExpression: BrandKind<SyntaxKind::AwaitExpression, UnaryExpression> {
+        UnaryExpression expression;
     };
 
-    struct YieldExpression: Expression, BrandKind<SyntaxKind::YieldExpression> {
-        optional<NodeType<AsteriskToken>> asteriskToken;
-        optional<NodeType<Expression>> expression;
+    struct YieldExpression: BrandKind<SyntaxKind::YieldExpression, Expression> {
+        optional<AsteriskToken> asteriskToken;
+        optional<Expression> expression;
     };
 
     //this seems to be related to instantiated types
-    struct Type {
-    };
+    struct Type {};
 
     struct ParameterDeclaration;
     struct NamedTupleMember;
 
-    struct SyntheticExpression: Expression, BrandKind<SyntaxKind::SyntheticExpression> {
+    struct SyntheticExpression: BrandKind<SyntaxKind::SyntheticExpression, Expression> {
         bool isSpread;
         Type type;
-        optional<NodeType<ParameterDeclaration, NamedTupleMember>> tupleNameSource;
+        optional<NodeUnion<ParameterDeclaration, NamedTupleMember>> tupleNameSource;
     };
 
-    struct TypeNode: BaseNodeStructure {};
+    struct TypeNode: Node {};
 
     /** @deprecated Use `AwaitKeyword` instead. */
     using AwaitKeywordToken = AwaitKeyword;
@@ -1426,13 +1587,13 @@ namespace ts {
     /** @deprecated Use `ReadonlyKeyword` instead. */
     using ReadonlyToken = ReadonlyKeyword;
 
-    struct Modifier: NodeType<
+    struct Modifier: NodeUnion<
             AbstractKeyword, AsyncKeyword, ConstKeyword, DeclareKeyword, DefaultKeyword, ExportKeyword, InKeyword, PrivateKeyword, ProtectedKeyword, PublicKeyword, OutKeyword, OverrideKeyword, ReadonlyKeyword, StaticKeyword> {
     };
 
     struct ModifiersArray: NodeArray<Modifier> {};
 
-    struct LiteralLikeNode: BaseNodeStructure {
+    struct LiteralLikeNode {
         std::string text;
         bool isUnterminated; //optional
         bool hasExtendedUnicodeEscape; //optional
@@ -1440,9 +1601,9 @@ namespace ts {
 
     struct LiteralExpression: LiteralLikeNode, PrimaryExpression {};
 
-    struct StringLiteral: LiteralExpression, Declaration, BrandKind<SyntaxKind::StringLiteral> {};
+    struct StringLiteral: BrandKind<SyntaxKind::StringLiteral, LiteralExpression> {};
 
-    struct Identifier: PrimaryExpression, Declaration, BrandKind<SyntaxKind::Identifier> {
+    struct Identifier: BrandKind<SyntaxKind::Identifier, PrimaryExpression> {
         /**
          * Prefer to use `id.unescapedText`. (Note: This is available only in services, not internally to the TypeScript compiler.)
          * Text of identifier, but if the identifier begins with two underscores, this will begin with three.
@@ -1451,31 +1612,26 @@ namespace ts {
         SyntaxKind originalKeywordKind = SyntaxKind::Unknown;
     };
 
-    struct EntityName;
-
-    struct Statement: BaseNodeStructure {
-    };
-
     enum class FlowFlags {
-        Unreachable = 1<<0,  // Unreachable code
-        Start = 1<<1,  // Start of flow graph
-        BranchLabel = 1<<2,  // Non-looping junction
-        LoopLabel = 1<<3,  // Looping junction
-        Assignment = 1<<4,  // Assignment
-        TrueCondition = 1<<5,  // Condition known to be true
-        FalseCondition = 1<<6,  // Condition known to be false
-        SwitchClause = 1<<7,  // Switch statement clause
-        ArrayMutation = 1<<8,  // Potential array mutation
-        Call = 1<<9,  // Potential assertion call
-        ReduceLabel = 1<<10, // Temporarily reduce antecedents of label
-        Referenced = 1<<11, // Referenced as antecedent once
-        Shared = 1<<12, // Referenced as antecedent more than once
+        Unreachable = 1 << 0,  // Unreachable code
+        Start = 1 << 1,  // Start of flow graph
+        BranchLabel = 1 << 2,  // Non-looping junction
+        LoopLabel = 1 << 3,  // Looping junction
+        Assignment = 1 << 4,  // Assignment
+        TrueCondition = 1 << 5,  // Condition known to be true
+        FalseCondition = 1 << 6,  // Condition known to be false
+        SwitchClause = 1 << 7,  // Switch statement clause
+        ArrayMutation = 1 << 8,  // Potential array mutation
+        Call = 1 << 9,  // Potential assertion call
+        ReduceLabel = 1 << 10, // Temporarily reduce antecedents of label
+        Referenced = 1 << 11, // Referenced as antecedent once
+        Shared = 1 << 12, // Referenced as antecedent more than once
 
         Label = BranchLabel | LoopLabel,
         Condition = TrueCondition | FalseCondition,
     };
 
-    struct Block: Statement, BrandKind<SyntaxKind::Block> {
+    struct Block: BrandKind<SyntaxKind::Block, Statement> {
         NodeArray<Statement> statements;
         /*@internal*/ bool multiLine;
     };
@@ -1486,78 +1642,77 @@ namespace ts {
         optional<types::TokenFlags> templateFlags;
     };
 
-    struct NoSubstitutionTemplateLiteral: LiteralExpression, TemplateLiteralLikeNode, Declaration, BrandKind<SyntaxKind::NoSubstitutionTemplateLiteral> {
+    struct NoSubstitutionTemplateLiteral: BrandKind<SyntaxKind::NoSubstitutionTemplateLiteral, LiteralExpression, TemplateLiteralLikeNode> {
         optional<types::TokenFlags> templateFlags;
     };
 
-    struct NumericLiteral: LiteralExpression, ParentAccess<Declaration>, BrandKind<SyntaxKind::NumericLiteral> {
+    struct NumericLiteral: BrandKind<SyntaxKind::NumericLiteral, LiteralExpression> {
         types::TokenFlags numericLiteralFlags;
     };
 
-    struct ComputedPropertyName: ParentAccess<Declaration>, BrandKind<SyntaxKind::ComputedPropertyName> {
-        NodeType<Expression> expression;
+    struct ComputedPropertyName: BrandKind<SyntaxKind::ComputedPropertyName> {
+        Expression expression;
     };
 
-    struct QualifiedName: BaseNodeStructure, BrandKind<SyntaxKind::QualifiedName> {
-        NodeType<EntityName> left;
-        NodeType<NodeType<Identifier>> right;
+    struct QualifiedName;
+
+    #define EntityName Identifier, QualifiedName
+
+    struct QualifiedName: BrandKind<SyntaxKind::QualifiedName, Node> {
+        NodeUnion<EntityName> left;
+        Identifier right;
         /*@internal*/ optional<int> jsdocDotPos; // QualifiedName occurs in JSDoc-style generic: Id1.Id2.<T>
     };
 
-    struct ElementAccessExpression: MemberExpression, BrandKind<SyntaxKind::ElementAccessExpression> {
-        NodeType<LeftHandSideExpression> expression;
-        optional<NodeType<QuestionDotToken>> questionDotToken;
-        NodeType<Expression> argumentExpression;
+    struct ElementAccessExpression: BrandKind<SyntaxKind::ElementAccessExpression, MemberExpression> {
+        LeftHandSideExpression expression;
+        optional<QuestionDotToken> questionDotToken;
+        Expression argumentExpression;
     };
 
-    struct OmittedExpression: BaseNodeStructure, BrandKind<SyntaxKind::OmittedExpression> {};
+    struct OmittedExpression: BrandKind<SyntaxKind::OmittedExpression, Node> {};
 
     struct VariableDeclaration;
     struct ParameterDeclaration;
-    struct BindingName;
-    struct PropertyName;
-    struct BindingElement;
+    struct ObjectBindingPattern;
+    struct ArrayBindingPattern;
+    struct ArrayBindingPattern;
+    using BindingPattern = NodeUnion<ObjectBindingPattern, ArrayBindingPattern>;
+    using BindingName = NodeUnion<Identifier, BindingPattern>;
 
-    struct ArrayBindingElement: NodeType<BindingElement, OmittedExpression> {};
+    using PropertyName = NodeUnion<Identifier, StringLiteral, NumericLiteral, ComputedPropertyName, PrivateIdentifier>;
 
-    struct ObjectBindingPattern: BaseNodeStructure, BrandKind<SyntaxKind::ObjectBindingPattern> {
-        NodeArray<BindingElement> elements;
-        NodeType<VariableDeclaration, ParameterDeclaration, BindingElement> parent;
+    struct BindingElement: BrandKind<SyntaxKind::BindingElement, NamedDeclaration> {
+        optional<PropertyName> propertyName;        // Binding property name (in object binding pattern)
+        optional<DotDotDotToken> dotDotDotToken;    // Present on rest element (in object binding pattern)
+        BindingName name;                  // Declared binding element name
+        optional<Expression> initializer;           // Optional initializer
     };
 
-    struct ArrayBindingPattern: BaseNodeStructure, BrandKind<SyntaxKind::ArrayBindingPattern> {
-        NodeType<VariableDeclaration, ParameterDeclaration, BindingElement> parent;
+    using ArrayBindingElement = NodeUnion<BindingElement, OmittedExpression>;
+
+    struct ObjectBindingPattern: BrandKind<SyntaxKind::ObjectBindingPattern, Node> {
+        NodeArray<BindingElement> elements;
+        NodeUnion<VariableDeclaration, ParameterDeclaration, BindingElement> parent;
+    };
+
+    struct ArrayBindingPattern: BrandKind<SyntaxKind::ArrayBindingPattern, Node> {
+        NodeUnion<VariableDeclaration, ParameterDeclaration, BindingElement> parent;
         NodeArray<ArrayBindingElement> elements;
     };
 
-    struct BindingPattern: NodeType<ObjectBindingPattern, ArrayBindingPattern> {};
-
-    struct BindingElement: NamedDeclaration, ParentAccess<BindingPattern>, BrandKind<SyntaxKind::BindingElement> {
-        optional<NodeType<PropertyName>> propertyName;        // Binding property name (in object binding pattern)
-        optional<NodeType<DotDotDotToken>> dotDotDotToken;    // Present on rest element (in object binding pattern)
-        NodeType<BindingName> name;                  // Declared binding element name
-        optional<NodeType<Expression>> initializer;           // Optional initializer
-    };
-
-    struct VariableDeclarationList;
-
-    struct VariableStatement: Statement, BrandKind<SyntaxKind::VariableStatement> {
-        /* @internal*/ optional<NodeArray<Decorator>> decorators; // Present for use with reporting a grammar error
-        NodeType<VariableDeclarationList> declarationList;
-    };
-
-    struct ExpressionStatement: Statement, BrandKind<SyntaxKind::ExpressionStatement> {
-        NodeType<Expression> expression;
+    struct ExpressionStatement: BrandKind<SyntaxKind::ExpressionStatement, Statement> {
+        Expression expression;
     };
 
     struct PrologueDirective: ExpressionStatement {
-        NodeType<StringLiteral> expression;
+        StringLiteral expression;
     };
 
-    struct IfStatement: Statement, BrandKind<SyntaxKind::IfStatement> {
-        NodeType<Expression> expression;
-        NodeType<Statement> thenStatement;
-        optional<NodeType<Statement>> elseStatement;
+    struct IfStatement: BrandKind<SyntaxKind::IfStatement, Statement> {
+        Expression expression;
+        Statement thenStatement;
+        optional<Statement> elseStatement;
     };
 
 //    export type ForInitializer =
@@ -1571,12 +1726,12 @@ namespace ts {
 //        ;
 
 
-    struct BreakStatement: Statement, BrandKind<SyntaxKind::BreakStatement> {
-        optional<NodeType<Identifier>> label;
+    struct BreakStatement: BrandKind<SyntaxKind::BreakStatement, Statement> {
+        optional<Identifier> label;
     };
 
-    struct ContinueStatement: Statement, BrandKind<SyntaxKind::ContinueStatement> {
-        optional<NodeType<Identifier>> label;
+    struct ContinueStatement: BrandKind<SyntaxKind::ContinueStatement, Statement> {
+        optional<Identifier> label;
     };
 
 //    export type BreakOrContinueStatement =
@@ -1584,39 +1739,38 @@ namespace ts {
 //        | ContinueStatement
 //        ;
 
-    struct ReturnStatement: Statement, BrandKind<SyntaxKind::ReturnStatement> {
-        optional<NodeType<Expression>> expression;
+    struct ReturnStatement: BrandKind<SyntaxKind::ReturnStatement, Statement> {
+        optional<Expression> expression;
     };
 
-    struct WithStatement: Statement, BrandKind<SyntaxKind::WithStatement> {
-        NodeType<Expression> expression;
-        NodeType<Statement> statement;
+    struct WithStatement: BrandKind<SyntaxKind::WithStatement, Statement> {
+        Expression expression;
+        Statement statement;
     };
 
-    struct CaseBlock;
-
-    struct SwitchStatement: Statement, BrandKind<SyntaxKind::SwitchStatement> {
-        NodeType<Expression> expression;
-        NodeType<CaseBlock> caseBlock;
-        bool possiblyExhaustive; // initialized by binding
-    };
-
+    struct SwitchStatement;
     struct CaseClause;
     struct DefaultClause;
 
-    struct CaseBlock: BaseNodeStructure, BrandKind<SyntaxKind::CaseBlock> {
-        NodeType<SwitchStatement> parent;
+    struct CaseBlock: BrandKind<SyntaxKind::CaseBlock, Node> {
+        SwitchStatement &parent;
         NodeArray<CaseClause, DefaultClause> clauses;
     };
 
-    struct CaseClause: BaseNodeStructure, BrandKind<SyntaxKind::CaseClause> {
-        NodeType<CaseBlock> parent;
-        NodeType<Expression> expression;
+    struct SwitchStatement: BrandKind<SyntaxKind::SwitchStatement, Statement> {
+        Expression expression;
+        CaseBlock caseBlock;
+        bool possiblyExhaustive; // initialized by binding
+    };
+
+    struct CaseClause: BrandKind<SyntaxKind::CaseClause, Node> {
+        CaseBlock parent;
+        Expression expression;
         NodeArray<Statement> statements;
     };
 
-    struct DefaultClause: BaseNodeStructure, BrandKind<SyntaxKind::DefaultClause> {
-        NodeType<CaseBlock> parent;
+    struct DefaultClause: BrandKind<SyntaxKind::DefaultClause, Node> {
+        CaseBlock &parent;
         NodeArray<Statement> statements;
     };
 
@@ -1625,259 +1779,256 @@ namespace ts {
 //        | DefaultClause
 //        ;
 
-    struct LabeledStatement: Statement, BrandKind<SyntaxKind::LabeledStatement> {
-        NodeType<Identifier> label;
-        NodeType<Statement> statement;
+    struct LabeledStatement: BrandKind<SyntaxKind::LabeledStatement, Statement> {
+        Identifier label;
+        Statement statement;
     };
 
-    struct ThrowStatement: Statement, BrandKind<SyntaxKind::ThrowStatement> {
-        NodeType<Expression> expression;
+    struct ThrowStatement: BrandKind<SyntaxKind::ThrowStatement, Statement> {
+        Expression expression;
     };
 
     struct IterationStatement: Statement {
-        NodeType<Statement> statement;
+        Statement statement;
     };
 
-    struct DoStatement: IterationStatement, BrandKind<SyntaxKind::DoStatement> {
-        NodeType<Expression> expression;
+    struct DoStatement: BrandKind<SyntaxKind::DoStatement, IterationStatement> {
+        Expression expression;
     };
 
-    struct WhileStatement: IterationStatement, BrandKind<SyntaxKind::WhileStatement> {
-        NodeType<Expression> expression;
+    struct WhileStatement: BrandKind<SyntaxKind::WhileStatement, IterationStatement> {
+        Expression expression;
     };
 
-    struct ForInitializer: NodeType<VariableDeclarationList, Expression> {};
+    struct VariableDeclarationList;
 
-    struct ForStatement: IterationStatement, BrandKind<SyntaxKind::ForStatement> {
-        optional<NodeType<ForInitializer>> initializer;
-        optional<NodeType<Expression>> condition;
-        optional<NodeType<Expression>> incrementor;
+    using ForInitializer = NodeUnion<VariableDeclarationList, Expression>;
+
+    struct ForStatement: BrandKind<SyntaxKind::ForStatement, IterationStatement> {
+        optional<ForInitializer> initializer;
+        optional<Expression> condition;
+        optional<Expression> incrementor;
     };
 
-    struct ForOfStatement: IterationStatement, BrandKind<SyntaxKind::ForOfStatement> {
-        NodeType<AwaitKeyword> awaitModifier;
-        NodeType<ForInitializer> initializer;
-        NodeType<Expression> expression;
+    struct ForOfStatement: BrandKind<SyntaxKind::ForOfStatement, IterationStatement> {
+        AwaitKeyword awaitModifier;
+        ForInitializer initializer;
+        Expression expression;
     };
 
-    struct ForInStatement: IterationStatement, BrandKind<SyntaxKind::ForInStatement> {
-        NodeType<ForInitializer> initializer;
-        NodeType<Expression> expression;
+    struct ForInStatement: BrandKind<SyntaxKind::ForInStatement, IterationStatement> {
+        ForInitializer initializer;
+        Expression expression;
     };
 
-    struct VariableDeclarationList: BaseNodeStructure, BrandKind<SyntaxKind::VariableDeclarationList> {
-        NodeType<VariableStatement, ForStatement, ForOfStatement, ForInStatement> parent;
+    struct VariableStatement;
+
+    struct VariableDeclarationList: BrandKind<SyntaxKind::VariableDeclarationList, Node> {
+        NodeUnion<VariableStatement, ForStatement, ForOfStatement, ForInStatement> parent;
         NodeArray<VariableDeclaration> declarations;
+    };
+
+    struct VariableStatement: BrandKind<SyntaxKind::VariableStatement, Statement> {
+//        /* @internal*/ optional<NodeArray<Decorator>> decorators; // Present for use with reporting a grammar error
+        VariableDeclarationList declarationList;
     };
 
     struct CatchClause;
 
-    struct TryStatement: Statement, BrandKind<SyntaxKind::TryStatement> {
-        NodeType<Block> tryBlock;
-        optional<NodeType<CatchClause>> catchClause;
-        optional<NodeType<Block>> finallyBlock;
+    struct TryStatement: BrandKind<SyntaxKind::TryStatement, Statement> {
+        Block tryBlock;
+        optional<reference_wrapper<CatchClause>> catchClause;
+        optional<Block> finallyBlock;
     };
 
-    struct CatchClause: BaseNodeStructure, BrandKind<types::CatchClause> {
-        NodeType<TryStatement> parent;
-        optional<NodeType<VariableDeclaration>> variableDeclaration;
-        NodeType<Block> block;
+    struct CatchClause: BrandKind<SyntaxKind::CatchClause, Node> {
+        TryStatement &parent;
+        optional<reference_wrapper<VariableDeclaration>> variableDeclaration;
+        Block block;
     };
 
-    struct VariableDeclaration: NamedDeclaration, BrandKind<SyntaxKind::VariableDeclaration> {
-        NodeType<BindingName> name;                    // Declared variable name
-        NodeType<VariableDeclarationList, CatchClause> parent;
-        optional<NodeType<ExclamationToken>> exclamationToken;  // Optional definite assignment assertion
-        optional<NodeType<TypeNode>> type;                      // Optional type annotation
-        optional<NodeType<Expression>> initializer;             // Optional initializer
+    struct VariableDeclaration: BrandKind<SyntaxKind::VariableDeclaration, NamedDeclaration> {
+        BindingName name;                    // Declared variable name
+        NodeUnion<VariableDeclarationList, CatchClause> &parent;
+        optional<ExclamationToken> exclamationToken;  // Optional definite assignment assertion
+        optional<TypeNode> type;                      // Optional type annotation
+        optional<Expression> initializer;             // Optional initializer
     };
 
-    struct MemberName: NodeType<Identifier, PrivateIdentifier> {};
+    struct MemberName: NodeUnion<Identifier, PrivateIdentifier> {};
 
-    struct PropertyAccessExpression: MemberExpression, NamedDeclaration, BrandKind<SyntaxKind::PropertyAccessExpression> {
-        NodeType<LeftHandSideExpression> expression;
-        optional<NodeType<QuestionDotToken>> questionDotToken;
-        NodeType<MemberName> name;
+    struct PropertyAccessExpression: BrandKind<SyntaxKind::PropertyAccessExpression, MemberExpression, NamedDeclaration> {
+        LeftHandSideExpression expression;
+        optional<QuestionDotToken> questionDotToken;
+        MemberName name;
     };
 
     struct PropertyAccessEntityNameExpression;
 
-    struct EntityNameExpression: NodeType<Identifier, PropertyAccessEntityNameExpression> {};
+    struct EntityNameExpression: NodeUnion<Identifier, PropertyAccessEntityNameExpression> {};
 
     struct PropertyAccessEntityNameExpression: PropertyAccessExpression {
-        NodeType<EntityNameExpression> expression;
-        NodeType<Identifier> name;
+        EntityNameExpression expression;
+        Identifier name;
     };
 
-    struct PropertyName: NodeType<Identifier, StringLiteral, NumericLiteral, ComputedPropertyName, PrivateIdentifier> {};
+    using PropertyName = NodeUnion<Identifier, StringLiteral, NumericLiteral, ComputedPropertyName, PrivateIdentifier>;
 
-    struct StringLiteralLike: NodeType<StringLiteral, NoSubstitutionTemplateLiteral> {};
-    struct DeclarationName: NodeType<Identifier, PrivateIdentifier, StringLiteralLike, NumericLiteral, ComputedPropertyName, ElementAccessExpression, BindingPattern, EntityNameExpression> {};
-    struct EntityName: NodeType<Identifier, QualifiedName> {};
+    using StringLiteralLike = NodeUnion<StringLiteral, NoSubstitutionTemplateLiteral>;
+    struct DeclarationName: NodeUnion<Identifier, PrivateIdentifier, StringLiteralLike, NumericLiteral, ComputedPropertyName, ElementAccessExpression, BindingPattern, EntityNameExpression> {};
 
-    struct MetaProperty: PrimaryExpression, BrandKind<SyntaxKind::MetaProperty> {
+    struct MetaProperty: BrandKind<SyntaxKind::MetaProperty, PrimaryExpression> {
         SyntaxKind keywordToken = SyntaxKind::NewKeyword; //: SyntaxKind.NewKeyword | SyntaxKind.ImportKeyword;
-        NodeType<Identifier> name;
+        Identifier name;
     };
 
     struct ObjectLiteralElement: NamedDeclaration {
-        optional<NodeType<PropertyName>> name;
+        optional<PropertyName> name;
     };
 
-    template<class T>
-    struct ObjectLiteralExpressionBase: PrimaryExpression, Declaration {
-        NodeArray<T> properties;
+    struct ClassElement: NamedDeclaration {
+        optional<PropertyName> name;
     };
 
-    struct PropertyAssignment;
-    struct ShorthandPropertyAssignment;
-    struct SpreadAssignment;
-    struct MethodDeclaration;
-    struct AccessorDeclaration;
-
-    using ObjectLiteralElementLike = NodeType<PropertyAssignment, ShorthandPropertyAssignment, SpreadAssignment, MethodDeclaration, AccessorDeclaration>;
-
-    struct ObjectLiteralExpression: ObjectLiteralExpressionBase<ObjectLiteralElementLike>, BrandKind<SyntaxKind::ObjectLiteralExpression> {
-        /* @internal */ bool multiLine;
+    struct TypeElement: NamedDeclaration {
+        optional<PropertyName> name;
+        optional<QuestionToken> questionToken;
     };
 
-    struct ShorthandPropertyAssignment: ObjectLiteralElement, ParentAccess<ObjectLiteralExpression>, BrandKind<SyntaxKind::ShorthandPropertyAssignment> {
-        NodeType<Identifier> name;
-        optional<NodeType<QuestionToken>> questionToken;
-        optional<NodeType<ExclamationToken>> exclamationToken;
+    struct SpreadAssignment: BrandKind<SyntaxKind::SpreadAssignment, Node> {
+        Expression expression;
+    };
+
+    struct TypeLiteralNode: BrandKind<SyntaxKind::TypeLiteral, TypeNode> {
+        NodeArray<TypeElement> members;
+    };
+
+#define ClassLikeDeclaration ClassDeclaration, ClassExpression
+
+    struct ShorthandPropertyAssignment: BrandKind<SyntaxKind::ShorthandPropertyAssignment, ObjectLiteralElement> {
+        Identifier name;
+        optional<QuestionToken> questionToken;
+        optional<ExclamationToken> exclamationToken;
 
         // used when ObjectLiteralExpression is used in ObjectAssignmentPattern
         // it is a grammar error to appear in actual object initializer:
-        optional<NodeType<EqualsToken>> equalsToken;
-        optional<NodeType<Expression>> objectAssignmentInitializer;
+        optional<EqualsToken> equalsToken;
+        optional<Expression> objectAssignmentInitializer;
     };
 
-//    struct VariableDeclaration: NamedDeclaration, BrandKind<SyntaxKind::VariableDeclaration> {
+//    struct VariableDeclaration: BrandKind<SyntaxKind::VariableDeclaration, NamedDeclaration> {
 //        BindingNameNode name;                    // Declared variable name
 ////            readonly kind: SyntaxKind.VariableDeclaration;
 ////            readonly parent: VariableDeclarationList | CatchClause;
 //        optional <NodeType<ExclamationToken>> exclamationToken;  // Optional definite assignment assertion
 //        optional <TypeNode> type; // Optional type annotation
-//        optional <NodeType<NodeType<Expression>>> initializer; // Optional initializer
+//        optional <NodeType<Expression>> initializer; // Optional initializer
 //    };
 
-    struct TypeParameterDeclaration: NamedDeclaration, BrandKind<SyntaxKind::TypeParameter> {
+    struct TypeParameterDeclaration: BrandKind<SyntaxKind::TypeParameter, NamedDeclaration> {
         inline static auto kind = SyntaxKind::TypeParameter;
 //        BaseNode *parent; //: DeclarationWithTypeParameterChildren | InferTypeNode;
-        NodeType<Identifier> name;
+        Identifier name;
         /** Note: Consider calling `getEffectiveConstraintOfTypeParameter` */
-        NodeType<NodeType<TypeNode>> constraint;
-        NodeType<NodeType<TypeNode>> defaultType;
+        TypeNode constraint;
+        TypeNode defaultType;
 
         // For error recovery purposes.
-        optional<NodeType<Expression>> expression;
+        optional<Expression> expression;
     };
 
-    struct ParameterDeclaration: NamedDeclaration, BrandKind<SyntaxKind::Parameter> {
-        optional<NodeType<DotDotDotToken>> dotDotDotToken;
-        NodeType<BindingName> name;
-        optional<NodeType<QuestionToken>> questionToken;
-        optional<NodeType<TypeNode>> type;
-        optional<NodeType<Expression>> initializer;
+    struct ParameterDeclaration: BrandKind<SyntaxKind::Parameter, NamedDeclaration> {
+        optional<DotDotDotToken> dotDotDotToken;
+        BindingName name;
+        optional<QuestionToken> questionToken;
+        optional<TypeNode> type;
+        optional<Expression> initializer;
     };
 
-    struct ClassElement: NamedDeclaration {
-        optional<NodeType<PropertyName>> name;
-    };
-
-    struct PropertyDeclaration: ClassElement, BrandKind<SyntaxKind::PropertyDeclaration> {
-        optional<NodeType<DotDotDotToken>> dotDotDotToken;
-        NodeType<BindingName> name;
-        optional<NodeType<QuestionToken>> questionToken;
-        optional<NodeType<ExclamationToken>> exclamationToken;
-        optional<NodeType<TypeNode>> type;
-        optional<NodeType<Expression>> initializer;
+    struct PropertyDeclaration: BrandKind<SyntaxKind::PropertyDeclaration, ClassElement> {
+        optional<DotDotDotToken> dotDotDotToken;
+        BindingName name;
+        optional<QuestionToken> questionToken;
+        optional<ExclamationToken> exclamationToken;
+        optional<TypeNode> type;
+        optional<Expression> initializer;
     };
 
     struct SignatureDeclarationBase: NamedDeclaration {
-        optional<NodeType<PropertyName>> name;
+        optional<NodeUnion<Identifier, StringLiteral, NumericLiteral, ComputedPropertyName, PrivateIdentifier>> name;
         optional<NodeArray<TypeParameterDeclaration>> typeParameters;
         NodeArray<ParameterDeclaration> parameters;
-        optional<NodeType<TypeNode>> type;
+        optional<TypeNode> type;
         optional<NodeArray<TypeNode>> typeArguments;
     };
 
-    struct PropertyAssignment: ObjectLiteralElement, BrandKind<SyntaxKind::PropertyAssignment> {
-        NodeType<PropertyName> name;
-        optional<NodeType<QuestionToken>> questionToken;
-        optional<NodeType<ExclamationToken>> exclamationToken;
-        optional<NodeType<NodeType<Expression>>> initializer;
+    struct PropertyAssignment: BrandKind<SyntaxKind::PropertyAssignment, ObjectLiteralElement> {
+        PropertyName name;
+        optional<QuestionToken> questionToken;
+        optional<ExclamationToken> exclamationToken;
+        optional<Expression> initializer;
     };
 
     struct FunctionLikeDeclarationBase: SignatureDeclarationBase {
-        optional<NodeType<AsteriskToken>> asteriskToken;
-        optional<NodeType<QuestionToken>> questionToken;
-        optional<NodeType<ExclamationToken>> exclamationToken;
-        optional<NodeType<Block, Expression>> body;
+        optional<AsteriskToken> asteriskToken;
+        optional<QuestionToken> questionToken;
+        optional<ExclamationToken> exclamationToken;
+        optional<NodeUnion<Block, Expression>> body;
 
 //        /* @internal */ optional<NodeType<FlowNode>> endFlowNode;
 //        /* @internal */ optional<NodeType<FlowNode>> returnFlowNode;
     };
 
-    struct FunctionBody: NodeType<FunctionBody> {};
-    struct ConciseBody: NodeType<FunctionBody, Expression> {};
+#define FunctionBody Block
+#define ConciseBody FunctionBody, Expression
 
-    struct ArrowFunction: Expression, FunctionLikeDeclarationBase, BrandKind<SyntaxKind::ArrowFunction> {
-        NodeType<EqualsGreaterThanToken> equalsGreaterThanToken;
-        NodeType<ConciseBody> body;
+    struct ArrowFunction: BrandKind<SyntaxKind::ArrowFunction, Expression, FunctionLikeDeclarationBase> {
+        EqualsGreaterThanToken equalsGreaterThanToken;
+        NodeUnion<ConciseBody> body;
     };
 
     struct HeritageClause;
 
     struct ClassLikeDeclarationBase: NamedDeclaration {
-        optional<NodeType<Identifier>> name;
+        optional<Identifier> name;
         optional<NodeArray<TypeParameterDeclaration>> typeParameters;
         optional<NodeArray<HeritageClause>> heritageClauses;
         NodeArray<ClassElement> members;
     };
 
-    struct DeclarationStatement: NamedDeclaration, Statement {
+    struct DeclarationStatement: NamedDeclaration {
         optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
         optional<NodeArray<Modifier>> modifiers;            // Array of modifiers
-        optional<NodeType<Identifier, StringLiteral, NumericLiteral>> name;
+        optional<NodeUnion<Identifier, StringLiteral, NumericLiteral>> name;
     };
 
-    struct EmptyStatement: Statement, BrandKind<SyntaxKind::EmptyStatement> {
-    };
+    struct EmptyStatement: BrandKind<SyntaxKind::EmptyStatement, Statement> {};
 
-    struct DebuggerStatement: Statement, BrandKind<SyntaxKind::DebuggerStatement> {
-    };
+    struct DebuggerStatement: BrandKind<SyntaxKind::DebuggerStatement, Statement> {};
 
-    struct CommaListExpression: Expression, BrandKind<SyntaxKind::CommaListExpression> {
+    struct CommaListExpression: BrandKind<SyntaxKind::CommaListExpression, Expression> {
         NodeArray<Expression> elements;
     };
 
-    struct MissingDeclaration: DeclarationStatement, BrandKind<SyntaxKind::MissingDeclaration> {
-        optional<NodeType<Identifier>> name;
+    struct MissingDeclaration: BrandKind<SyntaxKind::MissingDeclaration, DeclarationStatement> {
+        optional<Identifier> name;
     };
 
-    struct ClassDeclaration: ClassLikeDeclarationBase, DeclarationStatement, BrandKind<SyntaxKind::ClassDeclaration> {
+    struct ClassDeclaration: BrandKind<SyntaxKind::ClassDeclaration, ClassLikeDeclarationBase, DeclarationStatement> {
         optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
         optional<NodeArray<Modifier>> modifiers;            // Array of modifiers
-        optional<NodeType<Identifier>> name;
+        optional<Identifier> name;
     };
 
-    struct ClassExpression: ClassLikeDeclarationBase, PrimaryExpression, BrandKind<SyntaxKind::ClassExpression> {
+    struct ClassExpression: BrandKind<SyntaxKind::ClassExpression, ClassLikeDeclarationBase, PrimaryExpression> {
         optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
         optional<NodeArray<Modifier>> modifiers;            // Array of modifiers
-    };
-
-    struct ClassLikeDeclaration: NodeType<ClassDeclaration, ClassExpression> {};
-
-    struct TypeElement: NamedDeclaration {
-        optional<NodeType<PropertyName>> name;
-        optional<NodeType<QuestionToken>> questionToken;
     };
 
     struct HeritageClause;
 
-    struct InterfaceDeclaration: DeclarationStatement, BrandKind<SyntaxKind::InterfaceDeclaration> {
-        NodeType<Identifier> name;
+    struct InterfaceDeclaration: BrandKind<SyntaxKind::InterfaceDeclaration, DeclarationStatement> {
+        Identifier name;
         optional<NodeArray<TypeParameterDeclaration>> typeParameters;
         optional<NodeArray<HeritageClause>> heritageClauses;
         NodeArray<TypeElement> members;
@@ -1887,126 +2038,141 @@ namespace ts {
         optional<NodeArray<TypeNode>> typeArguments;
     };
 
-    struct ExpressionWithTypeArguments: MemberExpression, NodeWithTypeArguments, BrandKind<SyntaxKind::ExpressionWithTypeArguments> {
-        NodeType<LeftHandSideExpression> expression;
+    struct ExpressionWithTypeArguments: BrandKind<SyntaxKind::ExpressionWithTypeArguments, MemberExpression, NodeWithTypeArguments> {
+        LeftHandSideExpression expression;
     };
 
-    struct HeritageClause: BaseNodeStructure, BrandKind<SyntaxKind::HeritageClause> {
-        NodeType<InterfaceDeclaration, ClassLikeDeclaration> parent;
+    struct HeritageClause: BrandKind<SyntaxKind::HeritageClause, Node> {
+        NodeUnion<InterfaceDeclaration, ClassLikeDeclaration> parent;
         SyntaxKind token; //SyntaxKind.ExtendsKeyword | SyntaxKind.ImplementsKeyword
         NodeArray<ExpressionWithTypeArguments> types;
     };
 
-    struct TypeAliasDeclaration: DeclarationStatement, BrandKind<SyntaxKind::TypeAliasDeclaration> {
-        NodeType<Identifier> name;
+    struct TypeAliasDeclaration: BrandKind<SyntaxKind::TypeAliasDeclaration, DeclarationStatement> {
+        Identifier name;
         optional<NodeArray<TypeParameterDeclaration>> typeParameters;
-        NodeType<TypeNode> type;
+        TypeNode type;
     };
 
-    struct EnumDeclaration;
+    struct EnumMember;
 
-    struct EnumMember: NamedDeclaration, BrandKind<SyntaxKind::EnumMember> {
-        NodeType<EnumDeclaration> parent;
-        // This does include ComputedPropertyName, but the parser will give an error
-        // if it parses a ComputedPropertyName in an EnumMember
-        PropertyName name;
-        optional<NodeType<Expression>> initializer;
-    };
-
-    struct EnumDeclaration: DeclarationStatement, BrandKind<SyntaxKind::EnumDeclaration> {
-        NodeType<Identifier> name;
+    struct EnumDeclaration: BrandKind<SyntaxKind::EnumDeclaration, DeclarationStatement> {
+        Identifier name;
         NodeArray<EnumMember> members;
     };
 
-    struct ClassStaticBlockDeclaration: ClassElement, BrandKind<SyntaxKind::ClassStaticBlockDeclaration> {
-        NodeType<ClassDeclaration, ClassExpression> parent;
-        NodeType<Block> body;
+    struct EnumMember: BrandKind<SyntaxKind::EnumMember, NamedDeclaration> {
+        EnumDeclaration parent;
+        // This does include ComputedPropertyName, but the parser will give an error
+        // if it parses a ComputedPropertyName in an EnumMember
+        PropertyName name;
+        optional<Expression> initializer;
+    };
+
+    struct ClassStaticBlockDeclaration: BrandKind<SyntaxKind::ClassStaticBlockDeclaration, ClassElement> {
+        NodeUnion<ClassDeclaration, ClassExpression> parent;
+        Block body;
 //        /* @internal */ endFlowNode?: FlowNode;
 //        /* @internal */ returnFlowNode?: FlowNode;
     };
 
-    struct PropertySignature: TypeElement, BrandKind<SyntaxKind::PropertySignature> {
-        NodeType<PropertyName> name;
-        optional<NodeType<TypeNode>> type;
-        optional<NodeType<NodeType<Expression>>> initializer;
+    struct PropertySignature: BrandKind<SyntaxKind::PropertySignature, TypeElement> {
+        PropertyName name;
+        optional<TypeNode> type;
+        optional<Expression> initializer;
     };
 
-    struct TypeReferenceNode: NodeWithTypeArguments, BrandKind<SyntaxKind::TypeReference> {
-        EntityName typeName;
+    struct TypeReferenceNode: BrandKind<SyntaxKind::TypeReference, NodeWithTypeArguments> {
+        NodeUnion<EntityName> typeName;
     };
 
-    struct ModuleDeclaration;
+#define ModuleName Identifier, StringLiteral
+#define NamespaceBody ModuleBlock, NamespaceDeclaration
+#define ModuleBody NamespaceBody
+
     struct ModuleBlock;
-    struct ModuleBody;
+    struct NamespaceDeclaration;
 
-    struct NamespaceDeclaration: DeclarationStatement, BrandKind<SyntaxKind::ModuleDeclaration> {
-        NodeType<ModuleBody, SourceFile> parent;
-        NodeType<Identifier> name;
-        optional<NodeType<ModuleBody>> body;
+    struct ModuleDeclaration: BrandKind<SyntaxKind::ModuleDeclaration, DeclarationStatement> {
+        NodeUnion<ModuleBlock, NamespaceDeclaration, SourceFile> parent;
+        NodeUnion<ModuleName> name;
+        optional<NodeUnion<ModuleBody>> body;
     };
 
-    struct NamespaceBody: NodeType<ModuleBlock, NamespaceDeclaration> {};
-    struct ModuleName: NodeType<Identifier, StringLiteral> {};
-    struct ModuleBody: NodeType<NamespaceBody> {};
-
-    struct ModuleDeclaration: DeclarationStatement, BrandKind<SyntaxKind::ModuleDeclaration> {
-        NodeType<ModuleBody, SourceFile> parent;
-        NodeType<ModuleName> name;
-        optional<NodeType<ModuleBody>> body;
-    };
-
-    struct ModuleBlock: Statement, BrandKind<SyntaxKind::ModuleBlock> {
-        NodeType<ModuleDeclaration> parent;
+    struct ModuleBlock: BrandKind<SyntaxKind::ModuleBlock, Statement> {
+        ModuleDeclaration &parent;
         NodeArray<Statement> statements;
     };
 
-    struct ImportEqualsDeclaration;
+    struct NamespaceDeclaration: BrandKind<SyntaxKind::ModuleDeclaration, DeclarationStatement> {
+        NodeUnion<ModuleBody, SourceFile> parent;
+        Identifier name;
+        optional<NodeUnion<ModuleBody>> body;
+    };
+
     struct ExternalModuleReference;
 
-    struct ModuleReference: NodeType<EntityName, ExternalModuleReference> {};
+#define ModuleReference EntityName, ExternalModuleReference
 
-    /**
-     * One of:
-     * - import x = require("mod");
-     * - import x = M.x;
-     */
-    struct ImportEqualsDeclaration: DeclarationStatement, BrandKind<SyntaxKind::ImportEqualsDeclaration> {
-        NodeType<SourceFile, ModuleBlock> parent;
-        NodeType<Identifier> name;
+/**
+ * One of:
+ * - import x = require("mod");
+ * - import x = M.x;
+ */
+    struct ImportEqualsDeclaration: BrandKind<SyntaxKind::ImportEqualsDeclaration, DeclarationStatement> {
+        NodeUnion<SourceFile, ModuleBlock> parent;
+        Identifier name;
         bool isTypeOnly;
 
         // 'EntityName' for an internal module reference, 'ExternalModuleReference' for an external
         // module reference.
-        NodeType<ModuleReference> moduleReference;
+        NodeUnion<ModuleReference> moduleReference;
     };
 
-    struct ExternalModuleReference: BaseNodeStructure, BrandKind<SyntaxKind::ImportEqualsDeclaration> {
-        NodeType<ImportEqualsDeclaration> parent;
-        NodeType<Expression> expression;
+    struct ExternalModuleReference: BrandKind<SyntaxKind::ImportEqualsDeclaration, Node> {
+        ImportEqualsDeclaration parent;
+        Expression expression;
     };
+
+    struct ImportDeclaration;
 
     struct ImportClause;
-    struct AssertClause;
-    struct NamespaceImport;
-    struct NamedImports;
-    struct NamespaceExport;
-    struct NamedExports;
-    struct ExportDeclaration;
-
-    // In case of:
-    // import "mod"  => importClause = undefined, moduleSpecifier = "mod"
-    // In rest of the cases, module specifier is string literal corresponding to module
-    // ImportClause information is shown at its declaration below.
-    struct ImportDeclaration: Statement, BrandKind<SyntaxKind::ImportDeclaration> {
-        NodeType<SourceFile, ModuleBlock> parent;
-        optional<NodeType<ImportClause>> importClause;
-        /** If this is not a StringLiteral it will be a grammar error. */
-        NodeType<Expression> moduleSpecifier;
-        optional<NodeType<AssertClause>> assertClause;
+    struct NamespaceImport: BrandKind<SyntaxKind::NamespaceImport, NamedDeclaration> {
+        ImportClause &parent;
+        Identifier name;
     };
 
-    struct NamedImportBindings: NodeType<NamespaceImport, NamedImports> {};
-    struct NamedExportBindings: NodeType<NamespaceExport, NamedExports> {};
+    struct NamedImports;
+    struct ImportSpecifier: BrandKind<SyntaxKind::ImportSpecifier, NamedDeclaration> {
+        NamedImports &parent;
+        optional<Identifier> propertyName;  // Name preceding "as" keyword (or undefined when "as" is absent)
+        Identifier name;           // Declared name
+        bool isTypeOnly;
+    };
+
+    struct NamedImports: BrandKind<SyntaxKind::NamedImports, Node> {
+        ImportClause &parent;
+        NodeArray<ImportSpecifier> elements;
+    };
+
+#define NamedImportBindings NamespaceImport, NamedImports
+#define NamedExportBindings NamespaceExport, NamedExports
+
+#define AssertionKey Identifier, StringLiteral
+
+    struct AssertClause;
+    struct AssertEntry: BrandKind<SyntaxKind::AssertEntry, Node> {
+        AssertClause &parent;
+        NodeUnion<AssertionKey> name;
+        Expression value;
+    };
+
+    struct ExportDeclaration;
+    struct AssertClause: BrandKind<SyntaxKind::AssertClause, Node> {
+        NodeUnion<ImportDeclaration, ExportDeclaration> parent;
+        NodeArray<AssertEntry> elements;
+        bool multiLine;
+    };
 
     // In case of:
     // import d from "mod" => name = d, namedBinding = undefined
@@ -2014,85 +2180,62 @@ namespace ts {
     // import d, * as ns from "mod" => name = d, namedBinding: NamespaceImport = { name: ns }
     // import { a, b as x } from "mod" => name = undefined, namedBinding: NamedImports = { elements: [{ name: a }, { name: x, propertyName: b}]}
     // import d, { a, b as x } from "mod" => name = d, namedBinding: NamedImports = { elements: [{ name: a }, { name: x, propertyName: b}]}
-    struct ImportClause: NamedDeclaration, BrandKind<SyntaxKind::ImportClause> {
-        NodeType<ImportDeclaration> parent;
+    struct ImportClause: BrandKind<SyntaxKind::ImportClause, NamedDeclaration> {
+        ImportDeclaration &parent;
         bool isTypeOnly;
-        optional<NodeType<Identifier>> name; // Default binding
-        optional<NodeType<NamedImportBindings>> namedBindings;
+        optional<Identifier> name; // Default binding
+        optional<NodeUnion<NamedImportBindings>> namedBindings;
     };
 
-    struct AssertionKey: NodeType<Identifier, StringLiteral> {};
-
-    struct AssertEntry: BaseNodeStructure, BrandKind<SyntaxKind::AssertEntry> {
-        NodeType<AssertClause> parent;
-        NodeType<AssertionKey> name;
-        NodeType<Expression> value;
+    // In case of:
+    // import "mod"  => importClause = undefined, moduleSpecifier = "mod"
+    // In rest of the cases, module specifier is string literal corresponding to module
+    // ImportClause information is shown at its declaration below.
+    struct ImportDeclaration: BrandKind<SyntaxKind::ImportDeclaration, Statement> {
+        NodeUnion<SourceFile, ModuleBlock> parent;
+        optional<ImportClause> importClause;
+        /** If this is not a StringLiteral it will be a grammar error. */
+        Expression moduleSpecifier;
+        optional<AssertClause> assertClause;
     };
 
-    struct AssertClause: BaseNodeStructure, BrandKind<SyntaxKind::AssertClause> {
-        NodeType<ImportDeclaration, ExportDeclaration> parent;
-        NodeArray<AssertEntry> elements;
-        bool multiLine;
+    struct NamespaceExport: BrandKind<SyntaxKind::NamespaceExport, NamedDeclaration> {
+        ExportDeclaration &parent;
+        Identifier name;
     };
 
-    struct NamespaceImport: NamedDeclaration, BrandKind<SyntaxKind::NamespaceImport> {
-        NodeType<ImportClause> parent;
-        NodeType<Identifier> name;
+    struct NamedExports;
+    struct ExportSpecifier: BrandKind<SyntaxKind::ExportSpecifier, NamedDeclaration> {
+        NamedExports &parent;
+        bool isTypeOnly;
+        optional<Identifier> propertyName;  // Name preceding "as" keyword (or undefined when "as" is absent)
+        Identifier name;           // Declared name
     };
 
-    struct NamespaceExport: NamedDeclaration, BrandKind<SyntaxKind::NamespaceExport> {
-        NodeType<ExportDeclaration> parent;
-        NodeType<Identifier> name;
+    struct NamedExports: BrandKind<SyntaxKind::NamedExports, Node> {
+        ExportDeclaration &parent;
+        NodeArray<ExportSpecifier> elements;
     };
 
-    struct NamespaceExportDeclaration: DeclarationStatement, BrandKind<SyntaxKind::NamespaceExportDeclaration> {
-        NodeType<Identifier> name;
+    struct NamespaceExportDeclaration: BrandKind<SyntaxKind::NamespaceExportDeclaration, DeclarationStatement> {
+        Identifier name;
         /* @internal */ optional<NodeArray<Decorator>> decorators; // Present for use with reporting a grammar error
         /* @internal */ optional<ModifiersArray> modifiers; // Present for use with reporting a grammar error
     };
 
-    struct ExportDeclaration: DeclarationStatement, BrandKind<SyntaxKind::ExportDeclaration> {
-        NodeType<SourceFile, ModuleBlock> parent;
+    struct ExportDeclaration: BrandKind<SyntaxKind::ExportDeclaration, DeclarationStatement> {
+        NodeUnion<SourceFile, ModuleBlock> parent;
         bool isTypeOnly;
         /** Will not be assigned in the case of `export * from "foo";` */
-        optional<NodeType<NamedExportBindings>> exportClause;
+        optional<NodeUnion<NamespaceExport, NamedExports>> exportClause;
         /** If this is not a StringLiteral it will be a grammar error. */
-        optional<NodeType<Expression>> moduleSpecifier;
-        optional<NodeType<AssertClause>> assertClause;
+        optional<Expression> moduleSpecifier;
+        optional<AssertClause> assertClause;
     };
 
-    struct ImportSpecifier;
-    struct ExportSpecifier;
-
-    struct NamedImports: BaseNodeStructure, BrandKind<SyntaxKind::NamedImports> {
-        NodeType<ImportClause> parent;
-        NodeArray<ImportSpecifier> elements;
-    };
-
-    struct NamedExports: BaseNodeStructure, BrandKind<SyntaxKind::NamedExports> {
-        NodeType<ExportDeclaration> parent;
-        NodeArray<ExportSpecifier> elements;
-    };
-
-    struct NamedImportsOrExports: NodeType<NamedImports, NamedExports> {};
-
-    struct ImportSpecifier: NamedDeclaration, BrandKind<SyntaxKind::ImportSpecifier> {
-        NodeType<NamedImports> parent;
-        optional<NodeType<Identifier>> propertyName;  // Name preceding "as" keyword (or undefined when "as" is absent)
-        NodeType<Identifier> name;           // Declared name
-        bool isTypeOnly;
-    };
-
-    struct ExportSpecifier: NamedDeclaration, BrandKind<SyntaxKind::ExportSpecifier> {
-        NodeType<NamedExports> parent;
-        bool isTypeOnly;
-        optional<NodeType<Identifier>> propertyName;  // Name preceding "as" keyword (or undefined when "as" is absent)
-        NodeType<Identifier> name;           // Declared name
-    };
-
-    struct ImportOrExportSpecifier: NodeType<ImportSpecifier, ExportSpecifier> {};
-
-    struct TypeOnlyCompatibleAliasDeclaration: NodeType<ImportClause, ImportEqualsDeclaration, NamespaceImport, ImportOrExportSpecifier> {};
+#define NamedImportsOrExports NamedImports, NamedExports
+#define ImportOrExportSpecifier ImportSpecifier, ExportSpecifier
+#define TypeOnlyCompatibleAliasDeclaration ImportClause, ImportEqualsDeclaration, NamespaceImport, ImportOrExportSpecifier;
 
 //    struct TypeOnlyAliasDeclaration =
 //        | ImportClause & { readonly isTypeOnly: true, readonly name: Identifier }
@@ -2102,97 +2245,136 @@ namespace ts {
 //        | ExportSpecifier & ({ readonly isTypeOnly: true } | { readonly parent: NamedExports & { readonly parent: ExportDeclaration & { readonly isTypeOnly: true } } })
 //        ;
 
-    /**
-     * This is either an `export =` or an `export default` declaration.
-     * Unless `isExportEquals` is set, this node was parsed as an `export default`.
-     */
-    struct ExportAssignment: DeclarationStatement, BrandKind<SyntaxKind::ExportAssignment> {
-        NodeType<SourceFile> parent;
+/**
+ * This is either an `export =` or an `export default` declaration.
+ * Unless `isExportEquals` is set, this node was parsed as an `export default`.
+ */
+    struct ExportAssignment: BrandKind<SyntaxKind::ExportAssignment, DeclarationStatement> {
+        SourceFile &parent;
         bool isExportEquals;
-        NodeType<Expression> expression;
+        Expression expression;
     };
 
     struct ImportTypeNode;
 
-    struct ImportTypeAssertionContainer: BaseNodeStructure, BrandKind<SyntaxKind::ImportTypeAssertionContainer> {
-        NodeType<ImportTypeNode> parent;
-        NodeType<AssertClause> assertClause;
+    struct ImportTypeAssertionContainer: BrandKind<SyntaxKind::ImportTypeAssertionContainer, Node> {
+        ImportTypeNode &parent;
+        AssertClause assertClause;
         bool multiLine = false;
     };
 
-    struct ImportTypeNode: NodeWithTypeArguments, BrandKind<SyntaxKind::ImportType> {
+    struct ImportTypeNode: BrandKind<SyntaxKind::ImportType, NodeWithTypeArguments> {
         bool isTypeOf;
-        NodeType<TypeNode> argument;
-        optional<NodeType<ImportTypeAssertionContainer>> assertions;
-        optional<NodeType<EntityName>> qualifier;
+        TypeNode argument;
+        optional<ImportTypeAssertionContainer> assertions;
+        optional<NodeUnion<EntityName>> qualifier;
     };
 
-    struct ThisTypeNode: TypeNode, BrandKind<SyntaxKind::ThisType> {};
+    struct ThisTypeNode: BrandKind<SyntaxKind::ThisType, TypeNode> {};
 
-    struct CallSignatureDeclaration: SignatureDeclarationBase, TypeElement, BrandKind<SyntaxKind::CallSignature> {};
-    struct ConstructSignatureDeclaration: SignatureDeclarationBase, TypeElement, BrandKind<SyntaxKind::ConstructSignature> {};
+    struct CallSignatureDeclaration: BrandKind<SyntaxKind::CallSignature, SignatureDeclarationBase, TypeElement> {};
+    struct ConstructSignatureDeclaration: BrandKind<SyntaxKind::ConstructSignature, SignatureDeclarationBase, TypeElement> {};
 
-    struct TypeLiteralNode: TypeNode, Declaration, BrandKind<SyntaxKind::TypeLiteral> {
-        NodeArray<TypeElement> members;
+#define ObjectTypeDeclaration ClassLikeDeclaration, InterfaceDeclaration, TypeLiteralNode
+
+    struct MethodSignature: BrandKind<SyntaxKind::MethodSignature, SignatureDeclarationBase, TypeElement> {
+        NodeUnion<ObjectTypeDeclaration> &parent;
+        PropertyName name;
     };
 
-    struct ObjectTypeDeclaration: NodeType<ClassLikeDeclaration, InterfaceDeclaration, TypeLiteralNode> {};
-
-    struct MethodSignature: SignatureDeclarationBase, TypeElement, BrandKind<SyntaxKind::MethodSignature> {
-        NodeType<ObjectTypeDeclaration> parent;
-        NodeType<PropertyName> name;
-    };
-
-    struct IndexSignatureDeclaration: SignatureDeclarationBase, ClassElement, TypeElement, BrandKind<SyntaxKind::IndexSignature> {
-        optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
-        optional<NodeArray<Modifier>> modifiers;            // Array of modifiers
-        NodeType<ObjectTypeDeclaration> parent;
-        NodeType<TypeNode> type;
+    struct IndexSignatureDeclaration: BrandKind<SyntaxKind::IndexSignature, SignatureDeclarationBase, ClassElement, TypeElement> {
+        NodeUnion<ObjectTypeDeclaration> &parent;
+//        optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
+//        optional<NodeArray<Modifier>> modifiers;            // Array of modifiers
+        TypeNode type;
     };
 
     struct FunctionOrConstructorTypeNodeBase: TypeNode, SignatureDeclarationBase {
-        NodeType<TypeNode> type;
+        TypeNode type;
     };
 
-    struct FunctionTypeNode: FunctionOrConstructorTypeNodeBase, BrandKind<SyntaxKind::FunctionType> {};
+    struct FunctionTypeNode: BrandKind<SyntaxKind::FunctionType, FunctionOrConstructorTypeNodeBase> {};
 
-    struct ConstructorTypeNode: FunctionOrConstructorTypeNodeBase, BrandKind<SyntaxKind::ConstructorType> {};
+    struct ConstructorTypeNode: BrandKind<SyntaxKind::ConstructorType, FunctionOrConstructorTypeNodeBase> {};
 
     struct FunctionDeclaration: FunctionLikeDeclarationBase, DeclarationStatement, BrandKind<types::FunctionDeclaration> {
-        optional<NodeType<Identifier>> name;
-        optional<NodeType<FunctionBody>> body;
+        optional<Identifier> name;
+        optional<FunctionBody> body;
+    };
+
+    struct ObjectLiteralExpression;
+
+    // Note that a MethodDeclaration is considered both a ClassElement and an ObjectLiteralElement.
+    // Both the grammars for ClassDeclaration and ObjectLiteralExpression allow for MethodDeclarations
+    // as child elements, and so a MethodDeclaration satisfies both interfaces.  This avoids the
+    // alternative where we would need separate kinds/types for ClassMethodDeclaration and
+    // ObjectLiteralMethodDeclaration, which would look identical.
+    //
+    // Because of this, it may be necessary to determine what sort of MethodDeclaration you have
+    // at later stages of the compiler pipeline.  In that case, you can either check the parent kind
+    // of the method, or use helpers like isObjectLiteralMethodDeclaration
+    struct MethodDeclaration: BrandKind<SyntaxKind::MethodDeclaration, FunctionLikeDeclarationBase, ClassElement, ObjectLiteralElement> {
+        NodeUnion<ClassLikeDeclaration, ObjectLiteralExpression> parent;
+        PropertyName name;
+        NodeUnion<FunctionBody> body;
+        /* @internal*/ optional<ExclamationToken> exclamationToken; // Present for use with reporting a grammar error
     };
 
     struct ConstructorDeclaration: FunctionLikeDeclarationBase, ClassElement, BrandKind<types::Constructor> {
-        NodeType<ClassLikeDeclaration> parent;
-        optional<NodeType<FunctionBody>> body;
+        NodeUnion<ClassLikeDeclaration> &parent;
+        optional<FunctionBody> body;
 
         /* @internal */ optional<NodeArray<TypeParameterDeclaration>> typeParameters; // Present for use with reporting a grammar error
-        /* @internal */ optional<NodeType<TypeNode>> type; // Present for use with reporting a grammar error
+        /* @internal */ optional<TypeNode> type; // Present for use with reporting a grammar error
     };
 
-    struct BinaryExpression: Expression, Declaration, BrandKind<types::BinaryExpression> {
-        NodeType<Expression> left;
-        NodeType<Unknown> operatorToken; //BinaryOperatorToken uses a lot of different NodeType<T>
-        NodeType<Expression> right;
+    // See the comment on MethodDeclaration for the intuition behind GetAccessorDeclaration being a
+    // ClassElement and an ObjectLiteralElement.
+    struct GetAccessorDeclaration: BrandKind<SyntaxKind::GetAccessor, FunctionLikeDeclarationBase, ClassElement, TypeElement, ObjectLiteralElement> {
+        NodeUnion<ClassLikeDeclaration, ObjectLiteralExpression, TypeLiteralNode, InterfaceDeclaration> parent;
+        PropertyName name;
+        optional<FunctionBody> body;
+        /* @internal */ optional<NodeArray<TypeParameterDeclaration>> typeParameters; // Present for use with reporting a grammar error
+    };
+
+    // See the comment on MethodDeclaration for the intuition behind SetAccessorDeclaration being a
+    // ClassElement and an ObjectLiteralElement.
+    struct SetAccessorDeclaration: BrandKind<SyntaxKind::SetAccessor, FunctionLikeDeclarationBase, ClassElement, TypeElement, ObjectLiteralElement> {
+        NodeUnion<ClassLikeDeclaration, ObjectLiteralExpression, TypeLiteralNode, InterfaceDeclaration> parent;
+        PropertyName name;
+        optional<NodeUnion<FunctionBody>> body;
+        /* @internal */ optional<NodeArray<TypeParameterDeclaration>> typeParameters; // Present for use with reporting a grammar error
+        /* @internal */ optional<TypeNode> type; // Present for use with reporting a grammar error
+    };
+
+#define AccessorDeclaration GetAccessorDeclaration, SetAccessorDeclaration
+
+    using ObjectLiteralElementLike = NodeUnion<PropertyAssignment, ShorthandPropertyAssignment, SpreadAssignment, MethodDeclaration, AccessorDeclaration>;
+
+    template<class T>
+    struct ObjectLiteralExpressionBase: PrimaryExpression {
+        NodeArray<T> properties;
+    };
+
+    struct ObjectLiteralExpression: BrandKind<SyntaxKind::ObjectLiteralExpression, ObjectLiteralExpressionBase<ObjectLiteralElementLike>> {
+        /* @internal */ bool multiLine;
+    };
+
+    struct BinaryExpression: Expression, BrandKind<types::BinaryExpression> {
+        Expression left;
+        Node operatorToken; //BinaryOperatorToken uses a lot of different NodeType<T>
+        Expression right;
     };
 
 //    using AssignmentOperatorToken = Token<AssignmentOperator>;
 
     struct AssignmentExpression: BinaryExpression {
-        NodeType<LeftHandSideExpression> left;
+        LeftHandSideExpression left;
     };
 
     struct ObjectDestructuringAssignment: BinaryExpression {
-        NodeType<ObjectLiteralExpression> left;
-        NodeType<EqualsToken> operatorToken;
-    };
-
-    struct ArrayLiteralExpression;
-
-    struct ArrayDestructuringAssignment: BinaryExpression {
-        NodeType<ArrayLiteralExpression> left;
-        NodeType<EqualsToken> operatorToken;
+        ObjectLiteralExpression left;
+        EqualsToken operatorToken;
     };
 
 //    export type DestructuringAssignment =
@@ -2254,361 +2436,329 @@ namespace ts {
 //    export type BindingOrAssignmentPattern = ObjectBindingOrAssignmentPattern | ArrayBindingOrAssignmentPattern;
 
     struct ConditionalExpression: Expression, BrandKind<types::ConditionalExpression> {
-        NodeType<Expression> condition;
-        NodeType<QuestionToken> questionToken;
-        NodeType<Expression> whenTrue;
-        NodeType<ColonToken> colonToken;
-        NodeType<Expression> whenFalse;
+        Expression condition;
+        QuestionToken questionToken;
+        Expression whenTrue;
+        ColonToken colonToken;
+        Expression whenFalse;
     };
 
     struct FunctionExpression: PrimaryExpression, FunctionLikeDeclarationBase, BrandKind<types::FunctionExpression> {
-        optional<NodeType<Identifier>> name;
-        optional<NodeType<FunctionBody>> body; // Required, whereas the member inherited from FunctionDeclaration is optional
+        optional<Identifier> name;
+        optional<FunctionBody> body; // Required, whereas the member inherited from FunctionDeclaration is optional
     };
 
 //    struct SignatureDeclaration: NodeType<CallSignatureDeclaration, ConstructSignatureDeclaration, MethodSignature, IndexSignatureDeclaration, FunctionTypeNode, ConstructorTypeNode, JSDocFunctionType, FunctionDeclaration, MethodDeclaration, ConstructorDeclaration, AccessorDeclaration, FunctionExpression, ArrowFunction> {};
 
-    struct TypePredicateNode: TypeNode, BrandKind<SyntaxKind::TypePredicate> {
-        NodeType<CallSignatureDeclaration, ConstructSignatureDeclaration, MethodSignature, IndexSignatureDeclaration, FunctionTypeNode, ConstructorTypeNode, FunctionDeclaration, MethodDeclaration, ConstructorDeclaration, AccessorDeclaration, FunctionExpression, ArrowFunction> parent;
-        optional<NodeType<AssertsKeyword>> assertsModifier;
-        NodeType<Identifier, ThisTypeNode> parameterName;
-        optional<NodeType<TypeNode>> type;
+    struct TypePredicateNode: BrandKind<SyntaxKind::TypePredicate, TypeNode> {
+        NodeUnion<CallSignatureDeclaration, ConstructSignatureDeclaration, MethodSignature, IndexSignatureDeclaration, FunctionTypeNode, ConstructorTypeNode, FunctionDeclaration, MethodDeclaration, ConstructorDeclaration, AccessorDeclaration, FunctionExpression, ArrowFunction> parent;
+        optional<AssertsKeyword> assertsModifier;
+        NodeUnion<Identifier, ThisTypeNode> parameterName;
+        optional<TypeNode> type;
     };
 
-    struct ArrayLiteralExpression: PrimaryExpression, BrandKind<SyntaxKind::ArrayLiteralExpression> {
+    struct ArrayLiteralExpression: BrandKind<SyntaxKind::ArrayLiteralExpression, PrimaryExpression> {
         NodeArray<Expression> elements;
         /* @internal */
         bool multiLine; //optional
     };
 
-    struct CallExpression: LeftHandSideExpression, Declaration, BrandKind<SyntaxKind::CallExpression> {
-        NodeType<LeftHandSideExpression> expression;
-        optional<NodeType<QuestionDotToken>> questionDotToken;
+    struct ArrayDestructuringAssignment: BinaryExpression {
+        ArrayLiteralExpression left;
+        EqualsToken operatorToken;
+    };
+
+    struct CallExpression: BrandKind<SyntaxKind::CallExpression, LeftHandSideExpression> {
+        LeftHandSideExpression expression;
+        optional<QuestionDotToken> questionDotToken;
         optional<NodeArray<TypeNode>> typeArguments;
         NodeArray<Expression> arguments;
     };
 
     struct CallChain: CallExpression {};
 
-    /* @internal */
+/* @internal */
     struct CallChainRoot: CallChain {};
 
-    struct NewExpression: PrimaryExpression, Declaration, BrandKind<SyntaxKind::NewExpression> {
-        NodeType<LeftHandSideExpression> expression;
+    struct NewExpression: BrandKind<SyntaxKind::NewExpression, PrimaryExpression> {
+        LeftHandSideExpression expression;
         optional<NodeArray<TypeNode>> typeArguments;
         optional<NodeArray<Expression>> arguments;
     };
 
-    struct TypeAssertion: UnaryExpression, BrandKind<SyntaxKind::TypeAssertionExpression> {
-        NodeType<TypeNode> type;
-        NodeType<UnaryExpression> expression;
+    struct TypeAssertion: BrandKind<SyntaxKind::TypeAssertionExpression, UnaryExpression> {
+        TypeNode type;
+        UnaryExpression expression;
     };
 
-    struct TemplateSpan;
-    struct TemplateHead;
+    struct TemplateExpression;
     struct TemplateLiteralTypeNode;
-    struct TemplateMiddle;
-    struct TemplateTail;
+    struct TemplateSpan;
+    struct TemplateLiteralTypeSpan;
 
-    struct TemplateExpression: PrimaryExpression, BrandKind<SyntaxKind::TemplateExpression> {
-        NodeType<TemplateHead> head;
-        NodeArray<TemplateSpan> templateSpans;
+    struct TemplateHead: BrandKind<SyntaxKind::TemplateHead, TemplateLiteralLikeNode, Node> {
+        NodeUnion<TemplateExpression, TemplateLiteralTypeNode> parent;
+        /* @internal */
+        optional<types::TokenFlags> templateFlags;
     };
 
-    struct TemplateLiteralTypeSpan: TypeNode, BrandKind<SyntaxKind::TemplateLiteralTypeSpan> {
-        NodeType<TemplateLiteralTypeNode> parent;
-        NodeType<TypeNode> type;
-        NodeType<TemplateMiddle, TemplateTail> literal;
+    struct TemplateMiddle: BrandKind<SyntaxKind::TemplateMiddle, TemplateLiteralLikeNode, Node> {
+        NodeUnion<TemplateSpan, TemplateLiteralTypeSpan> &parent;
+        /* @internal */
+        optional<types::TokenFlags> templateFlags;
     };
 
-    struct TemplateLiteralTypeNode: TypeNode, BrandKind<SyntaxKind::TemplateLiteralType> {
-        NodeType<TemplateHead> head;
+    struct TemplateTail: BrandKind<SyntaxKind::TemplateTail, TemplateLiteralLikeNode, Node> {
+        NodeUnion<TemplateSpan, TemplateLiteralTypeSpan> parent;
+        /* @internal */
+        optional<types::TokenFlags> templateFlags;
+    };
+
+    struct TemplateLiteralTypeSpan: BrandKind<SyntaxKind::TemplateLiteralTypeSpan, TypeNode> {
+        TemplateLiteralTypeNode &parent;
+        TypeNode type;
+        NodeUnion<TemplateMiddle, TemplateTail> literal;
+    };
+
+    struct TemplateLiteralTypeNode: BrandKind<SyntaxKind::TemplateLiteralType, TypeNode> {
+        TemplateHead head;
         NodeArray<TemplateLiteralTypeSpan> templateSpans;
     };
 
-    struct TemplateHead: TemplateLiteralLikeNode, BrandKind<SyntaxKind::TemplateHead> {
-        NodeType<TemplateExpression, TemplateLiteralTypeNode> parent;
-        /* @internal */
-        optional<types::TokenFlags> templateFlags;
+    struct TemplateExpression: BrandKind<SyntaxKind::TemplateExpression, PrimaryExpression> {
+        TemplateHead head;
+        NodeArray<TemplateSpan> templateSpans;
     };
 
-    struct TemplateMiddle: TemplateLiteralLikeNode, BrandKind<SyntaxKind::TemplateMiddle> {
-        NodeType<TemplateSpan, TemplateLiteralTypeSpan> parent;
-        /* @internal */
-        optional<types::TokenFlags> templateFlags;
-    };
+#define TemplateLiteral TemplateExpression, NoSubstitutionTemplateLiteral
 
-    struct TemplateTail: TemplateLiteralLikeNode, BrandKind<SyntaxKind::TemplateTail> {
-        NodeType<TemplateSpan, TemplateLiteralTypeSpan> parent;
-        /* @internal */
-        optional<types::TokenFlags> templateFlags;
-    };
-
-    struct TemplateLiteral: NodeType<TemplateExpression, NoSubstitutionTemplateLiteral> {};
-
-    struct TaggedTemplateExpression: MemberExpression, BrandKind<SyntaxKind::TaggedTemplateExpression> {
-        NodeType<LeftHandSideExpression> tag;
+    struct TaggedTemplateExpression: BrandKind<SyntaxKind::TaggedTemplateExpression, MemberExpression> {
+        LeftHandSideExpression tag;
         optional<NodeArray<TypeNode>> typeArguments;
-        TemplateLiteral templateLiteral;
-        /*@internal*/ optional<NodeType<QuestionDotToken>> questionDotToken; // NOTE: Invalid syntax, only used to report a grammar error.
+        NodeUnion<TemplateLiteral> templateLiteral;
+        /*@internal*/ optional<QuestionDotToken> questionDotToken; // NOTE: Invalid syntax, only used to report a grammar error.
     };
 
-    struct TemplateSpan: BaseNodeArray, BrandKind<SyntaxKind::TemplateSpan> {
-        NodeType<TemplateExpression> parent;
-        NodeType<Expression> expression;
-        NodeType<TemplateMiddle, TemplateTail> literal;
+    struct TemplateSpan: BrandKind<SyntaxKind::TemplateSpan, Node> {
+        TemplateExpression parent;
+        Expression expression;
+        NodeUnion<TemplateMiddle, TemplateTail> literal;
     };
 
-    struct AsExpression: Expression, BrandKind<SyntaxKind::AsExpression> {
-        NodeType<Expression> expression;
-        NodeType<TypeNode> type;
+    struct AsExpression: BrandKind<SyntaxKind::AsExpression, Expression> {
+        Expression expression;
+        TypeNode type;
     };
 
-    struct NonNullExpression: LeftHandSideExpression, BrandKind<SyntaxKind::NonNullExpression> {
-        NodeType<Expression> expression;
+    struct NonNullExpression: BrandKind<SyntaxKind::NonNullExpression, LeftHandSideExpression> {
+        Expression expression;
     };
 
-    struct ParenthesizedExpression: PrimaryExpression, BrandKind<SyntaxKind::ParenthesizedExpression> {
-        NodeType<Expression> expression;
+    struct ParenthesizedExpression: BrandKind<SyntaxKind::ParenthesizedExpression, PrimaryExpression> {
+        Expression expression;
     };
 
-    struct SpreadElement: Expression, BrandKind<SyntaxKind::SpreadElement> {
-        NodeType<ArrayLiteralExpression, CallExpression, NewExpression> parent;
-        NodeType<Expression> expression;
+    struct SpreadElement: BrandKind<SyntaxKind::SpreadElement, Expression> {
+        NodeUnion<ArrayLiteralExpression, CallExpression, NewExpression> parent;
+        Expression expression;
     };
 
-    struct SpreadAssignment: BaseNodeStructure, BrandKind<SyntaxKind::SpreadAssignment> {
-        NodeType<NodeType<Expression>> expression;
+    struct TypeQueryNode: BrandKind<SyntaxKind::TypeQuery, NodeWithTypeArguments> {
+        NodeUnion<EntityName> exprName;
     };
 
-    struct TypeQueryNode: NodeWithTypeArguments, BrandKind<SyntaxKind::TypeQuery> {
-        EntityName exprName;
+    struct ArrayTypeNode: BrandKind<SyntaxKind::ArrayType, TypeNode> {
+        TypeNode elementType;
     };
 
-    struct ArrayTypeNode: TypeNode, BrandKind<SyntaxKind::ArrayType> {
-        NodeType<TypeNode> elementType;
+    struct NamedTupleMember: BrandKind<SyntaxKind::NamedTupleMember, TypeNode> {
+        optional<DotDotDotToken> dotDotDotToken;
+        Identifier name;
+        optional<QuestionToken> questionToken;
+        TypeNode type;
     };
 
-    struct NamedTupleMember: TypeNode, Declaration, BrandKind<SyntaxKind::NamedTupleMember> {
-        optional<NodeType<DotDotDotToken>> dotDotDotToken;
-        NodeType<Identifier> name;
-        optional<NodeType<QuestionToken>> questionToken;
-        NodeType<TypeNode> type;
+    struct OptionalTypeNode: BrandKind<SyntaxKind::OptionalType, TypeNode> {
+        TypeNode type;
     };
 
-    struct OptionalTypeNode: TypeNode, BrandKind<SyntaxKind::OptionalType> {
-        NodeType <TypeNode> type;
+    struct RestTypeNode: BrandKind<SyntaxKind::RestType, TypeNode> {
+        TypeNode type;
     };
 
-    struct RestTypeNode: TypeNode, BrandKind<SyntaxKind::RestType> {
-        NodeType <TypeNode> type;
-    };
-
-    struct UnionTypeNode: TypeNode, BrandKind<SyntaxKind::UnionType> {
+    struct UnionTypeNode: BrandKind<SyntaxKind::UnionType, TypeNode> {
         NodeArray<TypeNode> types;
     };
 
-    struct IntersectionTypeNode: TypeNode, BrandKind<SyntaxKind::IntersectionType> {
+    struct IntersectionTypeNode: BrandKind<SyntaxKind::IntersectionType, TypeNode> {
         NodeArray<TypeNode> types;
     };
 
-    struct UnionOrIntersectionTypeNode: NodeType<UnionTypeNode, IntersectionTypeNode> {};
+#define UnionOrIntersectionTypeNode UnionTypeNode, IntersectionTypeNode
 
-    struct ConditionalTypeNode: TypeNode, BrandKind<SyntaxKind::ConditionalType> {
-        NodeType<TypeNode> checkType;
-        NodeType<TypeNode> extendsType;
-        NodeType<TypeNode> trueType;
-        NodeType<TypeNode> falseType;
+    struct ConditionalTypeNode: BrandKind<SyntaxKind::ConditionalType, TypeNode> {
+        TypeNode checkType;
+        TypeNode extendsType;
+        TypeNode trueType;
+        TypeNode falseType;
     };
 
-    struct InferTypeNode: TypeNode, BrandKind<SyntaxKind::InferType> {
-        NodeType<TypeParameterDeclaration> typeParameter;
+    struct InferTypeNode: BrandKind<SyntaxKind::InferType, TypeNode> {
+        TypeParameterDeclaration typeParameter;
     };
 
-    struct ParenthesizedTypeNode: TypeNode, BrandKind<SyntaxKind::ParenthesizedType> {
-        NodeType<TypeNode> type;
+    struct ParenthesizedTypeNode: BrandKind<SyntaxKind::ParenthesizedType, TypeNode> {
+        TypeNode type;
     };
 
-    struct TypeOperatorNode: TypeNode, BrandKind<SyntaxKind::TypeOperator> {
+    struct TypeOperatorNode: BrandKind<SyntaxKind::TypeOperator, TypeNode> {
         SyntaxKind operatorKind;
-        NodeType<TypeNode> type;
+        TypeNode type;
     };
 
-    /* @internal */
+/* @internal */
     struct UniqueTypeOperatorNode: TypeOperatorNode {
         SyntaxKind operatorKind = SyntaxKind::UniqueKeyword;
     };
 
-    struct IndexedAccessTypeNode: TypeNode, BrandKind<SyntaxKind::IndexedAccessType> {
-        NodeType<TypeNode> objectType;
-        NodeType<TypeNode> indexType;
+    struct IndexedAccessTypeNode: BrandKind<SyntaxKind::IndexedAccessType, TypeNode> {
+        TypeNode objectType;
+        TypeNode indexType;
     };
 
-    struct MappedTypeNode: TypeNode, Declaration, BrandKind<SyntaxKind::MappedType> {
-        optional<NodeType<ReadonlyKeyword, PlusToken, MinusToken>> readonlyToken;
-        NodeType<TypeParameterDeclaration> typeParameter;
-        optional<NodeType<TypeNode>> nameType;
-        optional<NodeType<QuestionToken, PlusToken, MinusToken>> questionToken;
-        optional<NodeType<TypeNode>> type;
+    struct MappedTypeNode: BrandKind<SyntaxKind::MappedType, TypeNode> {
+        optional<NodeUnion<ReadonlyKeyword, PlusToken, MinusToken>> readonlyToken;
+        TypeParameterDeclaration typeParameter;
+        optional<TypeNode> nameType;
+        optional<NodeUnion<QuestionToken, PlusToken, MinusToken>> questionToken;
+        optional<TypeNode> type;
         /** Used only to produce grammar errors */
         optional<NodeArray<TypeElement>> members;
     };
 
-    struct JsxOpeningElement;
-    struct JsxClosingElement;
-    struct JsxText;
-    struct JsxExpression;
+#define JsxChild JsxText, JsxExpression, JsxElement, JsxSelfClosingElement, JsxFragment
+#define JsxAttributeValue StringLiteral, JsxExpression, JsxElement, JsxSelfClosingElement, JsxFragment
+#define JsxAttributeLike JsxAttribute, JsxSpreadAttribute
+#define JsxTagNameExpression Identifier, ThisExpression, JsxTagNamePropertyAccess
+#define JsxOpeningLikeElement JsxSelfClosingElement, JsxOpeningElement
+
     struct JsxElement;
     struct JsxSelfClosingElement;
-    struct JsxFragment;
+    struct JsxOpeningElement;
+    struct JsxAttributes;
 
-    #define JsxChild JsxText, JsxExpression, JsxElement, JsxSelfClosingElement, JsxFragment
-    #define JsxAttributeValue StringLiteral, JsxExpression, JsxElement, JsxSelfClosingElement, JsxFragment
-    #define JsxAttributeLike JsxAttribute, JsxSpreadAttribute
-
-    /// A JSX expression of the form <TagName attrs>...</TagName>
-    struct JsxElement: PrimaryExpression, BrandKind<SyntaxKind::JsxElement> {
-        NodeType<JsxOpeningElement> openingElement;
-        NodeArray<JsxChild> children;
-        NodeType<JsxClosingElement> closingElement;
+    struct JsxTagNamePropertyAccess: PropertyAccessExpression {
+        NodeUnion<JsxTagNameExpression> expression;
     };
 
-//    /// Either the opening tag in a <Tag>...</Tag> pair or the lone <Tag /> in a self-closing form
-//    export type JsxOpeningLikeElement =
-//        | JsxSelfClosingElement
-//        | JsxOpeningElement
-//        ;
-//
-//    export type JsxAttributeLike =
-//        | JsxAttribute
-//        | JsxSpreadAttribute
-//        ;
-//
-//    export type JsxTagNameExpression =
-//        | Identifier
-//        | ThisExpression
-//        | JsxTagNamePropertyAccess
-//        ;
+    struct JsxAttribute;
+    struct JsxSpreadAttribute;
+    struct JsxFragment;
 
-    struct JsxTagNameExpression;
-    struct JsxOpeningLikeElement;
+    struct JsxExpression: BrandKind<SyntaxKind::JsxExpression, Expression> {
+        NodeUnion<JsxElement, JsxFragment, JsxAttributeLike> parent;
+        optional<DotDotDotToken> dotDotDotToken;
+        optional<Expression> expression;
+    };
+
+    struct JsxAttribute: BrandKind<SyntaxKind::JsxAttribute, ObjectLiteralElement> {
+        JsxAttributes &parent;
+        Identifier name;
+        /// JSX attribute initializers are optional; <X y /> is sugar for <X y={true} />
+        optional<NodeUnion<JsxAttributeValue>> initializer;
+    };
+
+    struct JsxAttributes: BrandKind<SyntaxKind::JsxAttributes, PrimaryExpression> {
+        NodeUnion<JsxOpeningLikeElement> &parent;
+        NodeArray<JsxAttributeLike> properties;
+    };
+
+    // The opening element of a <Tag>...</Tag> JsxElement
+    struct JsxOpeningElement: BrandKind<SyntaxKind::JsxOpeningElement, Expression> {
+        JsxElement &parent;
+        NodeUnion<JsxTagNameExpression> tagName;
+        optional<NodeArray<TypeNode>> typeArguments;
+        JsxAttributes attributes;
+    };
+
+    struct JsxText: BrandKind<SyntaxKind::JsxText, LiteralLikeNode> {
+        NodeUnion<JsxElement, JsxFragment> parent;
+        bool containsOnlyTriviaWhiteSpaces;
+    };
+
+    struct JsxClosingElement: BrandKind<SyntaxKind::JsxClosingElement, Node> {
+        JsxElement &parent;
+        NodeUnion<JsxTagNameExpression> tagName;
+    };
+
+    /// A JSX expression of the form <TagName attrs>...</TagName>
+    struct JsxElement: BrandKind<SyntaxKind::JsxElement, PrimaryExpression> {
+        JsxOpeningElement openingElement;
+        NodeArray<JsxChild> children;
+        JsxClosingElement closingElement;
+    };
+
     struct JsxAttribute;
     struct JsxFragment;
     struct JsxSpreadAttribute;
     struct JsxClosingFragment;
 
-    struct JsxTagNamePropertyAccess: PropertyAccessExpression {
-        NodeType<JsxTagNameExpression> expression;
-    };
-
-    struct JsxAttributes: PrimaryExpression, Declaration, BrandKind<SyntaxKind::JsxAttributes> {
-        NodeType<JsxOpeningLikeElement> parent;
-        NodeArray<JsxAttribute, JsxSpreadAttribute> properties;
-    };
-
-    /// The opening element of a <Tag>...</Tag> JsxElement
-    struct JsxOpeningElement: Expression, BrandKind<SyntaxKind::JsxOpeningElement> {
-        NodeType<JsxElement> parent;
-        NodeType<JsxTagNameExpression> tagName;
+    // A JSX expression of the form <TagName attrs />
+    struct JsxSelfClosingElement: BrandKind<SyntaxKind::JsxSelfClosingElement, PrimaryExpression> {
+        NodeUnion<JsxTagNameExpression> tagName;
         optional<NodeArray<TypeNode>> typeArguments;
-        NodeType<JsxAttributes> attributes;
+        JsxAttributes attributes;
     };
 
-    /// A JSX expression of the form <TagName attrs />
-    struct JsxSelfClosingElement: PrimaryExpression, BrandKind<SyntaxKind::JsxSelfClosingElement> {
-        NodeType<JsxTagNameExpression> tagName;
-        optional<NodeArray<TypeNode>> typeArguments;
-        NodeType<JsxAttributes> attributes;
-    };
-
+    struct JsxFragment;
     /// The opening element of a <>...</> JsxFragment
-    struct JsxOpeningFragment: Expression, BrandKind<SyntaxKind::JsxOpeningFragment> {
-        NodeType<JsxFragment> parent;
-    };
-
-    /// A JSX expression of the form <>...</>
-    struct JsxFragment: PrimaryExpression, BrandKind<SyntaxKind::JsxFragment> {
-        NodeType<JsxOpeningFragment> openingFragment;
-        NodeArray<JsxChild> children;
-        NodeType<JsxClosingFragment> closingFragment;
+    struct JsxOpeningFragment: BrandKind<SyntaxKind::JsxOpeningFragment, Expression> {
+        JsxFragment &parent;
     };
 
     /// The closing element of a <>...</> JsxFragment
-    struct JsxClosingFragment: Expression, BrandKind<SyntaxKind::JsxClosingFragment> {
-        NodeType<JsxFragment> parent;
+    struct JsxClosingFragment: BrandKind<SyntaxKind::JsxClosingFragment, Expression> {
+        JsxFragment &parent;
     };
 
-    struct JsxAttribute: ObjectLiteralElement, BrandKind<SyntaxKind::JsxAttribute> {
-        NodeType<JsxAttributes> parent;
-        NodeType<Identifier> name;
-        /// JSX attribute initializers are optional; <X y /> is sugar for <X y={true} />
-        optional<NodeType<JsxAttributeValue>> initializer;
+    /// A JSX expression of the form <>...</>
+    struct JsxFragment: BrandKind<SyntaxKind::JsxFragment, PrimaryExpression> {
+        JsxOpeningFragment openingFragment;
+        NodeArray<JsxChild> children;
+        JsxClosingFragment closingFragment;
     };
 
-//    export type JsxAttributeValue =
-//        | StringLiteral
-//        | JsxExpression
-//        | JsxElement
-//        | JsxSelfClosingElement
-//        | JsxFragment;
-
-    struct JsxSpreadAttribute: ObjectLiteralElement, BrandKind<SyntaxKind::JsxSpreadAttribute> {
-        NodeType<JsxAttributes> parent;
-        NodeType<Expression> expression;
+    struct JsxSpreadAttribute: BrandKind<SyntaxKind::JsxSpreadAttribute, ObjectLiteralElement> {
+        JsxAttributes parent;
+        Expression expression;
     };
 
-    struct JsxClosingElement: Node, BrandKind<SyntaxKind::JsxClosingElement> {
-        NodeType<JsxElement> parent;
-        NodeType<JsxTagNameExpression> tagName;
+    struct LiteralTypeNode: BrandKind<SyntaxKind::LiteralType, TypeNode> {
+        NodeUnion<NullLiteral, BooleanLiteral, LiteralExpression, PrefixUnaryExpression> literal;
     };
 
-    struct JsxExpression: Expression, BrandKind<SyntaxKind::JsxExpression> {
-        NodeType<JsxElement, JsxFragment, JsxAttributeLike> parent;
-        optional<NodeType<DotDotDotToken>> dotDotDotToken;
-        optional<NodeType<Expression>> expression;
-    };
-
-    struct JsxText: LiteralLikeNode, BrandKind<SyntaxKind::JsxText> {
-        NodeType<JsxElement, JsxFragment> parent;
-        bool containsOnlyTriviaWhiteSpaces;
-    };
-
-//    export type JsxChild =
-//        | JsxText
-//        | JsxExpression
-//        | JsxElement
-//        | JsxSelfClosingElement
-//        | JsxFragment
-//        ;
-//
-//
-
-    struct LiteralTypeNode: TypeNode, BrandKind<SyntaxKind::LiteralType> {
-        NodeType<NullLiteral, BooleanLiteral, LiteralExpression, PrefixUnaryExpression> literal;
-    };
-
-    struct TupleTypeNode: TypeNode, BrandKind<SyntaxKind::TupleType> {
+    struct TupleTypeNode: BrandKind<SyntaxKind::TupleType, TypeNode> {
         NodeArray<TypeNode, NamedTupleMember> elements;
     };
 
-    using AccessibilityModifier = NodeType<PublicKeyword, PrivateKeyword, ProtectedKeyword>;
-    using ParameterPropertyModifier = NodeType<AccessibilityModifier, ReadonlyKeyword>;
-    using ClassMemberModifier = NodeType<AccessibilityModifier, ReadonlyKeyword, StaticKeyword>;
+//    using AccessibilityModifier = NodeType<PublicKeyword, PrivateKeyword, ProtectedKeyword>;
+//    using ParameterPropertyModifier = NodeType<AccessibilityModifier, ReadonlyKeyword>;
+//    using ClassMemberModifier = NodeType<AccessibilityModifier, ReadonlyKeyword, StaticKeyword>;
 
-    struct Decorator: BaseNodeStructureWithoutDecorators, BrandKind<SyntaxKind::Decorator> {
-        NodeType<NamedDeclaration> parent;
-        NodeType<Expression> expression;
+    struct Decorator: BrandKind<SyntaxKind::Decorator, Node> {
+        NamedDeclaration parent;
+        Expression expression;
     };
 
     struct EndOfFileToken: Token<SyntaxKind::EndOfFileToken> {};
 
-    struct SourceFile: BaseNodeStructure, BrandKind<SyntaxKind::SourceFile> {
+    struct SourceFile: BrandKind<SyntaxKind::SourceFile, Node> {
         string fileName;
         NodeArray<Statement> statements;
-        NodeType<EndOfFileToken> endOfFileToken;
+        EndOfFileToken endOfFileToken;
 
         optional<types::ModuleKind> impliedNodeFormat;
 
-        optional<Node> externalModuleIndicator;
+        OptionalNode externalModuleIndicator;
     };
 }

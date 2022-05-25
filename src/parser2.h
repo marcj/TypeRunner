@@ -55,8 +55,8 @@ namespace ts {
 ////    /* @internal */
 ////    export const parseNodeFactory = createNodeFactory(NodeFactoryFlags.NoParenthesizerRules, parseBaseNodeFactory);
 
-    LogicalOrReturnLast<optional<Node>> visitNode(function<optional<Node>(Node &)> cbNode, optional<Node> node) {
-        if (node) LogicalOrReturnLast(cbNode(*node));
+    LogicalOrReturnLast<optional<Node>> visitNode(function<optional<Node>(Node &)> cbNode, OptionalNode node) {
+        if (!empty(node)) LogicalOrReturnLast(cbNode(resolve(node)));
         return LogicalOrReturnLast<optional<Node>>(nullopt);
 //        return LogicalOrReturnLast(node ? cbNode(*node) : nullptr);
     }
@@ -121,7 +121,7 @@ namespace ts {
 
     /** Do not use hasModifier inside the parser; it relies on parent pointers. Use this instead. */
     bool hasModifierOfKind(Node &node, SyntaxKind kind) {
-        return some(node.toBase().modifiers, [kind](auto m) { return m.kind() == kind; });
+        return some(node.modifiers, [kind](auto m) { return m.kind == kind; });
     }
 
     optional<Node> isAnExternalModuleIndicatorNode(Node &node, int) {
@@ -146,21 +146,20 @@ namespace ts {
         return forEachChild(node, walkTreeForImportMeta, nullopt);
     }
 
-    optional<Node> getImportMetaIfNecessary(NodeType<SourceFile> &sourceFile) {
+    optional<Node> getImportMetaIfNecessary(SourceFile &sourceFile) {
         return sourceFile.to<SourceFile>().flags & (int) NodeFlags::PossiblyContainsImportMeta ?
                walkTreeForImportMeta(sourceFile) :
-               nullptr;
+               nullopt;
     }
 
     /*@internal*/
-    optional<Node> isFileProbablyExternalModule(SourceFile &sourceFile) {
+    OptionalNode isFileProbablyExternalModule(SourceFile &sourceFile) {
         // Try to use the first top-level import/export when available, then
         // fall back to looking for an 'import.meta' somewhere in the tree if necessary.
         auto r = forEach(sourceFile.statements, isAnExternalModuleIndicatorNode);
         if (r) return r;
 
-        Node a((SourceFile*)&sourceFile);
-        return getImportMetaIfNecessary(a);
+        return getImportMetaIfNecessary(sourceFile);
     }
 
     /**
@@ -177,10 +176,10 @@ namespace ts {
      * that they appear in the source code. The language service depends on this property to locate nodes by position.
      */
     optional<Node> forEachChild(Node &node, function<optional<Node>(Node &)> cbNode, optional<function<optional<Node>(BaseNodeArray)>> cbNodes) {
-        if (node.kind() <= SyntaxKind::LastToken) {
+        if (node.kind <= SyntaxKind::LastToken) {
             return nullopt;
         }
-        switch (node.kind()) {
+        switch (node.kind) {
             case SyntaxKind::QualifiedName:
                 //short-circuit evaluation is always boolean ... not last value in c++
                 return visitNode(cbNode, node.to<QualifiedName>().left) ||
@@ -237,20 +236,21 @@ namespace ts {
                        visitNode(cbNode, node.to<VariableDeclaration>().exclamationToken) ||
                        visitNode(cbNode, node.to<VariableDeclaration>().type) ||
                        visitNode(cbNode, node.to<VariableDeclaration>().initializer);
-            case SyntaxKind::BindingElement:
+            case SyntaxKind::BindingElement: {
                 return visitNodes(cbNode, cbNodes, node.to<BindingElement>().decorators) ||
                        visitNodes(cbNode, cbNodes, node.to<BindingElement>().modifiers) ||
                        visitNode(cbNode, node.to<BindingElement>().dotDotDotToken) ||
                        visitNode(cbNode, node.to<BindingElement>().propertyName) ||
                        visitNode(cbNode, node.to<BindingElement>().name) ||
                        visitNode(cbNode, node.to<BindingElement>().initializer);
+            }
             case SyntaxKind::FunctionType:
             case SyntaxKind::ConstructorType:
             case SyntaxKind::CallSignature:
             case SyntaxKind::ConstructSignature:
             case SyntaxKind::IndexSignature:
-                return visitNodes(cbNode, cbNodes, node.to<IndexSignatureDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<IndexSignatureDeclaration>().modifiers) ||
+                return visitNodes(cbNode, cbNodes, node.decorators) ||
+                       visitNodes(cbNode, cbNodes, node.modifiers) ||
                        visitNodes(cbNode, cbNodes, node.to<IndexSignatureDeclaration>().typeParameters) ||
                        visitNodes(cbNode, cbNodes, node.to<IndexSignatureDeclaration>().parameters) ||
                        visitNode(cbNode, node.to<IndexSignatureDeclaration>().type);
@@ -262,17 +262,17 @@ namespace ts {
             case SyntaxKind::FunctionExpression:
             case SyntaxKind::FunctionDeclaration:
             case SyntaxKind::ArrowFunction: {
-                return visitNodes(cbNode, cbNodes, node.toBase<FunctionLikeDeclarationBase>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.toBase<FunctionLikeDeclarationBase>().modifiers) ||
-                       visitNode(cbNode, node.toBase<FunctionLikeDeclarationBase>().asteriskToken) ||
-                       visitNode(cbNode, node.toBase<FunctionLikeDeclarationBase>().name) ||
-                       visitNode(cbNode, node.toBase<FunctionLikeDeclarationBase>().questionToken) ||
-                       visitNode(cbNode, node.toBase<FunctionLikeDeclarationBase>().exclamationToken) ||
-                       visitNodes(cbNode, cbNodes, node.toBase<FunctionLikeDeclarationBase>().typeParameters) ||
-                       visitNodes(cbNode, cbNodes, node.toBase<FunctionLikeDeclarationBase>().parameters) ||
-                       visitNode(cbNode, node.toBase<FunctionLikeDeclarationBase>().type) ||
-                       (node.kind() == SyntaxKind::ArrowFunction ? visitNode(cbNode, node.to<ArrowFunction>().equalsGreaterThanToken) : LogicalOrReturnLast<optional<Node>>(nullopt))  ||
-                       visitNode(cbNode, node.toBase<FunctionLikeDeclarationBase>().body);
+                return visitNodes(cbNode, cbNodes, node.decorators) ||
+                       visitNodes(cbNode, cbNodes, node.modifiers) ||
+                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().asteriskToken) ||
+                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().name) ||
+                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().questionToken) ||
+                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().exclamationToken) ||
+                       visitNodes(cbNode, cbNodes, node.cast<FunctionLikeDeclarationBase>().typeParameters) ||
+                       visitNodes(cbNode, cbNodes, node.cast<FunctionLikeDeclarationBase>().parameters) ||
+                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().type) ||
+                       (node.kind == SyntaxKind::ArrowFunction ? visitNode(cbNode, node.to<ArrowFunction>().equalsGreaterThanToken) : LogicalOrReturnLast<optional<Node>>(nullopt))  ||
+                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().body);
             }
             case SyntaxKind::ClassStaticBlockDeclaration:
                 return visitNodes(cbNode, cbNodes, node.to<ClassStaticBlockDeclaration>().decorators) ||
@@ -704,14 +704,18 @@ namespace ts {
 //        sourceFile.externalModuleIndicator = isFileProbablyExternalModule(sourceFile);
 //    }
 
-    void setExternalModuleIndicator(SourceFile sourceFile) {
+    void setExternalModuleIndicator(SourceFile &sourceFile) {
         sourceFile.externalModuleIndicator = isFileProbablyExternalModule(sourceFile);
     }
 
-    NodeType<SourceFile> createSourceFile(string fileName, string sourceText, variant<ScriptTarget, CreateSourceFileOptions> languageVersionOrOptions, bool setParentNodes = false, optional<ScriptKind> scriptKind = {}) {
+    namespace Parser {
+//        parseSourceFile
+    };
+
+    SourceFile createSourceFile(string fileName, string sourceText, variant<ScriptTarget, CreateSourceFileOptions> languageVersionOrOptions, bool setParentNodes = false, optional<ScriptKind> scriptKind = {}) {
 //        tracing?.push(tracing.Phase.Parse, "createSourceFile", { path: fileName }, /*separateBeginAndEnd*/ true);
 //        performance.mark("beforeParse");
-        NodeType<SourceFile> result = createBaseNode<SourceFile>();
+        SourceFile result = createBaseNode<SourceFile>();
         optional<function<void(SourceFile)>> overrideSetExternalModuleIndicator;
         optional<ModuleKind> format;
 
@@ -727,7 +731,7 @@ namespace ts {
         }
 
         if (languageVersion == ScriptTarget::JSON) {
-            result = Parser.parseSourceFile(fileName, sourceText, languageVersion, /*syntaxCursor*/ {}, setParentNodes, ScriptKind::JSON);
+            result = Parser::parseSourceFile(fileName, sourceText, languageVersion, /*syntaxCursor*/ {}, setParentNodes, ScriptKind::JSON);
         } else {
             optional<function<void(SourceFile)>> setIndicator = ! format.has_value() ? overrideSetExternalModuleIndicator : [format, overrideSetExternalModuleIndicator](SourceFile file) {
                 file.impliedNodeFormat = format;
@@ -737,7 +741,7 @@ namespace ts {
                     setExternalModuleIndicator(file);
                 }
             };
-            result = Parser.parseSourceFile(fileName, sourceText, languageVersion, /*syntaxCursor*/ {}, setParentNodes, scriptKind, setIndicator);
+            result = Parser::parseSourceFile(fileName, sourceText, languageVersion, /*syntaxCursor*/ {}, setParentNodes, scriptKind, setIndicator);
         }
 //        perfLogger.logStopParseSourceFile();
 //
@@ -935,9 +939,12 @@ namespace ts {
 //        // Note: any errors at the end of the file that do not precede a regular node, should get
 //        // attached to the EOF token.
 //        let parseErrorBeforeNextFinishedNode = false;
+
+        SourceFile parseSourceFileWorker(ScriptTarget languageVersion, bool setParentNodes, ScriptKind scriptKind, function<void(SourceFile&)> setExternalModuleIndicator);
+
+        SourceFile parseSourceFile(string fileName, string sourceText, ScriptTarget languageVersion, bool setParentNodes = false, optional<ScriptKind> scriptKind = {}, optional<function<void(SourceFile&)>> setExternalModuleIndicatorOverride = {}) {
+            scriptKind = ensureScriptKind(fileName, scriptKind);
 //
-//        export function parseSourceFile(fileName: string, sourceText: string, languageVersion: ScriptTarget, syntaxCursor: IncrementalParser.SyntaxCursor | undefined, setParentNodes = false, scriptKind?: ScriptKind, setExternalModuleIndicatorOverride?: (file: SourceFile) => void): SourceFile {
-//            scriptKind = ensureScriptKind(fileName, scriptKind);
 //            if (scriptKind == ScriptKind.JSON) {
 //                const result = parseJsonText(fileName, sourceText, languageVersion, syntaxCursor, setParentNodes);
 //                convertToObjectWorker(result, result.statements[0]?.expression, result.parseDiagnostics, /*returnValue*/ false, /*knownRootOptions*/ undefined, /*jsonConversionNotifier*/ undefined);
@@ -952,12 +959,12 @@ namespace ts {
 //
 //            initializeState(fileName, sourceText, languageVersion, syntaxCursor, scriptKind);
 //
-//            const result = parseSourceFileWorker(languageVersion, setParentNodes, scriptKind, setExternalModuleIndicatorOverride || setExternalModuleIndicator);
+            auto result = parseSourceFileWorker(languageVersion, setParentNodes, scriptKind, setExternalModuleIndicatorOverride ? *setExternalModuleIndicatorOverride : setExternalModuleIndicator);
 //
 //            clearState();
-//
-//            return result;
-//        }
+
+            return result;
+        }
 //
 //        export function parseIsolatedEntityName(content: string, languageVersion: ScriptTarget): EntityName | undefined {
 //            // Choice of `isDeclarationFile` should be arbitrary
@@ -1124,7 +1131,7 @@ namespace ts {
 //            topLevel = true;
 //        }
 //
-//        function parseSourceFileWorker(languageVersion: ScriptTarget, setParentNodes: boolean, scriptKind: ScriptKind, setExternalModuleIndicator: (file: SourceFile) => void): SourceFile {
+        SourceFile parseSourceFileWorker(ScriptTarget languageVersion, bool setParentNodes, ScriptKind scriptKind, function<void(SourceFile&)> setExternalModuleIndicator) {
 //            const isDeclarationFile = isDeclarationFileName(fileName);
 //            if (isDeclarationFile) {
 //                contextFlags |= NodeFlags::Ambient;
@@ -1163,7 +1170,7 @@ namespace ts {
 //            function reportPragmaDiagnostic(pos: number, end: number, diagnostic: DiagnosticMessage) {
 //                parseDiagnostics.push(createDetachedDiagnostic(fileName, pos, end, diagnostic));
 //            }
-//        }
+        }
 //
 //        function withJSDoc<T extends HasJSDoc>(node: T, hasJSDoc: boolean): T {
 //            return hasJSDoc ? addJSDocComment(node) : node;

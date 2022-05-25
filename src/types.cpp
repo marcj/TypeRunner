@@ -2,12 +2,10 @@
 #include "types.h"
 
 namespace ts {
-    Node::~Node() {
-        if (data) delete data;
+    types::SyntaxKind BaseUnion::kind() {
+        return node->kind;
     }
-
-    types::SyntaxKind Node::kind() {
-        if (data) return data->kind;
-        return types::Unknown;
+    bool BaseUnion::empty() {
+        return node->kind == SyntaxKind::Unknown;
     }
 }
