@@ -306,6 +306,28 @@ TEST(core, logicalOrOverride) {
     EXPECT_EQ((int) ((LogicalOrReturnLast<int>) 3 || a || b), 3);
 }
 
+TEST(core, charToString) {
+    vector<const char *> chars{"a", "b", "c"};
+    auto s = charToStringVector(chars);
+    EXPECT_EQ(s, vector<string>({"a", "b", "c"}));
+}
+
+TEST(core, split) {
+    EXPECT_EQ(split("a", "/"), vector<string>({"a"}));
+    EXPECT_EQ(split("a/b", "/"), vector<string>({"a", "b"}));
+    EXPECT_EQ(split("a/b/c", "/"), vector<string>({"a", "b", "c"}));
+}
+
+TEST(core, replaceLeading) {
+    EXPECT_EQ(replaceLeading("./is/a/path", "./", "/"), "/is/a/path");
+    EXPECT_EQ(replaceLeading("./is/a/./path", "./", "/"), "/is/a/./path");
+    EXPECT_EQ(replaceLeading("/is/a/path", "./", "."), "/is/a/path");
+}
+
+TEST(core, stringReplace) {
+    EXPECT_EQ(replaceAll("this/is/a/path", "/", "_"), "this_is_a_path");
+}
+
 TEST(core, regex) {
     std::regex regex("^///?\\s*@(ts-expect-error|ts-ignore)");
     std::cmatch m;

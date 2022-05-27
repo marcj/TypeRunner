@@ -14,6 +14,7 @@ namespace ts {
         SyntaxKind type;
         string value;
     };
+    using ErrorCallback = function<void(DiagnosticMessage message, int length)>;
 
     class Scanner {
     public:
@@ -45,8 +46,13 @@ namespace ts {
 
         vector<CommentDirective> commentDirectives;
 
-        explicit Scanner(const string &text) : text(text) {
+        optional<ErrorCallback> onError;
+
+        explicit Scanner(const string &text): text(text) {
             end = text.size();
+        }
+
+        explicit Scanner(ScriptTarget languageVersion, bool skipTrivia): languageVersion(languageVersion), skipTrivia(skipTrivia) {
         }
 
         SyntaxKind scan();
@@ -56,6 +62,38 @@ namespace ts {
         bool hasUnicodeEscape() {
             //todo
             return false;
+        }
+
+        void setTextPos(int textPos) {
+            assert(textPos >= 0);
+            pos = textPos;
+            startPos = textPos;
+            tokenPos = textPos;
+            token = SyntaxKind::Unknown;
+            tokenValue = "";
+            tokenFlags = TokenFlags::None;
+        }
+
+        void setOnError(optional<ErrorCallback> errorCallback) {
+            onError = errorCallback;
+        }
+
+        void setText(string newText = "", int start = 0, int length = - 1) {
+            text = newText;
+            end = length == - 1 ? text.size() : start + length;
+            setTextPos(start);
+        }
+
+        void setScriptTarget(ScriptTarget scriptTarget) {
+            languageVersion = scriptTarget;
+        }
+
+        void setLanguageVariant(LanguageVariant variant) {
+            languageVariant = variant;
+        }
+
+        void clearCommentDirectives() {
+            commentDirectives.clear();
         }
 
         bool hasExtendedUnicodeEscape() {
@@ -120,7 +158,7 @@ namespace ts {
 
         bool isOctalDigit(CharCode code);
 
-        int error(DiagnosticMessage message, int errPos = -1, int length = -1);
+        int error(DiagnosticMessage message, int errPos = - 1, int length = - 1);
 
         vector<CommentDirective> appendIfCommentDirective(vector<CommentDirective> &commentDirectives, const string &text, const regex &commentDirectiveRegEx, int lineStart);
 

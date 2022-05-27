@@ -855,6 +855,10 @@ int Scanner::error(DiagnosticMessage message, int errPos, int length) {
     if (errPos == -1) errPos = pos;
 
     cout << "Error: " << message.code << ": " << message.message << " at " << errPos << "\n";
+
+    if (onError) {
+        (*onError)(message, length);
+    }
 }
 
 int Scanner::scanConflictMarkerTrivia(string &text, int pos) {

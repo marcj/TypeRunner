@@ -12,6 +12,13 @@ namespace ts {
     using std::string;
     using std::optional;
 
+    static vector<const char *> supportedDeclarationExtensions{Extension::Dts, Extension::Dcts, Extension::Dmts};
+
+    LanguageVariant getLanguageVariant(ScriptKind scriptKind) {
+        // .tsx and .jsx files are treated as jsx language variant.
+        return scriptKind == ScriptKind::TSX || scriptKind == ScriptKind::JSX || scriptKind == ScriptKind::JS || scriptKind == ScriptKind::JSON ? LanguageVariant::JSX : LanguageVariant::Standard;
+    }
+
     inline string parsePseudoBigInt(string &stringValue) {
         int log2Base;
         switch (charCodeAt(stringValue, 1).code) { // "x" in "0x123"

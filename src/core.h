@@ -6,9 +6,18 @@
 #include <vector>
 #include <functional>
 #include <optional>
+#include <sstream>
 
 namespace ts {
-    using namespace std;
+    using std::string;
+    using std::vector;
+    using std::function;
+    using std::optional;
+    using std::shared_ptr;
+    using std::replace;
+    using std::unordered_map;
+    using std::map;
+    using std::cout;
 
     unsigned constexpr const_hash(char const *input) {
         return *input ?
@@ -36,6 +45,69 @@ namespace ts {
      */
     template<typename T>
     using shared = shared_ptr<T>;
+
+    string replaceLeading(const string &text, const string &from, const string &to) {
+        if (0 == text.find(from)) {
+            string str = text;
+            str.replace(0, from.length(), to);
+            return str;
+        }
+        return text;
+    }
+
+    /**
+     * Returns the last element of an array if non-empty, `undefined` otherwise.
+     */
+    template<typename T>
+    optional<T> lastOrUndefined(const vector<T> &array) {
+        if (array.empty()) return std::nullopt;
+        return array.back();
+    }
+
+    vector<string> charToStringVector(vector<const char*> chars) {
+        vector<string> s;
+        for (auto c: chars) s.push_back(c);
+        return s;
+    }
+
+    bool endsWith(const string &str, const string &suffix) {
+        auto expectedPos = str.size() - suffix.size();
+        return expectedPos >= 0 && str.find(suffix, expectedPos) == expectedPos;
+    }
+
+    template<typename T>
+    vector<T> slice(const vector<T> &v, int start) {
+        return vector<T>(v.begin() + start, v.end());
+    }
+
+    string join(const vector<string> &vec, const char *delim) {
+        std::stringstream res;
+        copy(vec.begin(), vec.end(), std::ostream_iterator<string>(res, delim));
+        return res.str();
+    }
+
+    vector<string> split(const string &s, const string &delimiter) {
+        vector<string> result;
+        size_t last = 0;
+        size_t next = 0;
+        while ((next = s.find(delimiter, last)) != string::npos) {
+            result.push_back(s.substr(last, next - last));
+            last = next + 1;
+        }
+        result.push_back(s.substr(last));
+        return result;
+    }
+
+    string replaceAll(const string &text, const string &from, const string &to) {
+        if (from.empty()) return text;
+        string str = text;
+        size_t start_pos = 0;
+        while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
+            str.replace(start_pos, from.length(), to);
+            start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'yx'
+        }
+        return str;
+    }
 
 //
 //    template<class T>
@@ -77,8 +149,8 @@ namespace ts {
 
     template<typename T>
     inline bool some(optional<vector<T>> array, optional<std::function<bool(typename decltype(array)::value_type::value_type)>> predicate) {
-    //inline bool some(vector<any> array, std::function<void(T)> predicate) {
-    //inline bool some(optional<vector<T>> array) {
+        //inline bool some(vector<any> array, std::function<void(T)> predicate) {
+        //inline bool some(optional<vector<T>> array) {
         if (array) {
             if (predicate) {
                 for (auto &v: (*array)) {
@@ -104,7 +176,7 @@ namespace ts {
     protected:
         T value;
     public:
-        LogicalOrReturnLast(T value) : value(value) {}
+        LogicalOrReturnLast(T value): value(value) {}
         operator T() { return value; }
         LogicalOrReturnLast operator||(LogicalOrReturnLast other) {
             if (value) return *this;
@@ -143,7 +215,7 @@ namespace ts {
     };
 
     template<typename T>
-    static bool has(const vector<T> &vector, T item) {
+    static bool has(const vector <T> &vector, T item) {
         return find(vector.begin(), vector.end(), item) != vector.end();
     };
 
@@ -166,11 +238,11 @@ namespace ts {
             va_start(ap, fmt);
             int n = vsnprintf((char *) str.data(), size, fmt.c_str(), ap);
             va_end(ap);
-            if (n > -1 && n < size) {  // Everything worked
+            if (n > - 1 && n < size) {  // Everything worked
                 str.resize(n);
                 return str;
             }
-            if (n > -1)  // Needed size returned
+            if (n > - 1)  // Needed size returned
                 size = n + 1;   // For null char
             else
                 size *= 2;      // Guess at a larger size (OS specific)
@@ -179,7 +251,7 @@ namespace ts {
     }
 
     template<typename...Args>
-    inline void debug(const std::string &fmt, Args&&...args) {
+    inline void debug(const std::string &fmt, Args &&...args) {
         cout << format(fmt, args...) << "\n";
     }
 }
