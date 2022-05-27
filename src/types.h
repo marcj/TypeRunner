@@ -126,6 +126,22 @@ namespace ts::types {
         Error,
     };
 
+    struct Extension {
+        constexpr static auto Ts = ".ts",
+                Tsx = ".tsx",
+                Dts = ".d.ts",
+                Js = ".js",
+                Jsx = ".jsx",
+                Json = ".json",
+                TsBuildInfo = ".tsbuildinfo",
+                Mjs = ".mjs",
+                Mts = ".mts",
+                Dmts = ".d.mts",
+                Cjs = ".cjs",
+                Cts = ".cts",
+                Dcts = ".d.cts";
+    };
+
     enum class JsxEmit {
         None = 0,
         Preserve = 1,
@@ -1227,7 +1243,7 @@ namespace ts {
     class Node;
 
     struct BaseNodeArray {
-        vector<Node> list;
+        vector<shared<Node>> list;
         int pos;
         int end;
         bool hasTrailingComma = false;
@@ -1240,15 +1256,17 @@ namespace ts {
     template<class ... T>
     struct NodeArray: BaseNodeArray {};
 
-    /**
-     * Union is like Node, it is the owner of the data
-     */
-    struct BaseUnion {
-        shared_ptr<Node> node = make_shared<Node>();
-        SyntaxKind kind();
-
-        bool empty();
-    };
+//    /**
+//     * Union is like Node, it is the owner of the data
+//     */
+//    struct BaseUnion {
+//        shared<Node> node;
+//        BaseUnion();
+//
+//        SyntaxKind kind();
+//
+//        bool empty();
+//    };
 
     /**
      * All BaseNode pointers are owned by SourceFile. If SourceFile destroys, all its Nodes are destroyed as well.
@@ -1280,6 +1298,24 @@ namespace ts {
             return &parent != this;
         }
 
+//        sharedOpt<Node> operator = (const sharedOpt<BaseUnion> &a) {
+////        if (a) return a;
+////        return b;
+//            return a->node;
+//        };
+
+//        Node() {}
+//        Node(const sharedOpt<BaseUnion> &a) {
+//
+//        }
+//        Node(const BaseUnion &a) {
+//
+//        }
+//
+//        Node(BaseUnion a) {
+//
+//        }
+
         Node &getParent() {
             if (! hasParent()) throw std::runtime_error("Node has no parent set");
             return parent;
@@ -1305,164 +1341,176 @@ namespace ts {
         }
     };
 
-//    template<class T>
-//    bool is(Node &node) {
-//        return data && node.kind == T::KIND;
-//    }
-
-    template<typename Default, typename ... Ts>
-    struct Union: BaseUnion {
-//        std::variant<shared_ptr<Default>, shared_ptr<Ts>...> value = make_shared<Default>();
-//    auto types() {
-//        using ETypes = std::tuple<decltype(Ts{})...>;
-//        ETypes types;
-//        return types;
-//    }
-
-        Union(){
-            this->node = make_shared<Default>();
-        }
-
-        operator Node() {
-            return *this->node;
-        }
-//
-//        operator const Node() {
-//            return *this->node;
-//        }
-
-//        operator Node&() {
-//            return *this->node;
-//        }
-//
-//        operator const Node&() {
-//            return *this->node;
-//        }
-
-        operator optional<const Node>() {
-            if (node->kind == types::Unknown) return nullopt;
-            return *this->node;
-        }
-
-//        operator reference_wrapper<Node>() {
-//            return *this->node;
-//        }
-
-//        operator optional<Node>() {
-//            if (node->kind == types::Unknown) return nullopt;
-//            return *this->node;
-//        }
-
-        optional<Node> lol() {
-            if (node->kind == types::Unknown) return nullopt;
-            return *this->node;
-        }
-
-//        optional<Node> operator=(OptionalNode other) {
-//            if (node->kind == types::Unknown) return nullopt;
-//            return *this->node;
-//        }
-
-        template<typename T>
-        bool is() {
-            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
-            return node->kind == T::KIND; //std::holds_alternative<shared_ptr<T>>(value);
-        }
-
-        template<typename T>
-        T &to() {
-            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
-            if (! is<T>()) {
-                node = make_shared<T>();
-            }
-            return node; //*std::get<shared_ptr<T>>(value);
-        }
+    sharedOpt<Node> operator||(sharedOpt<Node> a, sharedOpt<Node> b) {
+        if (a) return a;
+        return b;
     };
 
-    using OptionalNode = variant<monostate, reference_wrapper<BaseUnion>, optional<reference_wrapper<const BaseUnion>>, optional<reference_wrapper<const Node>>>;
+    template<typename Default, typename ... T>
+    struct BaseNodeUnion: Node {
+    };
 
-    inline bool empty(OptionalNode v) {
-        if (holds_alternative<monostate>(v)) return true;
-        if (holds_alternative<reference_wrapper<BaseUnion>>(v)) return false;
-        if (holds_alternative<optional<reference_wrapper<const BaseUnion>>>(v)) {
-            auto u = get<optional<reference_wrapper<const BaseUnion>>>(v);
-            if (! u.has_value()) return true;
-            return false;
-        }
-        auto opt = get<optional<reference_wrapper<const Node>>>(v);
-        return opt.has_value();
-    }
+#define NodeUnion(x...) Node
 
-    inline Node &resolve(OptionalNode v) {
-        if (holds_alternative<monostate>(v)) {
-            throw runtime_error("OptionalNode is empty");
-        }
-        if (holds_alternative<reference_wrapper<BaseUnion>>(v)) {
-            return *get<reference_wrapper<BaseUnion>>(v).get().node;
-        }
-        if (holds_alternative<optional<reference_wrapper<const BaseUnion>>>(v)) {
-            auto u = get<optional<reference_wrapper<const BaseUnion>>>(v);
-            if (! u.has_value()) throw runtime_error("OptionalNode is empty");
-            return *u->get().node;
-        }
-
-        auto opt = get<optional<reference_wrapper<const Node>>>(v);
-
-        if (! opt.has_value()) throw runtime_error("Optional is empty");
-
-        return *(Node *) (&(opt.value().get()));
-    }
-
-    template<typename Default, typename ... Ts>
-    struct NodeUnion: Union<Default, Ts...> {
-        NodeUnion() {
-            this->node = make_shared<Default>();
-        }
-
-        NodeUnion(auto node) {
-            this->node = make_shared<decltype(node)>();
-        }
-
-        operator OptionalNode () {
-            return *this->node;
-        }
-
-//        operator optional<const Node> () {
-//            throw runtime_error("Ads");
+////    template<class T>
+////    bool is(Node &node) {
+////        return data && node.kind == T::KIND;
+////    }
+//
+//    template<typename Default, typename ... Ts>
+//    struct Union: BaseUnion {
+////        std::variant<shared_ptr<Default>, shared_ptr<Ts>...> value = make_shared<Default>();
+////    auto types() {
+////        using ETypes = std::tuple<decltype(Ts{})...>;
+////        ETypes types;
+////        return types;
+////    }
+//
+//        Union() {
+//            this->node = make_shared<Default>();
 //        }
-
-//        NodeUnion& operator=(const SourceFile &node) {
-//            this->node = node;
-//            return *this;
+//
+//        operator Node() {
+//            return *this->node;
 //        }
-
+//
+////        operator shared<Node>() {
+////            return this->node;
+////        }
+//
+////        operator const Node() {
+////            return *this->node;
+////        }
+//
+////        operator Node&() {
+////            return *this->node;
+////        }
+////
+////        operator const Node&() {
+////            return *this->node;
+////        }
+//
+////        operator sharedOpt<Node>() {
+////            if (node->kind == types::Unknown) return nullptr;
+////            return this->node;
+////        }
+////
+////        sharedOpt<Node> operator=(sharedOpt<reference_wrapper<const BaseUnion>>) {
+////            if (node->kind == types::Unknown) return nullptr;
+////            return this->node;
+////        }
+//
+////        operator reference_wrapper<Node>() {
+////            return *this->node;
+////        }
+//
+////        operator optional<Node>() {
+////            if (node->kind == types::Unknown) return nullopt;
+////            return *this->node;
+////        }
+//
+//        sharedOpt<Node> lol() {
+//            if (node->kind == types::Unknown) return nullptr;
+//            return this->node;
+//        }
+//
+////        optional<Node> operator=(OptionalNode other) {
+////            if (node->kind == types::Unknown) return nullopt;
+////            return *this->node;
+////        }
+//
 //        template<typename T>
-//        NodeUnion(const T &node) {
-//            this->node = node;
+//        bool is() {
+//            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
+//            return node->kind == T::KIND; //std::holds_alternative<shared_ptr<T>>(value);
 //        }
+//
+//        template<typename T>
+//        T &to() {
+//            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
+//            if (! is<T>()) {
+//                node = make_shared<T>();
+//            }
+//            return reinterpret_cast<T &>(*node);
+////            return *node; //*std::get<shared_ptr<T>>(value);
+//        }
+//    };
+//
+//    template<typename Default, typename ... Ts>
+//    struct NodeUnion: Union<Default, Ts...> {
+//        NodeUnion() {
+//            this->node = make_shared<Default>();
+//        }
+//
+//        NodeUnion(auto node) {
+//            this->node = make_shared<decltype(node)>();
+//        }
+//
+//        operator shared<Node>() {
+//            return this->node;
+//        }
+//
+//        operator Node() {
+//            return *this->node;
+//        }
+//
+////        operator const shared<Node>() & {
+////            return this->node;
+////        }
+//
+////        operator optional<const Node> () {
+////            throw runtime_error("Ads");
+////        }
+//
+////        NodeUnion& operator=(const SourceFile &node) {
+////            this->node = node;
+////            return *this;
+////        }
+//
+////        template<typename T>
+////        NodeUnion(const T &node) {
+////            this->node = node;
+////        }
+//
+//        /**
+//         * Casts whatever is current hold as Node.
+//         */
+//        Node &getNode() {
+//            Node *b = nullptr;
+//
+//            std::visit([&b](auto &arg) {
+//                b = reinterpret_cast<Node *>(&(*arg));
+//            }, this->value);
+//
+//            if (! b) throw std::runtime_error("Union does not hold a Node");
+//
+//            return *b;
+//        }
+//    };
 
-        /**
-         * Casts whatever is current hold as Node.
-         */
-        Node &getNode() {
-            Node *b = nullptr;
+//just to have the type information in the IDE
+template<typename ... Types>
+using UnionNode = Node;
 
-            std::visit([&b](auto &arg) {
-                b = reinterpret_cast<Node *>(&(*arg));
-            }, this->value);
+#define FIRST_ARG_(N, ...) N
+#define FIRST_ARG(args) FIRST_ARG_ args
+/**
+ * Defines a shared union property and initializes its first type.
+ */
+#define UnionProperty(name, Types...) shared<UnionNode<Types>> name = make_shared<FIRST_ARG((Types))>()
+#define OptionalUnionProperty(name, Types...) sharedOpt<UnionNode<Types>> name
 
-            if (! b) throw std::runtime_error("Union does not hold a Node");
-
-            return *b;
-        }
-    };
+//Parent properties can not have initializer as it would lead to circular ref. We expect from the user to set it where required.
+#define ParentProperty(Types...) shared<UnionNode<Types>> parent
+#define Property(name, Type) shared<Type> name = make_shared<Type>()
+#define OptionalProperty(name, Type) sharedOpt<Type> name
 
     struct DeclarationName;
 
     struct Statement: Node {};
 
-    struct NamedDeclaration: Statement {
-        optional<reference_wrapper<DeclarationName>> name;
+    struct NamedDeclaration {
+        OptionalProperty(name, DeclarationName);
     };
 
     struct Expression: Node {};
@@ -1519,7 +1567,7 @@ namespace ts {
 
     struct FalseLiteral: BrandKind<SyntaxKind::FalseKeyword, PrimaryExpression> {};
 
-    struct BooleanLiteral: NodeUnion<TrueLiteral, FalseLiteral> {};
+    struct BooleanLiteral: NodeUnion(TrueLiteral, FalseLiteral) {};
 
     struct ThisExpression: BrandKind<SyntaxKind::ThisKeyword, PrimaryExpression> {};
 
@@ -1530,38 +1578,38 @@ namespace ts {
     using PostfixUnaryOperator = SyntaxKind; //SyntaxKind.PlusPlusToken | SyntaxKind.MinusMinusToken
 
     struct PrefixUnaryExpression: BrandKind<SyntaxKind::PrefixUnaryExpression, UpdateExpression> {
-        LeftHandSideExpression operand;
-        PostfixUnaryOperator operatorKind;
+        Property(operand, LeftHandSideExpression);
+        Property(operatorKind, PostfixUnaryOperator);
     };
 
     struct PartiallyEmittedExpression: BrandKind<SyntaxKind::PartiallyEmittedExpression, LeftHandSideExpression> {
-        Expression expression;
+        Property(expression, Expression);
     };
 
     struct PostfixUnaryExpression: BrandKind<SyntaxKind::PostfixUnaryExpression, UpdateExpression> {
-        LeftHandSideExpression operand;
-        PostfixUnaryOperator operatorKind;
+        Property(operand, LeftHandSideExpression);
+        Property(operatorKind, PostfixUnaryOperator);
     };
 
     struct DeleteExpression: BrandKind<SyntaxKind::DeleteExpression, UnaryExpression> {
-        UnaryExpression expression;
+        Property(expression, UnaryExpression);
     };
 
     struct TypeOfExpression: BrandKind<SyntaxKind::TypeOfExpression, UnaryExpression> {
-        UnaryExpression expression;
+        Property(expression, UnaryExpression);
     };
 
     struct VoidExpression: BrandKind<SyntaxKind::VoidExpression, UnaryExpression> {
-        UnaryExpression expression;
+        Property(expression, UnaryExpression);
     };
 
     struct AwaitExpression: BrandKind<SyntaxKind::AwaitExpression, UnaryExpression> {
-        UnaryExpression expression;
+        Property(expression, UnaryExpression);
     };
 
     struct YieldExpression: BrandKind<SyntaxKind::YieldExpression, Expression> {
-        optional<AsteriskToken> asteriskToken;
-        optional<Expression> expression;
+        OptionalProperty(asteriskToken, AsteriskToken);
+        OptionalProperty(expression, Expression);
     };
 
     //this seems to be related to instantiated types
@@ -1572,8 +1620,8 @@ namespace ts {
 
     struct SyntheticExpression: BrandKind<SyntaxKind::SyntheticExpression, Expression> {
         bool isSpread;
-        Type type;
-        optional<NodeUnion<ParameterDeclaration, NamedTupleMember>> tupleNameSource;
+        Property(type, Type);
+        OptionalUnionProperty(tupleNameSource, ParameterDeclaration, NamedTupleMember);
     };
 
     struct TypeNode: Node {};
@@ -1587,8 +1635,8 @@ namespace ts {
     /** @deprecated Use `ReadonlyKeyword` instead. */
     using ReadonlyToken = ReadonlyKeyword;
 
-    struct Modifier: NodeUnion<
-            AbstractKeyword, AsyncKeyword, ConstKeyword, DeclareKeyword, DefaultKeyword, ExportKeyword, InKeyword, PrivateKeyword, ProtectedKeyword, PublicKeyword, OutKeyword, OverrideKeyword, ReadonlyKeyword, StaticKeyword> {
+    struct Modifier: NodeUnion(
+            AbstractKeyword, AsyncKeyword, ConstKeyword, DeclareKeyword, DefaultKeyword, ExportKeyword, InKeyword, PrivateKeyword, ProtectedKeyword, PublicKeyword, OutKeyword, OverrideKeyword, ReadonlyKeyword, StaticKeyword) {
     };
 
     struct ModifiersArray: NodeArray<Modifier> {};
@@ -1637,7 +1685,7 @@ namespace ts {
     };
 
     struct TemplateLiteralLikeNode: LiteralLikeNode {
-        optional<string> rawText;
+        OptionalProperty(rawText, string);
         /* @internal */
         optional<types::TokenFlags> templateFlags;
     };
@@ -1651,23 +1699,23 @@ namespace ts {
     };
 
     struct ComputedPropertyName: BrandKind<SyntaxKind::ComputedPropertyName> {
-        Expression expression;
+        Property(expression, Expression);
     };
 
     struct QualifiedName;
 
-    #define EntityName Identifier, QualifiedName
+#define EntityName Identifier, QualifiedName
 
     struct QualifiedName: BrandKind<SyntaxKind::QualifiedName, Node> {
-        NodeUnion<EntityName> left;
-        Identifier right;
-        /*@internal*/ optional<int> jsdocDotPos; // QualifiedName occurs in JSDoc-style generic: Id1.Id2.<T>
+        shared<NodeUnion(EntityName)> left;
+        shared<Identifier> right = make_shared<Identifier>();
+        /*@internal*/ OptionalProperty(jsdocDotPos, int); // QualifiedName occurs in JSDoc-style generic: Id1.Id2.<T>
     };
 
     struct ElementAccessExpression: BrandKind<SyntaxKind::ElementAccessExpression, MemberExpression> {
-        LeftHandSideExpression expression;
-        optional<QuestionDotToken> questionDotToken;
-        Expression argumentExpression;
+        Property(expression, LeftHandSideExpression);
+        OptionalProperty(questionDotToken, QuestionDotToken);
+        Property(argumentExpression, Expression);
     };
 
     struct OmittedExpression: BrandKind<SyntaxKind::OmittedExpression, Node> {};
@@ -1677,42 +1725,42 @@ namespace ts {
     struct ObjectBindingPattern;
     struct ArrayBindingPattern;
     struct ArrayBindingPattern;
-    using BindingPattern = NodeUnion<ObjectBindingPattern, ArrayBindingPattern>;
-    using BindingName = NodeUnion<Identifier, BindingPattern>;
 
-    using PropertyName = NodeUnion<Identifier, StringLiteral, NumericLiteral, ComputedPropertyName, PrivateIdentifier>;
+#define BindingPattern ObjectBindingPattern, ArrayBindingPattern
+#define BindingName Identifier, BindingPattern
+#define PropertyName Identifier, StringLiteral, NumericLiteral, ComputedPropertyName, PrivateIdentifier
 
-    struct BindingElement: BrandKind<SyntaxKind::BindingElement, NamedDeclaration> {
-        optional<PropertyName> propertyName;        // Binding property name (in object binding pattern)
-        optional<DotDotDotToken> dotDotDotToken;    // Present on rest element (in object binding pattern)
-        BindingName name;                  // Declared binding element name
-        optional<Expression> initializer;           // Optional initializer
+    struct BindingElement: BrandKind<SyntaxKind::BindingElement, NamedDeclaration, Node> {
+        OptionalUnionProperty(propertyName, PropertyName);        // Binding property name (in object binding pattern)
+        OptionalProperty(dotDotDotToken, DotDotDotToken);    // Present on rest element (in object binding pattern)
+        shared<NodeUnion(BindingName)> name;                  // Declared binding element name
+        OptionalProperty(initializer, Expression);           // Optional initializer
     };
 
-    using ArrayBindingElement = NodeUnion<BindingElement, OmittedExpression>;
+#define ArrayBindingElement BindingElement, OmittedExpression
 
     struct ObjectBindingPattern: BrandKind<SyntaxKind::ObjectBindingPattern, Node> {
         NodeArray<BindingElement> elements;
-        NodeUnion<VariableDeclaration, ParameterDeclaration, BindingElement> parent;
+      ParentProperty(VariableDeclaration, ParameterDeclaration, BindingElement);
     };
 
     struct ArrayBindingPattern: BrandKind<SyntaxKind::ArrayBindingPattern, Node> {
-        NodeUnion<VariableDeclaration, ParameterDeclaration, BindingElement> parent;
+      ParentProperty(VariableDeclaration, ParameterDeclaration, BindingElement);
         NodeArray<ArrayBindingElement> elements;
     };
 
     struct ExpressionStatement: BrandKind<SyntaxKind::ExpressionStatement, Statement> {
-        Expression expression;
+        Property(expression, Expression);
     };
 
     struct PrologueDirective: ExpressionStatement {
-        StringLiteral expression;
+        Property(expression, StringLiteral);
     };
 
     struct IfStatement: BrandKind<SyntaxKind::IfStatement, Statement> {
-        Expression expression;
-        Statement thenStatement;
-        optional<Statement> elseStatement;
+        Property(expression, Expression);
+        Property(thenStatement, Statement);
+        OptionalProperty(elseStatement, Statement);
     };
 
 //    export type ForInitializer =
@@ -1727,11 +1775,11 @@ namespace ts {
 
 
     struct BreakStatement: BrandKind<SyntaxKind::BreakStatement, Statement> {
-        optional<Identifier> label;
+        OptionalProperty(label, Identifier);
     };
 
     struct ContinueStatement: BrandKind<SyntaxKind::ContinueStatement, Statement> {
-        optional<Identifier> label;
+        OptionalProperty(label, Identifier);
     };
 
 //    export type BreakOrContinueStatement =
@@ -1740,12 +1788,12 @@ namespace ts {
 //        ;
 
     struct ReturnStatement: BrandKind<SyntaxKind::ReturnStatement, Statement> {
-        optional<Expression> expression;
+        OptionalProperty(expression, Expression);
     };
 
     struct WithStatement: BrandKind<SyntaxKind::WithStatement, Statement> {
-        Expression expression;
-        Statement statement;
+        Property(expression, Expression);
+        Property(statement, Statement);
     };
 
     struct SwitchStatement;
@@ -1753,24 +1801,24 @@ namespace ts {
     struct DefaultClause;
 
     struct CaseBlock: BrandKind<SyntaxKind::CaseBlock, Node> {
-        SwitchStatement &parent;
+        shared<SwitchStatement> parent;
         NodeArray<CaseClause, DefaultClause> clauses;
     };
 
     struct SwitchStatement: BrandKind<SyntaxKind::SwitchStatement, Statement> {
-        Expression expression;
-        CaseBlock caseBlock;
+        Property(expression, Expression);
+        Property(caseBlock, CaseBlock);
         bool possiblyExhaustive; // initialized by binding
     };
 
     struct CaseClause: BrandKind<SyntaxKind::CaseClause, Node> {
-        CaseBlock parent;
-        Expression expression;
+        Property(parent, CaseBlock);
+        Property(expression, Expression);
         NodeArray<Statement> statements;
     };
 
     struct DefaultClause: BrandKind<SyntaxKind::DefaultClause, Node> {
-        CaseBlock &parent;
+        shared<CaseBlock> parent;
         NodeArray<Statement> statements;
     };
 
@@ -1780,123 +1828,123 @@ namespace ts {
 //        ;
 
     struct LabeledStatement: BrandKind<SyntaxKind::LabeledStatement, Statement> {
-        Identifier label;
-        Statement statement;
+        Property(label, Identifier);
+        Property(statement, Statement);
     };
 
     struct ThrowStatement: BrandKind<SyntaxKind::ThrowStatement, Statement> {
-        Expression expression;
+        Property(expression, Expression);
     };
 
     struct IterationStatement: Statement {
-        Statement statement;
+        Property(statement, Statement);
     };
 
     struct DoStatement: BrandKind<SyntaxKind::DoStatement, IterationStatement> {
-        Expression expression;
+        Property(expression, Expression);
     };
 
     struct WhileStatement: BrandKind<SyntaxKind::WhileStatement, IterationStatement> {
-        Expression expression;
+        Property(expression, Expression);
     };
 
     struct VariableDeclarationList;
 
-    using ForInitializer = NodeUnion<VariableDeclarationList, Expression>;
+    using ForInitializer = NodeUnion(VariableDeclarationList, Expression);
 
     struct ForStatement: BrandKind<SyntaxKind::ForStatement, IterationStatement> {
-        optional<ForInitializer> initializer;
-        optional<Expression> condition;
-        optional<Expression> incrementor;
+        OptionalProperty(initializer, ForInitializer);
+        OptionalProperty(condition, Expression);
+        OptionalProperty(incrementor, Expression);
     };
 
     struct ForOfStatement: BrandKind<SyntaxKind::ForOfStatement, IterationStatement> {
-        AwaitKeyword awaitModifier;
-        ForInitializer initializer;
-        Expression expression;
+        Property(awaitModifier, AwaitKeyword);
+        Property(initializer, ForInitializer);
+        Property(expression, Expression);
     };
 
     struct ForInStatement: BrandKind<SyntaxKind::ForInStatement, IterationStatement> {
-        ForInitializer initializer;
-        Expression expression;
+        Property(initializer, ForInitializer);
+        Property(expression, Expression);
     };
 
     struct VariableStatement;
 
     struct VariableDeclarationList: BrandKind<SyntaxKind::VariableDeclarationList, Node> {
-        NodeUnion<VariableStatement, ForStatement, ForOfStatement, ForInStatement> parent;
+      ParentProperty(VariableStatement, ForStatement, ForOfStatement, ForInStatement);
         NodeArray<VariableDeclaration> declarations;
     };
 
     struct VariableStatement: BrandKind<SyntaxKind::VariableStatement, Statement> {
 //        /* @internal*/ optional<NodeArray<Decorator>> decorators; // Present for use with reporting a grammar error
-        VariableDeclarationList declarationList;
+        Property(declarationList, VariableDeclarationList);
     };
 
     struct CatchClause;
 
     struct TryStatement: BrandKind<SyntaxKind::TryStatement, Statement> {
-        Block tryBlock;
-        optional<reference_wrapper<CatchClause>> catchClause;
-        optional<Block> finallyBlock;
+        Property(tryBlock, Block);
+        OptionalProperty(catchClause, CatchClause);
+        OptionalProperty(finallyBlock, Block);
     };
 
     struct CatchClause: BrandKind<SyntaxKind::CatchClause, Node> {
-        TryStatement &parent;
-        optional<reference_wrapper<VariableDeclaration>> variableDeclaration;
-        Block block;
+        shared<TryStatement> parent;
+        OptionalProperty(variableDeclaration, VariableDeclaration);
+        Property(block, Block);
     };
 
-    struct VariableDeclaration: BrandKind<SyntaxKind::VariableDeclaration, NamedDeclaration> {
-        BindingName name;                    // Declared variable name
-        NodeUnion<VariableDeclarationList, CatchClause> &parent;
-        optional<ExclamationToken> exclamationToken;  // Optional definite assignment assertion
-        optional<TypeNode> type;                      // Optional type annotation
-        optional<Expression> initializer;             // Optional initializer
+    struct VariableDeclaration: BrandKind<SyntaxKind::VariableDeclaration, NamedDeclaration, Node> {
+        shared<NodeUnion(VariableDeclarationList, CatchClause)> parent;
+        shared<NodeUnion(BindingName)> name;                    // Declared variable name
+        OptionalProperty(exclamationToken, ExclamationToken);  // Optional definite assignment assertion
+        OptionalProperty(type, TypeNode);                      // Optional type annotation
+        OptionalProperty(initializer, Expression);             // Optional initializer
     };
 
-    struct MemberName: NodeUnion<Identifier, PrivateIdentifier> {};
+    struct MemberName: NodeUnion(Identifier, PrivateIdentifier) {};
 
     struct PropertyAccessExpression: BrandKind<SyntaxKind::PropertyAccessExpression, MemberExpression, NamedDeclaration> {
-        LeftHandSideExpression expression;
-        optional<QuestionDotToken> questionDotToken;
-        MemberName name;
+        Property(expression, LeftHandSideExpression);
+        OptionalProperty(questionDotToken, QuestionDotToken);
+        Property(name, MemberName);
     };
 
     struct PropertyAccessEntityNameExpression;
 
-    struct EntityNameExpression: NodeUnion<Identifier, PropertyAccessEntityNameExpression> {};
+    struct EntityNameExpression: NodeUnion(Identifier, PropertyAccessEntityNameExpression) {};
 
     struct PropertyAccessEntityNameExpression: PropertyAccessExpression {
-        EntityNameExpression expression;
-        Identifier name;
+        Property(expression, EntityNameExpression);
+        Property(name, Identifier);
     };
 
-    using PropertyName = NodeUnion<Identifier, StringLiteral, NumericLiteral, ComputedPropertyName, PrivateIdentifier>;
+#define PropertyName Identifier, StringLiteral, NumericLiteral, ComputedPropertyName, PrivateIdentifier
 
-    using StringLiteralLike = NodeUnion<StringLiteral, NoSubstitutionTemplateLiteral>;
-    struct DeclarationName: NodeUnion<Identifier, PrivateIdentifier, StringLiteralLike, NumericLiteral, ComputedPropertyName, ElementAccessExpression, BindingPattern, EntityNameExpression> {};
+    using StringLiteralLike = NodeUnion(StringLiteral, NoSubstitutionTemplateLiteral);
+    struct DeclarationName: NodeUnion(Identifier, PrivateIdentifier, StringLiteralLike, NumericLiteral, ComputedPropertyName, ElementAccessExpression, BindingPattern, EntityNameExpression) {};
 
     struct MetaProperty: BrandKind<SyntaxKind::MetaProperty, PrimaryExpression> {
         SyntaxKind keywordToken = SyntaxKind::NewKeyword; //: SyntaxKind.NewKeyword | SyntaxKind.ImportKeyword;
-        Identifier name;
+        Property(name, Identifier);
     };
 
     struct ObjectLiteralElement: NamedDeclaration {
-        optional<PropertyName> name;
+        sharedOpt<NodeUnion(PropertyName)> name;
     };
 
     struct ClassElement: NamedDeclaration {
-        optional<PropertyName> name;
+        sharedOpt<NodeUnion(PropertyName)> name;
     };
 
     struct TypeElement: NamedDeclaration {
-        optional<PropertyName> name;
-        optional<QuestionToken> questionToken;
+        sharedOpt<NodeUnion(PropertyName)> name;
+        sharedOpt<QuestionToken> questionToken;
     };
 
     struct SpreadAssignment: BrandKind<SyntaxKind::SpreadAssignment, Node> {
-        Expression expression;
+        Property(expression, Expression);
     };
 
     struct TypeLiteralNode: BrandKind<SyntaxKind::TypeLiteral, TypeNode> {
@@ -1905,19 +1953,19 @@ namespace ts {
 
 #define ClassLikeDeclaration ClassDeclaration, ClassExpression
 
-    struct ShorthandPropertyAssignment: BrandKind<SyntaxKind::ShorthandPropertyAssignment, ObjectLiteralElement> {
-        Identifier name;
-        optional<QuestionToken> questionToken;
-        optional<ExclamationToken> exclamationToken;
+    struct ShorthandPropertyAssignment: BrandKind<SyntaxKind::ShorthandPropertyAssignment, ObjectLiteralElement, Node> {
+        Property(name, Identifier);
+        OptionalProperty(questionToken, QuestionToken);
+        OptionalProperty(exclamationToken, ExclamationToken);
 
         // used when ObjectLiteralExpression is used in ObjectAssignmentPattern
         // it is a grammar error to appear in actual object initializer:
-        optional<EqualsToken> equalsToken;
-        optional<Expression> objectAssignmentInitializer;
+        OptionalProperty(equalsToken, EqualsToken);
+        OptionalProperty(objectAssignmentInitializer, Expression);
     };
 
-//    struct VariableDeclaration: BrandKind<SyntaxKind::VariableDeclaration, NamedDeclaration> {
-//        BindingNameNode name;                    // Declared variable name
+//    struct VariableDeclaration: BrandKind<SyntaxKind::VariableDeclaration, NamedDeclaration, Node> {
+//        Property(name, BindingNameNode);                    // Declared variable name
 ////            readonly kind: SyntaxKind.VariableDeclaration;
 ////            readonly parent: VariableDeclarationList | CatchClause;
 //        optional <NodeType<ExclamationToken>> exclamationToken;  // Optional definite assignment assertion
@@ -1925,55 +1973,55 @@ namespace ts {
 //        optional <NodeType<Expression>> initializer; // Optional initializer
 //    };
 
-    struct TypeParameterDeclaration: BrandKind<SyntaxKind::TypeParameter, NamedDeclaration> {
+    struct TypeParameterDeclaration: BrandKind<SyntaxKind::TypeParameter, NamedDeclaration, Statement> {
         inline static auto kind = SyntaxKind::TypeParameter;
 //        BaseNode *parent; //: DeclarationWithTypeParameterChildren | InferTypeNode;
-        Identifier name;
+        shared<Identifier> name;
         /** Note: Consider calling `getEffectiveConstraintOfTypeParameter` */
-        TypeNode constraint;
-        TypeNode defaultType;
+        Property(constraint, TypeNode);
+        Property(defaultType, TypeNode);
 
         // For error recovery purposes.
-        optional<Expression> expression;
+        OptionalProperty(expression, Expression);
     };
 
-    struct ParameterDeclaration: BrandKind<SyntaxKind::Parameter, NamedDeclaration> {
-        optional<DotDotDotToken> dotDotDotToken;
-        BindingName name;
-        optional<QuestionToken> questionToken;
-        optional<TypeNode> type;
-        optional<Expression> initializer;
+    struct ParameterDeclaration: BrandKind<SyntaxKind::Parameter, Node> {
+        UnionProperty(name, BindingName);
+        OptionalProperty(dotDotDotToken, DotDotDotToken);
+        OptionalProperty(questionToken, QuestionToken);
+        OptionalProperty(type, TypeNode);
+        OptionalProperty(initializer, Expression);
     };
 
-    struct PropertyDeclaration: BrandKind<SyntaxKind::PropertyDeclaration, ClassElement> {
-        optional<DotDotDotToken> dotDotDotToken;
-        BindingName name;
-        optional<QuestionToken> questionToken;
-        optional<ExclamationToken> exclamationToken;
-        optional<TypeNode> type;
-        optional<Expression> initializer;
+    struct PropertyDeclaration: BrandKind<SyntaxKind::PropertyDeclaration, ClassElement, Node> {
+        OptionalProperty(dotDotDotToken, DotDotDotToken);
+        shared<NodeUnion(BindingName)> name;
+        OptionalProperty(questionToken, QuestionToken);
+        OptionalProperty(exclamationToken, ExclamationToken);
+        OptionalProperty(type, TypeNode);
+        OptionalProperty(initializer, Expression);
     };
 
     struct SignatureDeclarationBase: NamedDeclaration {
-        optional<NodeUnion<Identifier, StringLiteral, NumericLiteral, ComputedPropertyName, PrivateIdentifier>> name;
+        OptionalUnionProperty(name, Identifier, StringLiteral, NumericLiteral, ComputedPropertyName, PrivateIdentifier);
         optional<NodeArray<TypeParameterDeclaration>> typeParameters;
         NodeArray<ParameterDeclaration> parameters;
-        optional<TypeNode> type;
+        OptionalProperty(type, TypeNode);
         optional<NodeArray<TypeNode>> typeArguments;
     };
 
-    struct PropertyAssignment: BrandKind<SyntaxKind::PropertyAssignment, ObjectLiteralElement> {
-        PropertyName name;
-        optional<QuestionToken> questionToken;
-        optional<ExclamationToken> exclamationToken;
-        optional<Expression> initializer;
+    struct PropertyAssignment: BrandKind<SyntaxKind::PropertyAssignment, ObjectLiteralElement, Node> {
+        shared<NodeUnion(PropertyName)> name;
+        OptionalProperty(questionToken, QuestionToken);
+        OptionalProperty(exclamationToken, ExclamationToken);
+        OptionalProperty(initializer, Expression);
     };
 
     struct FunctionLikeDeclarationBase: SignatureDeclarationBase {
-        optional<AsteriskToken> asteriskToken;
-        optional<QuestionToken> questionToken;
-        optional<ExclamationToken> exclamationToken;
-        optional<NodeUnion<Block, Expression>> body;
+        OptionalProperty(asteriskToken, AsteriskToken);
+        OptionalProperty(questionToken, QuestionToken);
+        OptionalProperty(exclamationToken, ExclamationToken);
+        OptionalUnionProperty(body, Block, Expression);
 
 //        /* @internal */ optional<NodeType<FlowNode>> endFlowNode;
 //        /* @internal */ optional<NodeType<FlowNode>> returnFlowNode;
@@ -1983,23 +2031,23 @@ namespace ts {
 #define ConciseBody FunctionBody, Expression
 
     struct ArrowFunction: BrandKind<SyntaxKind::ArrowFunction, Expression, FunctionLikeDeclarationBase> {
-        EqualsGreaterThanToken equalsGreaterThanToken;
-        NodeUnion<ConciseBody> body;
+        Property(equalsGreaterThanToken, EqualsGreaterThanToken);
+      UnionProperty(body, ConciseBody);
     };
 
     struct HeritageClause;
 
-    struct ClassLikeDeclarationBase: NamedDeclaration {
-        optional<Identifier> name;
+    struct ClassLikeDeclarationBase {
+        OptionalProperty(name, Identifier);
         optional<NodeArray<TypeParameterDeclaration>> typeParameters;
         optional<NodeArray<HeritageClause>> heritageClauses;
         NodeArray<ClassElement> members;
     };
 
-    struct DeclarationStatement: NamedDeclaration {
-        optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
-        optional<NodeArray<Modifier>> modifiers;            // Array of modifiers
-        optional<NodeUnion<Identifier, StringLiteral, NumericLiteral>> name;
+    struct DeclarationStatement: Statement {
+//        optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
+//        optional<NodeArray<Modifier>> modifiers;            // Array of modifiers
+        OptionalUnionProperty(name, Identifier, StringLiteral, NumericLiteral);
     };
 
     struct EmptyStatement: BrandKind<SyntaxKind::EmptyStatement, Statement> {};
@@ -2011,13 +2059,13 @@ namespace ts {
     };
 
     struct MissingDeclaration: BrandKind<SyntaxKind::MissingDeclaration, DeclarationStatement> {
-        optional<Identifier> name;
+        OptionalProperty(name, Identifier);
     };
 
     struct ClassDeclaration: BrandKind<SyntaxKind::ClassDeclaration, ClassLikeDeclarationBase, DeclarationStatement> {
-        optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
-        optional<NodeArray<Modifier>> modifiers;            // Array of modifiers
-        optional<Identifier> name;
+//        optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
+//        optional<NodeArray<Modifier>> modifiers;            // Array of modifiers
+        OptionalProperty(name, Identifier);
     };
 
     struct ClassExpression: BrandKind<SyntaxKind::ClassExpression, ClassLikeDeclarationBase, PrimaryExpression> {
@@ -2028,7 +2076,7 @@ namespace ts {
     struct HeritageClause;
 
     struct InterfaceDeclaration: BrandKind<SyntaxKind::InterfaceDeclaration, DeclarationStatement> {
-        Identifier name;
+        Property(name, Identifier);
         optional<NodeArray<TypeParameterDeclaration>> typeParameters;
         optional<NodeArray<HeritageClause>> heritageClauses;
         NodeArray<TypeElement> members;
@@ -2039,51 +2087,51 @@ namespace ts {
     };
 
     struct ExpressionWithTypeArguments: BrandKind<SyntaxKind::ExpressionWithTypeArguments, MemberExpression, NodeWithTypeArguments> {
-        LeftHandSideExpression expression;
+        Property(expression, LeftHandSideExpression);
     };
 
     struct HeritageClause: BrandKind<SyntaxKind::HeritageClause, Node> {
-        NodeUnion<InterfaceDeclaration, ClassLikeDeclaration> parent;
-        SyntaxKind token; //SyntaxKind.ExtendsKeyword | SyntaxKind.ImplementsKeyword
+      ParentProperty(InterfaceDeclaration, ClassLikeDeclaration);
+        Property(token, SyntaxKind); //SyntaxKind.ExtendsKeyword | SyntaxKind.ImplementsKeyword
         NodeArray<ExpressionWithTypeArguments> types;
     };
 
     struct TypeAliasDeclaration: BrandKind<SyntaxKind::TypeAliasDeclaration, DeclarationStatement> {
-        Identifier name;
+        Property(name, Identifier);
         optional<NodeArray<TypeParameterDeclaration>> typeParameters;
-        TypeNode type;
+        Property(type, TypeNode);
     };
 
     struct EnumMember;
 
     struct EnumDeclaration: BrandKind<SyntaxKind::EnumDeclaration, DeclarationStatement> {
-        Identifier name;
+        Property(name, Identifier);
         NodeArray<EnumMember> members;
     };
 
-    struct EnumMember: BrandKind<SyntaxKind::EnumMember, NamedDeclaration> {
-        EnumDeclaration parent;
+    struct EnumMember: BrandKind<SyntaxKind::EnumMember, NamedDeclaration, Node> {
+        Property(parent, EnumDeclaration);
         // This does include ComputedPropertyName, but the parser will give an error
         // if it parses a ComputedPropertyName in an EnumMember
-        PropertyName name;
-        optional<Expression> initializer;
+      UnionProperty(name, PropertyName);
+        OptionalProperty(initializer, Expression);
     };
 
-    struct ClassStaticBlockDeclaration: BrandKind<SyntaxKind::ClassStaticBlockDeclaration, ClassElement> {
-        NodeUnion<ClassDeclaration, ClassExpression> parent;
-        Block body;
+    struct ClassStaticBlockDeclaration: BrandKind<SyntaxKind::ClassStaticBlockDeclaration, ClassElement, Statement> {
+      ParentProperty(ClassDeclaration, ClassExpression);
+        Property(body, Block);
 //        /* @internal */ endFlowNode?: FlowNode;
 //        /* @internal */ returnFlowNode?: FlowNode;
     };
 
-    struct PropertySignature: BrandKind<SyntaxKind::PropertySignature, TypeElement> {
-        PropertyName name;
-        optional<TypeNode> type;
-        optional<Expression> initializer;
+    struct PropertySignature: BrandKind<SyntaxKind::PropertySignature, TypeElement, Node> {
+      UnionProperty(name, PropertyName);
+        OptionalProperty(type, TypeNode);
+        OptionalProperty(initializer, Expression);
     };
 
     struct TypeReferenceNode: BrandKind<SyntaxKind::TypeReference, NodeWithTypeArguments> {
-        NodeUnion<EntityName> typeName;
+      UnionProperty(typeName, EntityName);
     };
 
 #define ModuleName Identifier, StringLiteral
@@ -2094,20 +2142,20 @@ namespace ts {
     struct NamespaceDeclaration;
 
     struct ModuleDeclaration: BrandKind<SyntaxKind::ModuleDeclaration, DeclarationStatement> {
-        NodeUnion<ModuleBlock, NamespaceDeclaration, SourceFile> parent;
-        NodeUnion<ModuleName> name;
-        optional<NodeUnion<ModuleBody>> body;
+        ParentProperty(ModuleBlock, NamespaceDeclaration, SourceFile);
+        UnionProperty(name, ModuleName);
+        OptionalUnionProperty(body, ModuleBody);
     };
 
     struct ModuleBlock: BrandKind<SyntaxKind::ModuleBlock, Statement> {
-        ModuleDeclaration &parent;
+        shared<ModuleDeclaration> parent;
         NodeArray<Statement> statements;
     };
 
     struct NamespaceDeclaration: BrandKind<SyntaxKind::ModuleDeclaration, DeclarationStatement> {
-        NodeUnion<ModuleBody, SourceFile> parent;
-        Identifier name;
-        optional<NodeUnion<ModuleBody>> body;
+      ParentProperty(ModuleBody, SourceFile);
+        Property(name, Identifier);
+        OptionalUnionProperty(body, ModuleBody);
     };
 
     struct ExternalModuleReference;
@@ -2120,38 +2168,38 @@ namespace ts {
  * - import x = M.x;
  */
     struct ImportEqualsDeclaration: BrandKind<SyntaxKind::ImportEqualsDeclaration, DeclarationStatement> {
-        NodeUnion<SourceFile, ModuleBlock> parent;
-        Identifier name;
+      ParentProperty(SourceFile, ModuleBlock);
+        Property(name, Identifier);
         bool isTypeOnly;
 
         // 'EntityName' for an internal module reference, 'ExternalModuleReference' for an external
         // module reference.
-        NodeUnion<ModuleReference> moduleReference;
+        sharedOpt<NodeUnion(ModuleReference)> moduleReference;
     };
 
     struct ExternalModuleReference: BrandKind<SyntaxKind::ImportEqualsDeclaration, Node> {
-        ImportEqualsDeclaration parent;
-        Expression expression;
+        Property(parent, ImportEqualsDeclaration);
+        Property(expression, Expression);
     };
 
     struct ImportDeclaration;
 
     struct ImportClause;
-    struct NamespaceImport: BrandKind<SyntaxKind::NamespaceImport, NamedDeclaration> {
-        ImportClause &parent;
-        Identifier name;
+    struct NamespaceImport: BrandKind<SyntaxKind::NamespaceImport, NamedDeclaration, Node> {
+        shared<ImportClause> parent;
+        Property(name, Identifier);
     };
 
     struct NamedImports;
-    struct ImportSpecifier: BrandKind<SyntaxKind::ImportSpecifier, NamedDeclaration> {
-        NamedImports &parent;
-        optional<Identifier> propertyName;  // Name preceding "as" keyword (or undefined when "as" is absent)
-        Identifier name;           // Declared name
+    struct ImportSpecifier: BrandKind<SyntaxKind::ImportSpecifier, NamedDeclaration, Node> {
+        shared<NamedImports> parent;
+        OptionalProperty(propertyName, Identifier);  // Name preceding "as" keyword (or undefined when "as" is absent)
+        Property(name, Identifier);           // Declared name
         bool isTypeOnly;
     };
 
     struct NamedImports: BrandKind<SyntaxKind::NamedImports, Node> {
-        ImportClause &parent;
+        shared<ImportClause> parent;
         NodeArray<ImportSpecifier> elements;
     };
 
@@ -2162,14 +2210,14 @@ namespace ts {
 
     struct AssertClause;
     struct AssertEntry: BrandKind<SyntaxKind::AssertEntry, Node> {
-        AssertClause &parent;
-        NodeUnion<AssertionKey> name;
-        Expression value;
+        shared<AssertClause> parent;
+      UnionProperty(name, AssertionKey);
+        Property(value, Expression);
     };
 
     struct ExportDeclaration;
     struct AssertClause: BrandKind<SyntaxKind::AssertClause, Node> {
-        NodeUnion<ImportDeclaration, ExportDeclaration> parent;
+      ParentProperty(ImportDeclaration, ExportDeclaration);
         NodeArray<AssertEntry> elements;
         bool multiLine;
     };
@@ -2180,11 +2228,11 @@ namespace ts {
     // import d, * as ns from "mod" => name = d, namedBinding: NamespaceImport = { name: ns }
     // import { a, b as x } from "mod" => name = undefined, namedBinding: NamedImports = { elements: [{ name: a }, { name: x, propertyName: b}]}
     // import d, { a, b as x } from "mod" => name = d, namedBinding: NamedImports = { elements: [{ name: a }, { name: x, propertyName: b}]}
-    struct ImportClause: BrandKind<SyntaxKind::ImportClause, NamedDeclaration> {
-        ImportDeclaration &parent;
+    struct ImportClause: BrandKind<SyntaxKind::ImportClause, NamedDeclaration, Node> {
+        ParentProperty(ImportDeclaration);
         bool isTypeOnly;
-        optional<Identifier> name; // Default binding
-        optional<NodeUnion<NamedImportBindings>> namedBindings;
+        OptionalProperty(name, Identifier); // Default binding
+        OptionalUnionProperty(namedBindings, NamedImportBindings);
     };
 
     // In case of:
@@ -2192,45 +2240,45 @@ namespace ts {
     // In rest of the cases, module specifier is string literal corresponding to module
     // ImportClause information is shown at its declaration below.
     struct ImportDeclaration: BrandKind<SyntaxKind::ImportDeclaration, Statement> {
-        NodeUnion<SourceFile, ModuleBlock> parent;
-        optional<ImportClause> importClause;
+        ParentProperty(SourceFile, ModuleBlock);
+        OptionalProperty(importClause, ImportClause);
         /** If this is not a StringLiteral it will be a grammar error. */
-        Expression moduleSpecifier;
-        optional<AssertClause> assertClause;
+        Property(moduleSpecifier, Expression);
+        OptionalProperty(assertClause, AssertClause);
     };
 
-    struct NamespaceExport: BrandKind<SyntaxKind::NamespaceExport, NamedDeclaration> {
-        ExportDeclaration &parent;
-        Identifier name;
+    struct NamespaceExport: BrandKind<SyntaxKind::NamespaceExport, NamedDeclaration, Node> {
+        shared<ExportDeclaration> parent;
+        Property(name, Identifier);
     };
 
     struct NamedExports;
-    struct ExportSpecifier: BrandKind<SyntaxKind::ExportSpecifier, NamedDeclaration> {
-        NamedExports &parent;
+    struct ExportSpecifier: BrandKind<SyntaxKind::ExportSpecifier, NamedDeclaration, Node> {
+        shared<NamedExports> parent;
         bool isTypeOnly;
-        optional<Identifier> propertyName;  // Name preceding "as" keyword (or undefined when "as" is absent)
-        Identifier name;           // Declared name
+        OptionalProperty(propertyName, Identifier);  // Name preceding "as" keyword (or undefined when "as" is absent)
+        Property(name, Identifier);           // Declared name
     };
 
     struct NamedExports: BrandKind<SyntaxKind::NamedExports, Node> {
-        ExportDeclaration &parent;
+        shared<ExportDeclaration> parent;
         NodeArray<ExportSpecifier> elements;
     };
 
     struct NamespaceExportDeclaration: BrandKind<SyntaxKind::NamespaceExportDeclaration, DeclarationStatement> {
-        Identifier name;
+        Property(name, Identifier);
         /* @internal */ optional<NodeArray<Decorator>> decorators; // Present for use with reporting a grammar error
-        /* @internal */ optional<ModifiersArray> modifiers; // Present for use with reporting a grammar error
+        /* @internal */ OptionalProperty(modifiers, ModifiersArray); // Present for use with reporting a grammar error
     };
 
     struct ExportDeclaration: BrandKind<SyntaxKind::ExportDeclaration, DeclarationStatement> {
-        NodeUnion<SourceFile, ModuleBlock> parent;
+      ParentProperty(SourceFile, ModuleBlock);
         bool isTypeOnly;
         /** Will not be assigned in the case of `export * from "foo";` */
-        optional<NodeUnion<NamespaceExport, NamedExports>> exportClause;
+        OptionalUnionProperty(exportClause, NamespaceExport, NamedExports);
         /** If this is not a StringLiteral it will be a grammar error. */
-        optional<Expression> moduleSpecifier;
-        optional<AssertClause> assertClause;
+        OptionalProperty(moduleSpecifier, Expression);
+        OptionalProperty(assertClause, AssertClause);
     };
 
 #define NamedImportsOrExports NamedImports, NamedExports
@@ -2250,24 +2298,24 @@ namespace ts {
  * Unless `isExportEquals` is set, this node was parsed as an `export default`.
  */
     struct ExportAssignment: BrandKind<SyntaxKind::ExportAssignment, DeclarationStatement> {
-        SourceFile &parent;
+        shared<SourceFile> parent;
         bool isExportEquals;
-        Expression expression;
+        Property(expression, Expression);
     };
 
     struct ImportTypeNode;
 
     struct ImportTypeAssertionContainer: BrandKind<SyntaxKind::ImportTypeAssertionContainer, Node> {
-        ImportTypeNode &parent;
-        AssertClause assertClause;
+        shared<ImportTypeNode> parent;
+        Property(assertClause, AssertClause);
         bool multiLine = false;
     };
 
     struct ImportTypeNode: BrandKind<SyntaxKind::ImportType, NodeWithTypeArguments> {
         bool isTypeOf;
-        TypeNode argument;
-        optional<ImportTypeAssertionContainer> assertions;
-        optional<NodeUnion<EntityName>> qualifier;
+        Property(argument, TypeNode);
+        OptionalProperty(assertions, ImportTypeAssertionContainer);
+        OptionalUnionProperty(qualifier, EntityName);
     };
 
     struct ThisTypeNode: BrandKind<SyntaxKind::ThisType, TypeNode> {};
@@ -2278,28 +2326,28 @@ namespace ts {
 #define ObjectTypeDeclaration ClassLikeDeclaration, InterfaceDeclaration, TypeLiteralNode
 
     struct MethodSignature: BrandKind<SyntaxKind::MethodSignature, SignatureDeclarationBase, TypeElement> {
-        NodeUnion<ObjectTypeDeclaration> &parent;
-        PropertyName name;
+        shared<NodeUnion(ObjectTypeDeclaration)> parent;
+      UnionProperty(name, PropertyName);
     };
 
     struct IndexSignatureDeclaration: BrandKind<SyntaxKind::IndexSignature, SignatureDeclarationBase, ClassElement, TypeElement> {
-        NodeUnion<ObjectTypeDeclaration> &parent;
+        shared<NodeUnion(ObjectTypeDeclaration)> parent;
 //        optional<NodeArray<Decorator>> decorators;           // Array of decorators (in document order)
 //        optional<NodeArray<Modifier>> modifiers;            // Array of modifiers
-        TypeNode type;
+        Property(type, TypeNode);
     };
 
     struct FunctionOrConstructorTypeNodeBase: TypeNode, SignatureDeclarationBase {
-        TypeNode type;
+        Property(type, TypeNode);
     };
 
     struct FunctionTypeNode: BrandKind<SyntaxKind::FunctionType, FunctionOrConstructorTypeNodeBase> {};
 
     struct ConstructorTypeNode: BrandKind<SyntaxKind::ConstructorType, FunctionOrConstructorTypeNodeBase> {};
 
-    struct FunctionDeclaration: FunctionLikeDeclarationBase, DeclarationStatement, BrandKind<types::FunctionDeclaration> {
-        optional<Identifier> name;
-        optional<FunctionBody> body;
+    struct FunctionDeclaration: BrandKind<types::FunctionDeclaration, FunctionLikeDeclarationBase, DeclarationStatement> {
+        OptionalProperty(name, Identifier);
+        OptionalProperty(body, FunctionBody);
     };
 
     struct ObjectLiteralExpression;
@@ -2314,42 +2362,42 @@ namespace ts {
     // at later stages of the compiler pipeline.  In that case, you can either check the parent kind
     // of the method, or use helpers like isObjectLiteralMethodDeclaration
     struct MethodDeclaration: BrandKind<SyntaxKind::MethodDeclaration, FunctionLikeDeclarationBase, ClassElement, ObjectLiteralElement> {
-        NodeUnion<ClassLikeDeclaration, ObjectLiteralExpression> parent;
-        PropertyName name;
-        NodeUnion<FunctionBody> body;
-        /* @internal*/ optional<ExclamationToken> exclamationToken; // Present for use with reporting a grammar error
+      ParentProperty(ClassLikeDeclaration, ObjectLiteralExpression);
+      UnionProperty(name, PropertyName);
+      UnionProperty(body, FunctionBody);
+        /* @internal*/ OptionalProperty(exclamationToken, ExclamationToken); // Present for use with reporting a grammar error
     };
 
     struct ConstructorDeclaration: FunctionLikeDeclarationBase, ClassElement, BrandKind<types::Constructor> {
-        NodeUnion<ClassLikeDeclaration> &parent;
-        optional<FunctionBody> body;
+        shared<NodeUnion(ClassLikeDeclaration)> parent;
+        OptionalProperty(body, FunctionBody);
 
         /* @internal */ optional<NodeArray<TypeParameterDeclaration>> typeParameters; // Present for use with reporting a grammar error
-        /* @internal */ optional<TypeNode> type; // Present for use with reporting a grammar error
+        /* @internal */ OptionalProperty(type, TypeNode); // Present for use with reporting a grammar error
     };
 
     // See the comment on MethodDeclaration for the intuition behind GetAccessorDeclaration being a
     // ClassElement and an ObjectLiteralElement.
     struct GetAccessorDeclaration: BrandKind<SyntaxKind::GetAccessor, FunctionLikeDeclarationBase, ClassElement, TypeElement, ObjectLiteralElement> {
-        NodeUnion<ClassLikeDeclaration, ObjectLiteralExpression, TypeLiteralNode, InterfaceDeclaration> parent;
-        PropertyName name;
-        optional<FunctionBody> body;
+      ParentProperty(ClassLikeDeclaration, ObjectLiteralExpression, TypeLiteralNode, InterfaceDeclaration);
+      UnionProperty(name, PropertyName);
+        OptionalProperty(body, FunctionBody);
         /* @internal */ optional<NodeArray<TypeParameterDeclaration>> typeParameters; // Present for use with reporting a grammar error
     };
 
     // See the comment on MethodDeclaration for the intuition behind SetAccessorDeclaration being a
     // ClassElement and an ObjectLiteralElement.
     struct SetAccessorDeclaration: BrandKind<SyntaxKind::SetAccessor, FunctionLikeDeclarationBase, ClassElement, TypeElement, ObjectLiteralElement> {
-        NodeUnion<ClassLikeDeclaration, ObjectLiteralExpression, TypeLiteralNode, InterfaceDeclaration> parent;
-        PropertyName name;
-        optional<NodeUnion<FunctionBody>> body;
+      ParentProperty(ClassLikeDeclaration, ObjectLiteralExpression, TypeLiteralNode, InterfaceDeclaration);
+      UnionProperty(name, PropertyName);
+        OptionalUnionProperty(body, FunctionBody);
         /* @internal */ optional<NodeArray<TypeParameterDeclaration>> typeParameters; // Present for use with reporting a grammar error
-        /* @internal */ optional<TypeNode> type; // Present for use with reporting a grammar error
+        /* @internal */ OptionalProperty(type, TypeNode); // Present for use with reporting a grammar error
     };
 
 #define AccessorDeclaration GetAccessorDeclaration, SetAccessorDeclaration
 
-    using ObjectLiteralElementLike = NodeUnion<PropertyAssignment, ShorthandPropertyAssignment, SpreadAssignment, MethodDeclaration, AccessorDeclaration>;
+    using ObjectLiteralElementLike = NodeUnion(PropertyAssignment, ShorthandPropertyAssignment, SpreadAssignment, MethodDeclaration, AccessorDeclaration);
 
     template<class T>
     struct ObjectLiteralExpressionBase: PrimaryExpression {
@@ -2361,20 +2409,20 @@ namespace ts {
     };
 
     struct BinaryExpression: Expression, BrandKind<types::BinaryExpression> {
-        Expression left;
-        Node operatorToken; //BinaryOperatorToken uses a lot of different NodeType<T>
-        Expression right;
+        Property(left, Expression);
+        Property(operatorToken, Node); //BinaryOperatorToken uses a lot of different NodeType<T>
+        Property(right, Expression);
     };
 
 //    using AssignmentOperatorToken = Token<AssignmentOperator>;
 
     struct AssignmentExpression: BinaryExpression {
-        LeftHandSideExpression left;
+        Property(left, LeftHandSideExpression);
     };
 
     struct ObjectDestructuringAssignment: BinaryExpression {
-        ObjectLiteralExpression left;
-        EqualsToken operatorToken;
+        Property(left, ObjectLiteralExpression);
+        Property(operatorToken, EqualsToken);
     };
 
 //    export type DestructuringAssignment =
@@ -2436,25 +2484,25 @@ namespace ts {
 //    export type BindingOrAssignmentPattern = ObjectBindingOrAssignmentPattern | ArrayBindingOrAssignmentPattern;
 
     struct ConditionalExpression: Expression, BrandKind<types::ConditionalExpression> {
-        Expression condition;
-        QuestionToken questionToken;
-        Expression whenTrue;
-        ColonToken colonToken;
-        Expression whenFalse;
+        Property(condition, Expression);
+        Property(questionToken, QuestionToken);
+        Property(whenTrue, Expression);
+        Property(colonToken, ColonToken);
+        Property(whenFalse, Expression);
     };
 
     struct FunctionExpression: PrimaryExpression, FunctionLikeDeclarationBase, BrandKind<types::FunctionExpression> {
-        optional<Identifier> name;
-        optional<FunctionBody> body; // Required, whereas the member inherited from FunctionDeclaration is optional
+        OptionalProperty(name, Identifier);
+        OptionalProperty(body, FunctionBody); // Required, whereas the member inherited from FunctionDeclaration is optional
     };
 
 //    struct SignatureDeclaration: NodeType<CallSignatureDeclaration, ConstructSignatureDeclaration, MethodSignature, IndexSignatureDeclaration, FunctionTypeNode, ConstructorTypeNode, JSDocFunctionType, FunctionDeclaration, MethodDeclaration, ConstructorDeclaration, AccessorDeclaration, FunctionExpression, ArrowFunction> {};
 
     struct TypePredicateNode: BrandKind<SyntaxKind::TypePredicate, TypeNode> {
-        NodeUnion<CallSignatureDeclaration, ConstructSignatureDeclaration, MethodSignature, IndexSignatureDeclaration, FunctionTypeNode, ConstructorTypeNode, FunctionDeclaration, MethodDeclaration, ConstructorDeclaration, AccessorDeclaration, FunctionExpression, ArrowFunction> parent;
-        optional<AssertsKeyword> assertsModifier;
-        NodeUnion<Identifier, ThisTypeNode> parameterName;
-        optional<TypeNode> type;
+      ParentProperty(CallSignatureDeclaration, ConstructSignatureDeclaration, MethodSignature, IndexSignatureDeclaration, FunctionTypeNode, ConstructorTypeNode, FunctionDeclaration, MethodDeclaration, ConstructorDeclaration, AccessorDeclaration, FunctionExpression, ArrowFunction);
+        OptionalProperty(assertsModifier, AssertsKeyword);
+      UnionProperty(parameterName, Identifier, ThisTypeNode);
+        OptionalProperty(type, TypeNode);
     };
 
     struct ArrayLiteralExpression: BrandKind<SyntaxKind::ArrayLiteralExpression, PrimaryExpression> {
@@ -2464,13 +2512,13 @@ namespace ts {
     };
 
     struct ArrayDestructuringAssignment: BinaryExpression {
-        ArrayLiteralExpression left;
-        EqualsToken operatorToken;
+        Property(left, ArrayLiteralExpression);
+        Property(operatorToken, EqualsToken);
     };
 
     struct CallExpression: BrandKind<SyntaxKind::CallExpression, LeftHandSideExpression> {
-        LeftHandSideExpression expression;
-        optional<QuestionDotToken> questionDotToken;
+        Property(expression, LeftHandSideExpression);
+        OptionalProperty(questionDotToken, QuestionDotToken);
         optional<NodeArray<TypeNode>> typeArguments;
         NodeArray<Expression> arguments;
     };
@@ -2481,14 +2529,14 @@ namespace ts {
     struct CallChainRoot: CallChain {};
 
     struct NewExpression: BrandKind<SyntaxKind::NewExpression, PrimaryExpression> {
-        LeftHandSideExpression expression;
+        Property(expression, LeftHandSideExpression);
         optional<NodeArray<TypeNode>> typeArguments;
         optional<NodeArray<Expression>> arguments;
     };
 
     struct TypeAssertion: BrandKind<SyntaxKind::TypeAssertionExpression, UnaryExpression> {
-        TypeNode type;
-        UnaryExpression expression;
+        Property(type, TypeNode);
+        Property(expression, UnaryExpression);
     };
 
     struct TemplateExpression;
@@ -2497,93 +2545,93 @@ namespace ts {
     struct TemplateLiteralTypeSpan;
 
     struct TemplateHead: BrandKind<SyntaxKind::TemplateHead, TemplateLiteralLikeNode, Node> {
-        NodeUnion<TemplateExpression, TemplateLiteralTypeNode> parent;
+      ParentProperty(TemplateExpression, TemplateLiteralTypeNode);
         /* @internal */
         optional<types::TokenFlags> templateFlags;
     };
 
     struct TemplateMiddle: BrandKind<SyntaxKind::TemplateMiddle, TemplateLiteralLikeNode, Node> {
-        NodeUnion<TemplateSpan, TemplateLiteralTypeSpan> &parent;
+        shared<NodeUnion(TemplateSpan, TemplateLiteralTypeSpan)> parent;
         /* @internal */
         optional<types::TokenFlags> templateFlags;
     };
 
     struct TemplateTail: BrandKind<SyntaxKind::TemplateTail, TemplateLiteralLikeNode, Node> {
-        NodeUnion<TemplateSpan, TemplateLiteralTypeSpan> parent;
+      ParentProperty(TemplateSpan, TemplateLiteralTypeSpan);
         /* @internal */
         optional<types::TokenFlags> templateFlags;
     };
 
     struct TemplateLiteralTypeSpan: BrandKind<SyntaxKind::TemplateLiteralTypeSpan, TypeNode> {
-        TemplateLiteralTypeNode &parent;
-        TypeNode type;
-        NodeUnion<TemplateMiddle, TemplateTail> literal;
+        shared<TemplateLiteralTypeNode> parent;
+        Property(type, TypeNode);
+      UnionProperty(literal, TemplateMiddle, TemplateTail);
     };
 
     struct TemplateLiteralTypeNode: BrandKind<SyntaxKind::TemplateLiteralType, TypeNode> {
-        TemplateHead head;
+        Property(head, TemplateHead);
         NodeArray<TemplateLiteralTypeSpan> templateSpans;
     };
 
     struct TemplateExpression: BrandKind<SyntaxKind::TemplateExpression, PrimaryExpression> {
-        TemplateHead head;
+        Property(head, TemplateHead);
         NodeArray<TemplateSpan> templateSpans;
     };
 
 #define TemplateLiteral TemplateExpression, NoSubstitutionTemplateLiteral
 
     struct TaggedTemplateExpression: BrandKind<SyntaxKind::TaggedTemplateExpression, MemberExpression> {
-        LeftHandSideExpression tag;
+        Property(tag, LeftHandSideExpression);
         optional<NodeArray<TypeNode>> typeArguments;
-        NodeUnion<TemplateLiteral> templateLiteral;
-        /*@internal*/ optional<QuestionDotToken> questionDotToken; // NOTE: Invalid syntax, only used to report a grammar error.
+      UnionProperty(templateLiteral, TemplateLiteral);
+        /*@internal*/ OptionalProperty(questionDotToken, QuestionDotToken); // NOTE: Invalid syntax, only used to report a grammar error.
     };
 
     struct TemplateSpan: BrandKind<SyntaxKind::TemplateSpan, Node> {
-        TemplateExpression parent;
-        Expression expression;
-        NodeUnion<TemplateMiddle, TemplateTail> literal;
+        Property(parent, TemplateExpression);
+        Property(expression, Expression);
+      UnionProperty(literal, TemplateMiddle, TemplateTail);
     };
 
     struct AsExpression: BrandKind<SyntaxKind::AsExpression, Expression> {
-        Expression expression;
-        TypeNode type;
+        Property(expression, Expression);
+        Property(type, TypeNode);
     };
 
     struct NonNullExpression: BrandKind<SyntaxKind::NonNullExpression, LeftHandSideExpression> {
-        Expression expression;
+        Property(expression, Expression);
     };
 
     struct ParenthesizedExpression: BrandKind<SyntaxKind::ParenthesizedExpression, PrimaryExpression> {
-        Expression expression;
+        Property(expression, Expression);
     };
 
     struct SpreadElement: BrandKind<SyntaxKind::SpreadElement, Expression> {
-        NodeUnion<ArrayLiteralExpression, CallExpression, NewExpression> parent;
-        Expression expression;
+      ParentProperty(ArrayLiteralExpression, CallExpression, NewExpression);
+        Property(expression, Expression);
     };
 
     struct TypeQueryNode: BrandKind<SyntaxKind::TypeQuery, NodeWithTypeArguments> {
-        NodeUnion<EntityName> exprName;
+      UnionProperty(exprName, EntityName);
     };
 
     struct ArrayTypeNode: BrandKind<SyntaxKind::ArrayType, TypeNode> {
-        TypeNode elementType;
+        Property(elementType, TypeNode);
     };
 
     struct NamedTupleMember: BrandKind<SyntaxKind::NamedTupleMember, TypeNode> {
-        optional<DotDotDotToken> dotDotDotToken;
-        Identifier name;
-        optional<QuestionToken> questionToken;
-        TypeNode type;
+        OptionalProperty(dotDotDotToken, DotDotDotToken);
+        Property(name, Identifier);
+        OptionalProperty(questionToken, QuestionToken);
+        Property(type, TypeNode);
     };
 
     struct OptionalTypeNode: BrandKind<SyntaxKind::OptionalType, TypeNode> {
-        TypeNode type;
+        Property(type, TypeNode);
     };
 
     struct RestTypeNode: BrandKind<SyntaxKind::RestType, TypeNode> {
-        TypeNode type;
+        Property(type, TypeNode);
     };
 
     struct UnionTypeNode: BrandKind<SyntaxKind::UnionType, TypeNode> {
@@ -2597,23 +2645,23 @@ namespace ts {
 #define UnionOrIntersectionTypeNode UnionTypeNode, IntersectionTypeNode
 
     struct ConditionalTypeNode: BrandKind<SyntaxKind::ConditionalType, TypeNode> {
-        TypeNode checkType;
-        TypeNode extendsType;
-        TypeNode trueType;
-        TypeNode falseType;
+        Property(checkType, TypeNode);
+        Property(extendsType, TypeNode);
+        Property(trueType, TypeNode);
+        Property(falseType, TypeNode);
     };
 
     struct InferTypeNode: BrandKind<SyntaxKind::InferType, TypeNode> {
-        TypeParameterDeclaration typeParameter;
+        Property(typeParameter, TypeParameterDeclaration);
     };
 
     struct ParenthesizedTypeNode: BrandKind<SyntaxKind::ParenthesizedType, TypeNode> {
-        TypeNode type;
+        Property(type, TypeNode);
     };
 
     struct TypeOperatorNode: BrandKind<SyntaxKind::TypeOperator, TypeNode> {
-        SyntaxKind operatorKind;
-        TypeNode type;
+        Property(operatorKind, SyntaxKind);
+        Property(type, TypeNode);
     };
 
 /* @internal */
@@ -2622,16 +2670,16 @@ namespace ts {
     };
 
     struct IndexedAccessTypeNode: BrandKind<SyntaxKind::IndexedAccessType, TypeNode> {
-        TypeNode objectType;
-        TypeNode indexType;
+        Property(objectType, TypeNode);
+        Property(indexType, TypeNode);
     };
 
     struct MappedTypeNode: BrandKind<SyntaxKind::MappedType, TypeNode> {
-        optional<NodeUnion<ReadonlyKeyword, PlusToken, MinusToken>> readonlyToken;
-        TypeParameterDeclaration typeParameter;
-        optional<TypeNode> nameType;
-        optional<NodeUnion<QuestionToken, PlusToken, MinusToken>> questionToken;
-        optional<TypeNode> type;
+        OptionalUnionProperty(readonlyToken, ReadonlyKeyword, PlusToken, MinusToken);
+        Property(typeParameter, TypeParameterDeclaration);
+        OptionalProperty(nameType, TypeNode);
+        OptionalUnionProperty(questionToken, QuestionToken, PlusToken, MinusToken);
+        OptionalProperty(type, TypeNode);
         /** Used only to produce grammar errors */
         optional<NodeArray<TypeElement>> members;
     };
@@ -2648,7 +2696,7 @@ namespace ts {
     struct JsxAttributes;
 
     struct JsxTagNamePropertyAccess: PropertyAccessExpression {
-        NodeUnion<JsxTagNameExpression> expression;
+      UnionProperty(expression, JsxTagNameExpression);
     };
 
     struct JsxAttribute;
@@ -2656,46 +2704,46 @@ namespace ts {
     struct JsxFragment;
 
     struct JsxExpression: BrandKind<SyntaxKind::JsxExpression, Expression> {
-        NodeUnion<JsxElement, JsxFragment, JsxAttributeLike> parent;
-        optional<DotDotDotToken> dotDotDotToken;
-        optional<Expression> expression;
+      ParentProperty(JsxElement, JsxFragment, JsxAttributeLike);
+        OptionalProperty(dotDotDotToken, DotDotDotToken);
+        OptionalProperty(expression, Expression);
     };
 
     struct JsxAttribute: BrandKind<SyntaxKind::JsxAttribute, ObjectLiteralElement> {
-        JsxAttributes &parent;
-        Identifier name;
+        shared<JsxAttributes> parent;
+        Property(name, Identifier);
         /// JSX attribute initializers are optional; <X y /> is sugar for <X y={true} />
-        optional<NodeUnion<JsxAttributeValue>> initializer;
+        OptionalUnionProperty(initializer, JsxAttributeValue);
     };
 
     struct JsxAttributes: BrandKind<SyntaxKind::JsxAttributes, PrimaryExpression> {
-        NodeUnion<JsxOpeningLikeElement> &parent;
+        OptionalUnionProperty(parent, JsxOpeningLikeElement);
         NodeArray<JsxAttributeLike> properties;
     };
 
     // The opening element of a <Tag>...</Tag> JsxElement
     struct JsxOpeningElement: BrandKind<SyntaxKind::JsxOpeningElement, Expression> {
-        JsxElement &parent;
-        NodeUnion<JsxTagNameExpression> tagName;
+        shared<JsxElement> parent;
+      UnionProperty(tagName, JsxTagNameExpression);
         optional<NodeArray<TypeNode>> typeArguments;
-        JsxAttributes attributes;
+        Property(attributes, JsxAttributes);
     };
 
     struct JsxText: BrandKind<SyntaxKind::JsxText, LiteralLikeNode> {
-        NodeUnion<JsxElement, JsxFragment> parent;
+        shared<NodeUnion(JsxElement, JsxFragment)> parent;
         bool containsOnlyTriviaWhiteSpaces;
     };
 
     struct JsxClosingElement: BrandKind<SyntaxKind::JsxClosingElement, Node> {
-        JsxElement &parent;
-        NodeUnion<JsxTagNameExpression> tagName;
+        shared<JsxElement> parent;
+      UnionProperty(tagName, JsxTagNameExpression);
     };
 
     /// A JSX expression of the form <TagName attrs>...</TagName>
     struct JsxElement: BrandKind<SyntaxKind::JsxElement, PrimaryExpression> {
-        JsxOpeningElement openingElement;
+        Property(openingElement, JsxOpeningElement);
         NodeArray<JsxChild> children;
-        JsxClosingElement closingElement;
+        Property(closingElement, JsxClosingElement);
     };
 
     struct JsxAttribute;
@@ -2705,36 +2753,36 @@ namespace ts {
 
     // A JSX expression of the form <TagName attrs />
     struct JsxSelfClosingElement: BrandKind<SyntaxKind::JsxSelfClosingElement, PrimaryExpression> {
-        NodeUnion<JsxTagNameExpression> tagName;
+      UnionProperty(tagName, JsxTagNameExpression);
         optional<NodeArray<TypeNode>> typeArguments;
-        JsxAttributes attributes;
+        Property(attributes, JsxAttributes);
     };
 
     struct JsxFragment;
     /// The opening element of a <>...</> JsxFragment
     struct JsxOpeningFragment: BrandKind<SyntaxKind::JsxOpeningFragment, Expression> {
-        JsxFragment &parent;
+        shared<JsxFragment> parent;
     };
 
     /// The closing element of a <>...</> JsxFragment
     struct JsxClosingFragment: BrandKind<SyntaxKind::JsxClosingFragment, Expression> {
-        JsxFragment &parent;
+        shared<JsxFragment> parent;
     };
 
     /// A JSX expression of the form <>...</>
     struct JsxFragment: BrandKind<SyntaxKind::JsxFragment, PrimaryExpression> {
-        JsxOpeningFragment openingFragment;
+        Property(openingFragment, JsxOpeningFragment);
         NodeArray<JsxChild> children;
-        JsxClosingFragment closingFragment;
+        Property(closingFragment, JsxClosingFragment);
     };
 
     struct JsxSpreadAttribute: BrandKind<SyntaxKind::JsxSpreadAttribute, ObjectLiteralElement> {
-        JsxAttributes parent;
-        Expression expression;
+        Property(parent, JsxAttributes);
+        Property(expression, Expression);
     };
 
     struct LiteralTypeNode: BrandKind<SyntaxKind::LiteralType, TypeNode> {
-        NodeUnion<NullLiteral, BooleanLiteral, LiteralExpression, PrefixUnaryExpression> literal;
+      UnionProperty(literal, NullLiteral, BooleanLiteral, LiteralExpression, PrefixUnaryExpression);
     };
 
     struct TupleTypeNode: BrandKind<SyntaxKind::TupleType, TypeNode> {
@@ -2746,8 +2794,8 @@ namespace ts {
 //    using ClassMemberModifier = NodeType<AccessibilityModifier, ReadonlyKeyword, StaticKeyword>;
 
     struct Decorator: BrandKind<SyntaxKind::Decorator, Node> {
-        NamedDeclaration parent;
-        Expression expression;
+        Property(parent, NamedDeclaration);
+        Property(expression, Expression);
     };
 
     struct EndOfFileToken: Token<SyntaxKind::EndOfFileToken> {};
@@ -2755,10 +2803,10 @@ namespace ts {
     struct SourceFile: BrandKind<SyntaxKind::SourceFile, Node> {
         string fileName;
         NodeArray<Statement> statements;
-        EndOfFileToken endOfFileToken;
+        Property(endOfFileToken, EndOfFileToken);
 
         optional<types::ModuleKind> impliedNodeFormat;
 
-        OptionalNode externalModuleIndicator;
+        sharedOpt<Node> externalModuleIndicator;
     };
 }

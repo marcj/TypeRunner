@@ -1,22 +1,23 @@
 #pragma once
 
 #include <functional>
-#include <optional>
 #include <variant>
+#include <optional>
 #include <string>
 #include <vector>
 #include "types.h"
 #include "core.h"
 #include "node_test.h"
 #include "factory.h"
+#include "utilities.h"
 
 using namespace ts::types;
 
 namespace ts {
     using std::string;
     using std::vector;
-    using std::optional;
     using std::function;
+    using std::optional;
     using std::variant;
 
     enum class SignatureFlags {
@@ -55,19 +56,18 @@ namespace ts {
 ////    /* @internal */
 ////    export const parseNodeFactory = createNodeFactory(NodeFactoryFlags.NoParenthesizerRules, parseBaseNodeFactory);
 
-    LogicalOrReturnLast<optional<Node>> visitNode(function<optional<Node>(Node &)> cbNode, OptionalNode node) {
-        if (!empty(node)) LogicalOrReturnLast(cbNode(resolve(node)));
-        return LogicalOrReturnLast<optional<Node>>(nullopt);
-//        return LogicalOrReturnLast(node ? cbNode(*node) : nullptr);
+    sharedOpt<Node> visitNode(function<sharedOpt<Node>(shared<Node>)> cbNode, sharedOpt<Node> node) {
+        if (node) cbNode(node);
+        return nullptr;
     }
 
 //    Node *visitNode(function<Node*(Node &)> cbNode, Node &node) {
 //        return cbNode(node);
 //    }
 
-    LogicalOrReturnLast<optional<Node>> visitNodes(
-            function<optional<Node>(Node &)> cbNode,
-            optional<function<optional<Node>(BaseNodeArray)>> cbNodes,
+    sharedOpt<Node> visitNodes(
+            function<sharedOpt<Node>(shared<Node>)> cbNode,
+            optional<function<sharedOpt<Node>(BaseNodeArray)>> cbNodes,
             optional<BaseNodeArray> nodes
     ) {
         if (nodes) {
@@ -81,7 +81,7 @@ namespace ts {
                 }
             }
         }
-        return LogicalOrReturnLast<optional<Node>>(nullopt);
+        return nullptr;
     }
 
     /**
@@ -89,7 +89,7 @@ namespace ts {
      * returns a truthy value, then returns that value.
      * If no such value is found, the callback is applied to each element of array and undefined is returned.
      */
-    optional<Node> forEach(optional<BaseNodeArray> array, function<optional<Node>(Node &element, int index)> callback) {
+    sharedOpt<Node> forEach(optional<BaseNodeArray> array, function<sharedOpt<Node>(shared<Node> element, int index)> callback) {
         if (array) {
             for (int i = 0; i < array->list.size(); i ++) {
                 auto result = callback((*array).list[i], i);
@@ -98,10 +98,10 @@ namespace ts {
                 }
             }
         }
-        return nullopt;
+        return nullptr;
     }
 
-    bool some(optional<BaseNodeArray> array, optional<function<bool(Node &value)>> predicate) {
+    bool some(optional<BaseNodeArray> array, optional<function<bool(shared<Node> value)>> predicate) {
         if (array) {
             if (predicate) {
                 for (auto &v: array->list) {
@@ -109,54 +109,54 @@ namespace ts {
                         return true;
                     }
                 }
-            }
-            else {
+            } else {
                 return array->list.size() > 0;
             }
         }
         return false;
     }
 
-    optional<Node> forEachChild(Node &node, function<optional<Node>(Node &)> cbNode, optional<function<optional<Node>(BaseNodeArray)>> cbNodes = nullopt);
+    sharedOpt<Node> forEachChild(const shared<Node> &node, function<sharedOpt<Node>(shared<Node>)> cbNode, optional<function<sharedOpt<Node>(BaseNodeArray)>> cbNodes = nullopt);
 
     /** Do not use hasModifier inside the parser; it relies on parent pointers. Use this instead. */
-    bool hasModifierOfKind(Node &node, SyntaxKind kind) {
-        return some(node.modifiers, [kind](auto m) { return m.kind == kind; });
+    bool hasModifierOfKind(shared<Node> node, SyntaxKind kind) {
+        return some(node->modifiers, [kind](auto m) { return m->kind == kind; });
     }
 
-    optional<Node> isAnExternalModuleIndicatorNode(Node &node, int) {
+    sharedOpt<Node> isAnExternalModuleIndicatorNode(shared<Node> node, int) {
         if (hasModifierOfKind(node, SyntaxKind::ExportKeyword)
-               || (node.is<ImportEqualsDeclaration>() && isExternalModuleReference(node.to<ImportEqualsDeclaration>().moduleReference))
-               || isImportDeclaration(node)
-               || isExportAssignment(node)
-               || isExportDeclaration(node)) return node;
-        return nullopt;
+            || (node->is<ImportEqualsDeclaration>() && isExternalModuleReference(node->to<ImportEqualsDeclaration>().moduleReference))
+            || isImportDeclaration(node)
+            || isExportAssignment(node)
+            || isExportDeclaration(node))
+            return node;
+        return nullptr;
     }
 
-    bool isImportMeta(Node &node) {
+    bool isImportMeta(const shared<Node> &node) {
         if (isMetaProperty(node)) {
-            MetaProperty &meta = node.to<MetaProperty>();
-            return meta.keywordToken == SyntaxKind::ImportKeyword && meta.name.to<Identifier>().escapedText == "meta";
+            auto meta = node->to<MetaProperty>();
+            return meta.keywordToken == SyntaxKind::ImportKeyword && meta.name->to<Identifier>().escapedText == "meta";
         }
         return false;
     }
 
-    optional<Node> walkTreeForImportMeta(Node &node) {
+    sharedOpt<Node> walkTreeForImportMeta(const shared<Node> &node) {
         if (isImportMeta(node)) return node;
         return forEachChild(node, walkTreeForImportMeta, nullopt);
     }
 
-    optional<Node> getImportMetaIfNecessary(SourceFile &sourceFile) {
-        return sourceFile.to<SourceFile>().flags & (int) NodeFlags::PossiblyContainsImportMeta ?
+    sharedOpt<Node> getImportMetaIfNecessary(const shared<SourceFile> &sourceFile) {
+        return sourceFile->flags & (int) NodeFlags::PossiblyContainsImportMeta ?
                walkTreeForImportMeta(sourceFile) :
-               nullopt;
+               nullptr;
     }
 
     /*@internal*/
-    OptionalNode isFileProbablyExternalModule(SourceFile &sourceFile) {
+    sharedOpt<Node> isFileProbablyExternalModule(const shared<SourceFile> &sourceFile) {
         // Try to use the first top-level import/export when available, then
         // fall back to looking for an 'import.meta' somewhere in the tree if necessary.
-        auto r = forEach(sourceFile.statements, isAnExternalModuleIndicatorNode);
+        auto r = forEach(sourceFile->statements, isAnExternalModuleIndicatorNode);
         if (r) return r;
 
         return getImportMetaIfNecessary(sourceFile);
@@ -175,9 +175,9 @@ namespace ts {
      * @remarks `forEachChild` must visit the children of a node in the order
      * that they appear in the source code. The language service depends on this property to locate nodes by position.
      */
-    optional<Node> forEachChild(Node &node, function<optional<Node>(Node &)> cbNode, optional<function<optional<Node>(BaseNodeArray)>> cbNodes) {
+    sharedOpt<Node> forEachChild(Node &node, function<sharedOpt<Node>(shared<Node>)> cbNode, optional<function<sharedOpt<Node>(BaseNodeArray)>> cbNodes) {
         if (node.kind <= SyntaxKind::LastToken) {
-            return nullopt;
+            return nullptr;
         }
         switch (node.kind) {
             case SyntaxKind::QualifiedName:
@@ -262,6 +262,8 @@ namespace ts {
             case SyntaxKind::FunctionExpression:
             case SyntaxKind::FunctionDeclaration:
             case SyntaxKind::ArrowFunction: {
+                if (auto b = visitNodes(cbNode, cbNodes, node.decorators)) return b;
+
                 return visitNodes(cbNode, cbNodes, node.decorators) ||
                        visitNodes(cbNode, cbNodes, node.modifiers) ||
                        visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().asteriskToken) ||
@@ -271,7 +273,7 @@ namespace ts {
                        visitNodes(cbNode, cbNodes, node.cast<FunctionLikeDeclarationBase>().typeParameters) ||
                        visitNodes(cbNode, cbNodes, node.cast<FunctionLikeDeclarationBase>().parameters) ||
                        visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().type) ||
-                       (node.kind == SyntaxKind::ArrowFunction ? visitNode(cbNode, node.to<ArrowFunction>().equalsGreaterThanToken) : LogicalOrReturnLast<optional<Node>>(nullopt))  ||
+                       (node.kind == SyntaxKind::ArrowFunction ? visitNode(cbNode, node.to<ArrowFunction>().equalsGreaterThanToken) : shared<Node>(nullptr)) ||
                        visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().body);
             }
             case SyntaxKind::ClassStaticBlockDeclaration:
@@ -696,7 +698,7 @@ namespace ts {
          * `getSetExternalModuleIndicator` on a valid `CompilerOptions` object. If not present, the default
          * check specified by `isFileProbablyExternalModule` will be used to set the field.
          */
-        optional<function<void(SourceFile)>> setExternalModuleIndicator;
+        optional<function<void(shared<SourceFile>)>> setExternalModuleIndicator;
     };
 
 //
@@ -704,19 +706,19 @@ namespace ts {
 //        sourceFile.externalModuleIndicator = isFileProbablyExternalModule(sourceFile);
 //    }
 
-    void setExternalModuleIndicator(SourceFile &sourceFile) {
-        sourceFile.externalModuleIndicator = isFileProbablyExternalModule(sourceFile);
+    void setExternalModuleIndicator(shared<SourceFile> sourceFile) {
+        sourceFile->externalModuleIndicator = isFileProbablyExternalModule(sourceFile);
     }
 
     namespace Parser {
-//        parseSourceFile
+        shared<SourceFile> parseSourceFile(string fileName, string sourceText, ScriptTarget languageVersion, bool setParentNodes = false, optional<ScriptKind> scriptKind = {}, optional<function<void(shared<SourceFile>)>> setExternalModuleIndicatorOverride = {});
     };
 
-    SourceFile createSourceFile(string fileName, string sourceText, variant<ScriptTarget, CreateSourceFileOptions> languageVersionOrOptions, bool setParentNodes = false, optional<ScriptKind> scriptKind = {}) {
+    shared<SourceFile> createSourceFile(string fileName, string sourceText, variant<ScriptTarget, CreateSourceFileOptions> languageVersionOrOptions, bool setParentNodes = false, optional<ScriptKind> scriptKind = {}) {
 //        tracing?.push(tracing.Phase.Parse, "createSourceFile", { path: fileName }, /*separateBeginAndEnd*/ true);
 //        performance.mark("beforeParse");
-        SourceFile result = createBaseNode<SourceFile>();
-        optional<function<void(SourceFile)>> overrideSetExternalModuleIndicator;
+        shared_ptr<SourceFile> result = make_shared<SourceFile>();
+        optional<function<void(shared<SourceFile>)>> overrideSetExternalModuleIndicator;
         optional<ModuleKind> format;
 
 //        perfLogger.logStartParseSourceFile(fileName);
@@ -731,17 +733,17 @@ namespace ts {
         }
 
         if (languageVersion == ScriptTarget::JSON) {
-            result = Parser::parseSourceFile(fileName, sourceText, languageVersion, /*syntaxCursor*/ {}, setParentNodes, ScriptKind::JSON);
+            result = Parser::parseSourceFile(fileName, sourceText, languageVersion, setParentNodes, ScriptKind::JSON);
         } else {
-            optional<function<void(SourceFile)>> setIndicator = ! format.has_value() ? overrideSetExternalModuleIndicator : [format, overrideSetExternalModuleIndicator](SourceFile file) {
-                file.impliedNodeFormat = format;
+            optional<function<void(shared<SourceFile>)>> setIndicator = ! format.has_value() ? overrideSetExternalModuleIndicator : [format, overrideSetExternalModuleIndicator](shared<SourceFile> file) {
+                file->impliedNodeFormat = format;
                 if (overrideSetExternalModuleIndicator) {
                     (*overrideSetExternalModuleIndicator)(file);
                 } else {
                     setExternalModuleIndicator(file);
                 }
             };
-            result = Parser::parseSourceFile(fileName, sourceText, languageVersion, /*syntaxCursor*/ {}, setParentNodes, scriptKind, setIndicator);
+            result = Parser::parseSourceFile(fileName, sourceText, languageVersion, setParentNodes, scriptKind, setIndicator);
         }
 //        perfLogger.logStopParseSourceFile();
 //
@@ -840,255 +842,128 @@ namespace ts {
 //
 //        const factory = createNodeFactory(NodeFactoryFlags.NoParenthesizerRules | NodeFactoryFlags.NoNodeConverters | NodeFactoryFlags.NoOriginalNode, baseNodeFactory);
 //
-//        let fileName: string;
-//        let sourceFlags: NodeFlags;
-//        let sourceText: string;
-//        let languageVersion: ScriptTarget;
-//        let scriptKind: ScriptKind;
-//        let languageVariant: LanguageVariant;
-//        let parseDiagnostics: DiagnosticWithDetachedLocation[];
-//        let jsDocDiagnostics: DiagnosticWithDetachedLocation[];
+        string fileName = "";
+        /*NodeFlags*/ int sourceFlags = 0;
+        string sourceText = "";
+        ScriptTarget languageVersion;
+        ScriptKind scriptKind;
+        LanguageVariant languageVariant;
+        vector<DiagnosticWithDetachedLocation> parseDiagnostics;
+        vector<DiagnosticWithDetachedLocation> jsDocDiagnostics;
 //        let syntaxCursor: IncrementalParser.SyntaxCursor | undefined;
-//
-//        let currentToken: SyntaxKind;
-//        let nodeCount: number;
+
+        SyntaxKind currentToken;
+        int nodeCount = 0;
 //        let identifiers: ESMap<string, string>;
 //        let privateIdentifiers: ESMap<string, string>;
-//        let identifierCount: number;
-//
-//        let parsingContext: ParsingContext;
-//
+        int identifierCount = 0;
+
+        /*ParsingContext*/ int parsingContext = 0;
+
 //        let notParenthesizedArrow: Set<number> | undefined;
-//
-//        // Flags that dictate what parsing context we're in.  For example:
-//        // Whether or not we are in strict parsing mode.  All that changes in strict parsing mode is
-//        // that some tokens that would be considered identifiers may be considered keywords.
-//        //
-//        // When adding more parser context flags, consider which is the more common case that the
-//        // flag will be in.  This should be the 'false' state for that flag.  The reason for this is
-//        // that we don't store data in our nodes unless the value is in the *non-default* state.  So,
-//        // for example, more often than code 'allows-in' (or doesn't 'disallow-in').  We opt for
-//        // 'disallow-in' set to 'false'.  Otherwise, if we had 'allowsIn' set to 'true', then almost
-//        // all nodes would need extra state on them to store this info.
-//        //
-//        // Note: 'allowIn' and 'allowYield' track 1:1 with the [in] and [yield] concepts in the ES6
-//        // grammar specification.
-//        //
-//        // An important thing about these context concepts.  By default they are effectively inherited
-//        // while parsing through every grammar production.  i.e. if you don't change them, then when
-//        // you parse a sub-production, it will have the same context values as the parent production.
-//        // This is great most of the time.  After all, consider all the 'expression' grammar productions
-//        // and how nearly all of them pass along the 'in' and 'yield' context values:
-//        //
-//        // EqualityExpression[In, Yield] :
-//        //      RelationalExpression[?In, ?Yield]
-//        //      EqualityExpression[?In, ?Yield] == RelationalExpression[?In, ?Yield]
-//        //      EqualityExpression[?In, ?Yield] != RelationalExpression[?In, ?Yield]
-//        //      EqualityExpression[?In, ?Yield] == RelationalExpression[?In, ?Yield]
-//        //      EqualityExpression[?In, ?Yield] !== RelationalExpression[?In, ?Yield]
-//        //
-//        // Where you have to be careful is then understanding what the points are in the grammar
-//        // where the values are *not* passed along.  For example:
-//        //
-//        // SingleNameBinding[Yield,GeneratorParameter]
-//        //      [+GeneratorParameter]BindingIdentifier[Yield] Initializer[In]opt
-//        //      [~GeneratorParameter]BindingIdentifier[?Yield]Initializer[In, ?Yield]opt
-//        //
-//        // Here this is saying that if the GeneratorParameter context flag is set, that we should
-//        // explicitly set the 'yield' context flag to false before calling into the BindingIdentifier
-//        // and we should explicitly unset the 'yield' context flag before calling into the Initializer.
-//        // production.  Conversely, if the GeneratorParameter context flag is not set, then we
-//        // should leave the 'yield' context flag alone.
-//        //
-//        // Getting this all correct is tricky and requires careful reading of the grammar to
-//        // understand when these values should be changed versus when they should be inherited.
-//        //
-//        // Note: it should not be necessary to save/restore these flags during speculative/lookahead
-//        // parsing.  These context flags are naturally stored and restored through normal recursive
-//        // descent parsing and unwinding.
-//        let contextFlags: NodeFlags;
-//
-//        // Indicates whether we are currently parsing top-level statements.
-//        let topLevel = true;
-//
-//        // Whether or not we've had a parse error since creating the last AST node.  If we have
-//        // encountered an error, it will be stored on the next AST node we create.  Parse errors
-//        // can be broken down into three categories:
-//        //
-//        // 1) An error that occurred during scanning.  For example, an unterminated literal, or a
-//        //    character that was completely not understood.
-//        //
-//        // 2) A token was expected, but was not present.  This type of error is commonly produced
-//        //    by the 'parseExpected' function.
-//        //
-//        // 3) A token was present that no parsing function was able to consume.  This type of error
-//        //    only occurs in the 'abortParsingListOrMoveToNextToken' function when the parser
-//        //    decides to skip the token.
-//        //
-//        // In all of these cases, we want to mark the next node as having had an error before it.
-//        // With this mark, we can know in incremental settings if this node can be reused, or if
-//        // we have to reparse it.  If we don't keep this information around, we may just reuse the
-//        // node.  in that event we would then not produce the same errors as we did before, causing
-//        // significant confusion problems.
-//        //
-//        // Note: it is necessary that this value be saved/restored during speculative/lookahead
-//        // parsing.  During lookahead parsing, we will often create a node.  That node will have
-//        // this value attached, and then this value will be set back to 'false'.  If we decide to
-//        // rewind, we must get back to the same value we had prior to the lookahead.
-//        //
-//        // Note: any errors at the end of the file that do not precede a regular node, should get
-//        // attached to the EOF token.
-//        let parseErrorBeforeNextFinishedNode = false;
 
-        SourceFile parseSourceFileWorker(ScriptTarget languageVersion, bool setParentNodes, ScriptKind scriptKind, function<void(SourceFile&)> setExternalModuleIndicator);
+        // Flags that dictate what parsing context we're in.  For example:
+        // Whether or not we are in strict parsing mode.  All that changes in strict parsing mode is
+        // that some tokens that would be considered identifiers may be considered keywords.
+        //
+        // When adding more parser context flags, consider which is the more common case that the
+        // flag will be in.  This should be the 'false' state for that flag.  The reason for this is
+        // that we don't store data in our nodes unless the value is in the *non-default* state.  So,
+        // for example, more often than code 'allows-in' (or doesn't 'disallow-in').  We opt for
+        // 'disallow-in' set to 'false'.  Otherwise, if we had 'allowsIn' set to 'true', then almost
+        // all nodes would need extra state on them to store this info.
+        //
+        // Note: 'allowIn' and 'allowYield' track 1:1 with the [in] and [yield] concepts in the ES6
+        // grammar specification.
+        //
+        // An important thing about these context concepts.  By default they are effectively inherited
+        // while parsing through every grammar production.  i.e. if you don't change them, then when
+        // you parse a sub-production, it will have the same context values as the parent production.
+        // This is great most of the time.  After all, consider all the 'expression' grammar productions
+        // and how nearly all of them pass along the 'in' and 'yield' context values:
+        //
+        // EqualityExpression[In, Yield] :
+        //      RelationalExpression[?In, ?Yield]
+        //      EqualityExpression[?In, ?Yield] == RelationalExpression[?In, ?Yield]
+        //      EqualityExpression[?In, ?Yield] != RelationalExpression[?In, ?Yield]
+        //      EqualityExpression[?In, ?Yield] == RelationalExpression[?In, ?Yield]
+        //      EqualityExpression[?In, ?Yield] !== RelationalExpression[?In, ?Yield]
+        //
+        // Where you have to be careful is then understanding what the points are in the grammar
+        // where the values are *not* passed along.  For example:
+        //
+        // SingleNameBinding[Yield,GeneratorParameter]
+        //      [+GeneratorParameter]BindingIdentifier[Yield] Initializer[In]opt
+        //      [~GeneratorParameter]BindingIdentifier[?Yield]Initializer[In, ?Yield]opt
+        //
+        // Here this is saying that if the GeneratorParameter context flag is set, that we should
+        // explicitly set the 'yield' context flag to false before calling into the BindingIdentifier
+        // and we should explicitly unset the 'yield' context flag before calling into the Initializer.
+        // production.  Conversely, if the GeneratorParameter context flag is not set, then we
+        // should leave the 'yield' context flag alone.
+        //
+        // Getting this all correct is tricky and requires careful reading of the grammar to
+        // understand when these values should be changed versus when they should be inherited.
+        //
+        // Note: it should not be necessary to save/restore these flags during speculative/lookahead
+        // parsing.  These context flags are naturally stored and restored through normal recursive
+        // descent parsing and unwinding.
+        /*NodeFlags*/ int contextFlags = 0;
 
-        SourceFile parseSourceFile(string fileName, string sourceText, ScriptTarget languageVersion, bool setParentNodes = false, optional<ScriptKind> scriptKind = {}, optional<function<void(SourceFile&)>> setExternalModuleIndicatorOverride = {}) {
-            scriptKind = ensureScriptKind(fileName, scriptKind);
-//
-//            if (scriptKind == ScriptKind.JSON) {
-//                const result = parseJsonText(fileName, sourceText, languageVersion, syntaxCursor, setParentNodes);
-//                convertToObjectWorker(result, result.statements[0]?.expression, result.parseDiagnostics, /*returnValue*/ false, /*knownRootOptions*/ undefined, /*jsonConversionNotifier*/ undefined);
-//                result.referencedFiles = emptyArray;
-//                result.typeReferenceDirectives = emptyArray;
-//                result.libReferenceDirectives = emptyArray;
-//                result.amdDependencies = emptyArray;
-//                result.hasNoDefaultLib = false;
-//                result.pragmas = emptyMap as ReadonlyPragmaMap;
-//                return result;
-//            }
-//
-//            initializeState(fileName, sourceText, languageVersion, syntaxCursor, scriptKind);
-//
-            auto result = parseSourceFileWorker(languageVersion, setParentNodes, scriptKind, setExternalModuleIndicatorOverride ? *setExternalModuleIndicatorOverride : setExternalModuleIndicator);
-//
-//            clearState();
+        // Indicates whether we are currently parsing top-level statements.
+        bool topLevel = true;
 
-            return result;
-        }
-//
-//        export function parseIsolatedEntityName(content: string, languageVersion: ScriptTarget): EntityName | undefined {
-//            // Choice of `isDeclarationFile` should be arbitrary
-//            initializeState("", content, languageVersion, /*syntaxCursor*/ undefined, ScriptKind.JS);
-//            // Prime the scanner.
-//            nextToken();
-//            const entityName = parseEntityName(/*allowReservedWords*/ true);
-//            const isInvalid = token() == SyntaxKind::EndOfFileToken && !parseDiagnostics.length;
-//            clearState();
-//            return isInvalid ? entityName : undefined;
-//        }
-//
-//        export function parseJsonText(fileName: string, sourceText: string, languageVersion: ScriptTarget = ScriptTarget.ES2015, syntaxCursor?: IncrementalParser.SyntaxCursor, setParentNodes = false): JsonSourceFile {
-//            initializeState(fileName, sourceText, languageVersion, syntaxCursor, ScriptKind.JSON);
-//            sourceFlags = contextFlags;
-//
-//            // Prime the scanner.
-//            nextToken();
-//            const pos = getNodePos();
-//            let statements, endOfFileToken;
-//            if (token() == SyntaxKind::EndOfFileToken) {
-//                statements = createNodeArray([], pos, pos);
-//                endOfFileToken = parseTokenNode<EndOfFileToken>();
-//            }
-//            else {
-//                // Loop and synthesize an ArrayLiteralExpression if there are more than
-//                // one top-level expressions to ensure all input text is consumed.
-//                let expressions: Expression[] | Expression | undefined;
-//                while (token() !== SyntaxKind::EndOfFileToken) {
-//                    let expression;
-//                    switch (token()) {
-//                        case SyntaxKind::OpenBracketToken:
-//                            expression = parseArrayLiteralExpression();
-//                            break;
-//                        case SyntaxKind::TrueKeyword:
-//                        case SyntaxKind::FalseKeyword:
-//                        case SyntaxKind::NullKeyword:
-//                            expression = parseTokenNode<BooleanLiteral | NullLiteral>();
-//                            break;
-//                        case SyntaxKind::MinusToken:
-//                            if (lookAhead(() => nextToken() == SyntaxKind::NumericLiteral && nextToken() !== SyntaxKind::ColonToken)) {
-//                                expression = parsePrefixUnaryExpression() as JsonMinusNumericLiteral;
-//                            }
-//                            else {
-//                                expression = parseObjectLiteralExpression();
-//                            }
-//                            break;
-//                        case SyntaxKind::NumericLiteral:
-//                        case SyntaxKind::StringLiteral:
-//                            if (lookAhead(() => nextToken() !== SyntaxKind::ColonToken)) {
-//                                expression = parseLiteralNode() as StringLiteral | NumericLiteral;
-//                                break;
-//                            }
-//                            // falls through
-//                        default:
-//                            expression = parseObjectLiteralExpression();
-//                            break;
-//                    }
-//
-//                    // Error recovery: collect multiple top-level expressions
-//                    if (expressions && isArray(expressions)) {
-//                        expressions.push(expression);
-//                    }
-//                    else if (expressions) {
-//                        expressions = [expressions, expression];
-//                    }
-//                    else {
-//                        expressions = expression;
-//                        if (token() !== SyntaxKind::EndOfFileToken) {
-//                            parseErrorAtCurrentToken(Diagnostics.Unexpected_token);
-//                        }
-//                    }
-//                }
-//
-//                const expression = isArray(expressions) ? finishNode(factory.createArrayLiteralExpression(expressions), pos) : Debug.checkDefined(expressions);
-//                const statement = factory.createExpressionStatement(expression) as JsonObjectExpressionStatement;
-//                finishNode(statement, pos);
-//                statements = createNodeArray([statement], pos);
-//                endOfFileToken = parseExpectedToken(SyntaxKind::EndOfFileToken, Diagnostics.Unexpected_token);
-//            }
-//
-//            // Set source file so that errors will be reported with this file name
-//            const sourceFile = createSourceFile(fileName, ScriptTarget.ES2015, ScriptKind.JSON, /*isDeclaration*/ false, statements, endOfFileToken, sourceFlags, noop);
-//
-//            if (setParentNodes) {
-//                fixupParentReferences(sourceFile);
-//            }
-//
-//            sourceFile.nodeCount = nodeCount;
-//            sourceFile.identifierCount = identifierCount;
-//            sourceFile.identifiers = identifiers;
-//            sourceFile.parseDiagnostics = attachFileToDiagnostics(parseDiagnostics, sourceFile);
-//            if (jsDocDiagnostics) {
-//                sourceFile.jsDocDiagnostics = attachFileToDiagnostics(jsDocDiagnostics, sourceFile);
-//            }
-//
-//            const result = sourceFile as JsonSourceFile;
-//            clearState();
-//            return result;
-//        }
-//
-//        function initializeState(_fileName: string, _sourceText: string, _languageVersion: ScriptTarget, _syntaxCursor: IncrementalParser.SyntaxCursor | undefined, _scriptKind: ScriptKind) {
+        // Whether or not we've had a parse error since creating the last AST node.  If we have
+        // encountered an error, it will be stored on the next AST node we create.  Parse errors
+        // can be broken down into three categories:
+        //
+        // 1) An error that occurred during scanning.  For example, an unterminated literal, or a
+        //    character that was completely not understood.
+        //
+        // 2) A token was expected, but was not present.  This type of error is commonly produced
+        //    by the 'parseExpected' function.
+        //
+        // 3) A token was present that no parsing function was able to consume.  This type of error
+        //    only occurs in the 'abortParsingListOrMoveToNextToken' function when the parser
+        //    decides to skip the token.
+        //
+        // In all of these cases, we want to mark the next node as having had an error before it.
+        // With this mark, we can know in incremental settings if this node can be reused, or if
+        // we have to reparse it.  If we don't keep this information around, we may just reuse the
+        // node.  in that event we would then not produce the same errors as we did before, causing
+        // significant confusion problems.
+        //
+        // Note: it is necessary that this value be saved/restored during speculative/lookahead
+        // parsing.  During lookahead parsing, we will often create a node.  That node will have
+        // this value attached, and then this value will be set back to 'false'.  If we decide to
+        // rewind, we must get back to the same value we had prior to the lookahead.
+        //
+        // Note: any errors at the end of the file that do not precede a regular node, should get
+        // attached to the EOF token.
+        bool parseErrorBeforeNextFinishedNode = false;
+
+        void initializeState(string _fileName, string _sourceText, ScriptTarget _languageVersion, ScriptKind _scriptKind) {
 //            NodeConstructor = objectAllocator.getNodeConstructor();
 //            TokenConstructor = objectAllocator.getTokenConstructor();
 //            IdentifierConstructor = objectAllocator.getIdentifierConstructor();
 //            PrivateIdentifierConstructor = objectAllocator.getPrivateIdentifierConstructor();
 //            SourceFileConstructor = objectAllocator.getSourceFileConstructor();
 //
-//            fileName = normalizePath(_fileName);
-//            sourceText = _sourceText;
-//            languageVersion = _languageVersion;
-//            syntaxCursor = _syntaxCursor;
-//            scriptKind = _scriptKind;
-//            languageVariant = getLanguageVariant(_scriptKind);
-//
-//            parseDiagnostics = [];
-//            parsingContext = 0;
+            fileName = normalizePath(_fileName);
+            sourceText = _sourceText;
+            languageVersion = _languageVersion;
+            scriptKind = _scriptKind;
+            languageVariant = getLanguageVariant(_scriptKind);
+
+            parseDiagnostics.clear();
+            parsingContext = 0;
 //            identifiers = new Map<string, string>();
 //            privateIdentifiers = new Map<string, string>();
-//            identifierCount = 0;
-//            nodeCount = 0;
-//            sourceFlags = 0;
-//            topLevel = true;
-//
+            identifierCount = 0;
+            nodeCount = 0;
+            sourceFlags = 0;
+            topLevel = true;
+
 //            switch (scriptKind) {
 //                case ScriptKind.JS:
 //                case ScriptKind.JSX:
@@ -1131,7 +1006,7 @@ namespace ts {
 //            topLevel = true;
 //        }
 //
-        SourceFile parseSourceFileWorker(ScriptTarget languageVersion, bool setParentNodes, ScriptKind scriptKind, function<void(SourceFile&)> setExternalModuleIndicator) {
+            shared<SourceFile> parseSourceFileWorker(ScriptTarget languageVersion, bool setParentNodes, ScriptKind scriptKind, function<void(shared<SourceFile>)> setExternalModuleIndicator) {
 //            const isDeclarationFile = isDeclarationFileName(fileName);
 //            if (isDeclarationFile) {
 //                contextFlags |= NodeFlags::Ambient;
@@ -1170,7 +1045,7 @@ namespace ts {
 //            function reportPragmaDiagnostic(pos: number, end: number, diagnostic: DiagnosticMessage) {
 //                parseDiagnostics.push(createDetachedDiagnostic(fileName, pos, end, diagnostic));
 //            }
-        }
+            }
 //
 //        function withJSDoc<T extends HasJSDoc>(node: T, hasJSDoc: boolean): T {
 //            return hasJSDoc ? addJSDocComment(node) : node;
@@ -7711,41 +7586,41 @@ namespace ts {
 //            const node = factory.createExportAssignment(decorators, modifiers, isExportEquals, expression);
 //            return withJSDoc(finishNode(node, pos), hasJSDoc);
 //        }
-//
-//        const enum ParsingContext {
-//            SourceElements,            // Elements in source file
-//            BlockStatements,           // Statements in block
-//            SwitchClauses,             // Clauses in switch statement
-//            SwitchClauseStatements,    // Statements in switch clause
-//            TypeMembers,               // Members in interface or type literal
-//            ClassMembers,              // Members in class declaration
-//            EnumMembers,               // Members in enum declaration
-//            HeritageClauseElement,     // Elements in a heritage clause
-//            VariableDeclarations,      // Variable declarations in variable statement
-//            ObjectBindingElements,     // Binding elements in object binding list
-//            ArrayBindingElements,      // Binding elements in array binding list
-//            ArgumentExpressions,       // Expressions in argument list
-//            ObjectLiteralMembers,      // Members in object literal
-//            JsxAttributes,             // Attributes in jsx element
-//            JsxChildren,               // Things between opening and closing JSX tags
-//            ArrayLiteralMembers,       // Members in array literal
-//            Parameters,                // Parameters in parameter list
-//            JSDocParameters,           // JSDoc parameters in parameter list of JSDoc function type
-//            RestProperties,            // Property names in a rest type list
-//            TypeParameters,            // Type parameters in type parameter list
-//            TypeArguments,             // Type arguments in type argument list
-//            TupleElementTypes,         // Element types in tuple element type list
-//            HeritageClauses,           // Heritage clauses for a class or interface declaration.
-//            ImportOrExportSpecifiers,  // Named import clause's import specifier list,
-//            AssertEntries,               // Import entries list.
-//            Count                      // Number of parsing contexts
-//        }
-//
-//        const enum Tristate {
-//            False,
-//            True,
-//            Unknown
-//        }
+
+            enum class ParsingContext {
+                SourceElements,            // Elements in source file
+                BlockStatements,           // Statements in block
+                SwitchClauses,             // Clauses in switch statement
+                SwitchClauseStatements,    // Statements in switch clause
+                TypeMembers,               // Members in interface or type literal
+                ClassMembers,              // Members in class declaration
+                EnumMembers,               // Members in enum declaration
+                HeritageClauseElement,     // Elements in a heritage clause
+                VariableDeclarations,      // Variable declarations in variable statement
+                ObjectBindingElements,     // Binding elements in object binding list
+                ArrayBindingElements,      // Binding elements in array binding list
+                ArgumentExpressions,       // Expressions in argument list
+                ObjectLiteralMembers,      // Members in object literal
+                JsxAttributes,             // Attributes in jsx element
+                JsxChildren,               // Things between opening and closing JSX tags
+                ArrayLiteralMembers,       // Members in array literal
+                Parameters,                // Parameters in parameter list
+                JSDocParameters,           // JSDoc parameters in parameter list of JSDoc function type
+                RestProperties,            // Property names in a rest type list
+                TypeParameters,            // Type parameters in type parameter list
+                TypeArguments,             // Type arguments in type argument list
+                TupleElementTypes,         // Element types in tuple element type list
+                HeritageClauses,           // Heritage clauses for a class or interface declaration.
+                ImportOrExportSpecifiers,  // Named import clause's import specifier list,
+                AssertEntries,               // Import entries list.
+                Count                      // Number of parsing contexts
+            };
+
+            enum class Tristate {
+                False,
+                True,
+                Unknown
+            };
 //
 //        export namespace JSDocParser {
 //            export function parseJSDocTypeExpressionForTests(content: string, start: number | undefined, length: number | undefined): { jsDocTypeExpression: JSDocTypeExpression, diagnostics: Diagnostic[] } | undefined {
@@ -8782,7 +8657,134 @@ namespace ts {
 //                }
 //            }
 //        }
-    }
+        }
+
+        shared<SourceFile> parseSourceFileWorker(ScriptTarget languageVersion, bool setParentNodes, ScriptKind scriptKind, function<void(shared<SourceFile>)> setExternalModuleIndicator);
+
+        shared<SourceFile> parseSourceFile(string fileName, string sourceText, ScriptTarget languageVersion, bool setParentNodes, optional<ScriptKind> scriptKind, optional<function<void(shared<SourceFile>)>> setExternalModuleIndicatorOverride) {
+            scriptKind = ensureScriptKind(fileName, scriptKind);
+//
+//            if (scriptKind == ScriptKind.JSON) {
+//                const result = parseJsonText(fileName, sourceText, languageVersion, syntaxCursor, setParentNodes);
+//                convertToObjectWorker(result, result.statements[0]?.expression, result.parseDiagnostics, /*returnValue*/ false, /*knownRootOptions*/ undefined, /*jsonConversionNotifier*/ undefined);
+//                result.referencedFiles = emptyArray;
+//                result.typeReferenceDirectives = emptyArray;
+//                result.libReferenceDirectives = emptyArray;
+//                result.amdDependencies = emptyArray;
+//                result.hasNoDefaultLib = false;
+//                result.pragmas = emptyMap as ReadonlyPragmaMap;
+//                return result;
+//            }
+//
+            initializeState(fileName, sourceText, languageVersion, scriptKind);
+
+            auto result = parseSourceFileWorker(languageVersion, setParentNodes, *scriptKind, setExternalModuleIndicatorOverride ? *setExternalModuleIndicatorOverride : setExternalModuleIndicator);
+//
+//            clearState();
+
+            return result;
+        }
+//
+//        export function parseIsolatedEntityName(content: string, languageVersion: ScriptTarget): EntityName | undefined {
+//            // Choice of `isDeclarationFile` should be arbitrary
+//            initializeState("", content, languageVersion, /*syntaxCursor*/ undefined, ScriptKind.JS);
+//            // Prime the scanner.
+//            nextToken();
+//            const entityName = parseEntityName(/*allowReservedWords*/ true);
+//            const isInvalid = token() == SyntaxKind::EndOfFileToken && !parseDiagnostics.length;
+//            clearState();
+//            return isInvalid ? entityName : undefined;
+//        }
+//
+//        export function parseJsonText(fileName: string, sourceText: string, languageVersion: ScriptTarget = ScriptTarget.ES2015, syntaxCursor?: IncrementalParser.SyntaxCursor, setParentNodes = false): JsonSourceFile {
+//            initializeState(fileName, sourceText, languageVersion, syntaxCursor, ScriptKind.JSON);
+//            sourceFlags = contextFlags;
+//
+//            // Prime the scanner.
+//            nextToken();
+//            const pos = getNodePos();
+//            let statements, endOfFileToken;
+//            if (token() == SyntaxKind::EndOfFileToken) {
+//                statements = createNodeArray([], pos, pos);
+//                endOfFileToken = parseTokenNode<EndOfFileToken>();
+//            }
+//            else {
+//                // Loop and synthesize an ArrayLiteralExpression if there are more than
+//                // one top-level expressions to ensure all input text is consumed.
+//                let expressions: Expression[] | Expression | undefined;
+//                while (token() !== SyntaxKind::EndOfFileToken) {
+//                    let expression;
+//                    switch (token()) {
+//                        case SyntaxKind::OpenBracketToken:
+//                            expression = parseArrayLiteralExpression();
+//                            break;
+//                        case SyntaxKind::TrueKeyword:
+//                        case SyntaxKind::FalseKeyword:
+//                        case SyntaxKind::NullKeyword:
+//                            expression = parseTokenNode<BooleanLiteral | NullLiteral>();
+//                            break;
+//                        case SyntaxKind::MinusToken:
+//                            if (lookAhead(() => nextToken() == SyntaxKind::NumericLiteral && nextToken() !== SyntaxKind::ColonToken)) {
+//                                expression = parsePrefixUnaryExpression() as JsonMinusNumericLiteral;
+//                            }
+//                            else {
+//                                expression = parseObjectLiteralExpression();
+//                            }
+//                            break;
+//                        case SyntaxKind::NumericLiteral:
+//                        case SyntaxKind::StringLiteral:
+//                            if (lookAhead(() => nextToken() !== SyntaxKind::ColonToken)) {
+//                                expression = parseLiteralNode() as StringLiteral | NumericLiteral;
+//                                break;
+//                            }
+//                            // falls through
+//                        default:
+//                            expression = parseObjectLiteralExpression();
+//                            break;
+//                    }
+//
+//                    // Error recovery: collect multiple top-level expressions
+//                    if (expressions && isArray(expressions)) {
+//                        expressions.push(expression);
+//                    }
+//                    else if (expressions) {
+//                        expressions = [expressions, expression];
+//                    }
+//                    else {
+//                        expressions = expression;
+//                        if (token() !== SyntaxKind::EndOfFileToken) {
+//                            parseErrorAtCurrentToken(Diagnostics.Unexpected_token);
+//                        }
+//                    }
+//                }
+//
+//                const expression = isArray(expressions) ? finishNode(factory.createArrayLiteralExpression(expressions), pos) : Debug.checkDefined(expressions);
+//                const statement = factory.createExpressionStatement(expression) as JsonObjectExpressionStatement;
+//                finishNode(statement, pos);
+//                statements = createNodeArray([statement], pos);
+//                endOfFileToken = parseExpectedToken(SyntaxKind::EndOfFileToken, Diagnostics.Unexpected_token);
+//            }
+//
+//            // Set source file so that errors will be reported with this file name
+//            const sourceFile = createSourceFile(fileName, ScriptTarget.ES2015, ScriptKind.JSON, /*isDeclaration*/ false, statements, endOfFileToken, sourceFlags, noop);
+//
+//            if (setParentNodes) {
+//                fixupParentReferences(sourceFile);
+//            }
+//
+//            sourceFile.nodeCount = nodeCount;
+//            sourceFile.identifierCount = identifierCount;
+//            sourceFile.identifiers = identifiers;
+//            sourceFile.parseDiagnostics = attachFileToDiagnostics(parseDiagnostics, sourceFile);
+//            if (jsDocDiagnostics) {
+//                sourceFile.jsDocDiagnostics = attachFileToDiagnostics(jsDocDiagnostics, sourceFile);
+//            }
+//
+//            const result = sourceFile as JsonSourceFile;
+//            clearState();
+//            return result;
+//        }
+//
 //
 //    namespace IncrementalParser {
 //        export function updateSourceFile(sourceFile: SourceFile, newText: string, textChangeRange: TextChangeRange, aggressiveChecks: boolean): SourceFile {
@@ -9670,4 +9672,4 @@ namespace ts {
 //        return (lhs as PropertyAccessExpression).name.escapedText == (rhs as PropertyAccessExpression).name.escapedText &&
 //            tagNamesAreEquivalent((lhs as PropertyAccessExpression).expression as JsxTagNameExpression, (rhs as PropertyAccessExpression).expression as JsxTagNameExpression);
 //    }
-}
+    }

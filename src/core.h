@@ -10,6 +10,33 @@
 namespace ts {
     using namespace std;
 
+    unsigned constexpr const_hash(char const *input) {
+        return *input ?
+               static_cast<unsigned int>(*input) + 33 * const_hash(input + 1) :
+               5381;
+    }
+
+    unsigned constexpr const_hash(const string &input) {
+        return const_hash(input.c_str());
+    }
+
+    constexpr unsigned operator "" _hash(const char *s, size_t) {
+        return const_hash(s);
+    }
+
+    /**
+     * shared_ptr has optional semantic already built-in, so we use it instead of std::optional,
+     * but instead of using shared_ptr directly, we use opt<T> to make it clear that it can be empty.
+     */
+    template<typename T>
+    using sharedOpt = shared_ptr<T>;
+
+    /**
+     * Because shared_ptr<T> is ugly.
+     */
+    template<typename T>
+    using shared = shared_ptr<T>;
+
 //
 //    template<class T>
 //    using Optional = optional<reference_wrapper<const T>>;

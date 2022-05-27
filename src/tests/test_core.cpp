@@ -59,14 +59,14 @@ struct OptionalRef: public optional<T> {
 //};
 
 TEST(core, optionalNode) {
-    optional<Identifier> i;
-    EXPECT_EQ(i.has_value(), false);
+    sharedOpt<Identifier> i;
+    EXPECT_EQ(!!i, false);
 
-    i.emplace(Identifier());
-    EXPECT_EQ(i.has_value(), true);
+    i = make_shared<Identifier>();
+    EXPECT_EQ(!!i, true);
 
-    auto fn = [](OptionalNode node) {
-        resolve(node).to<Identifier>().escapedText = "changed";
+    auto fn = [](sharedOpt<Node> node) {
+        node->to<Identifier>().escapedText = "changed";
     };
 
     fn(i);
@@ -75,31 +75,192 @@ TEST(core, optionalNode) {
     EXPECT_EQ(i->escapedText, "changed");
 }
 
-SyntaxKind takeUnion(BaseUnion &node) {
-    return node.kind();
+struct TestEnum {
+    constexpr static auto a = "a", b = "b", c = "c";
+};
+
+TEST(core, constHash) {
+    int i = 0;
+
+    auto b = "b";
+
+    switch (const_hash(b)) {
+        case const_hash(TestEnum::a):
+            i = 1;
+            break;
+        case const_hash(TestEnum::b):
+            i = 2;
+            break;
+        case const_hash(TestEnum::c):
+            i = 3;
+            break;
+    }
+
+    EXPECT_EQ(i, 2);
 }
 
-SyntaxKind takeNode(const Node &node) {
-    return node.kind;
+TEST(core, switchString) {
+    int i = 0;
+
+    auto b = "b";
+
+    switch (const_hash(b)) {
+        case "a"_hash:
+            i = 1;
+            break;
+        case "b"_hash:
+            i = 2;
+            break;
+        case "c"_hash:
+            i = 3;
+            break;
+    }
+
+    EXPECT_EQ(i, 2);
 }
 
-SyntaxKind takeOptionalNode(OptionalNode node) {
-    return resolve(node).kind;
+shared<Node> visitNode(const function<shared<Node>(shared<Node>)> &cbNode, sharedOpt<Node> node) {
+    if (! node) return nullptr;
+    return cbNode(node);
+}
+
+TEST(core, nodeVisitAlternative) {
+    shared_ptr<Node> empty;
+    shared_ptr<Node> a = make_shared<Identifier>();
+    shared_ptr<Node> s = make_shared<SourceFile>();
+
+    EXPECT_EQ(a->kind, SyntaxKind::Identifier);
+
+    a = make_shared<SourceFile>();
+    a = s;
+
+    visitNode([&a](auto n) {
+        EXPECT_EQ(&(*n), &(*a)) << "Same reference is passed";
+        return nullptr;
+    }, a);
+}
+
+//variant<reference_wrapper<optional<Node>>, optional<Node>> operator || (bool a, optional<Node> &b) {
+//    if (!a) return b;
+//    return nullopt;
+//};
+
+void acceptShared(shared<Node> node) {
+    if (node->is<Identifier>()) {
+        node->to<Identifier>().escapedText = "changed";
+    }
+}
+
+//TEST(core, passNodeUnionToSharedNode) {
+//    {
+//        NodeUnion<EntityName> entity;
+//        EXPECT_EQ(entity.is<Identifier>(), true);
+//        acceptShared(entity);
+//    }
+//
+////    {
+////        NodeUnion<EntityName> entity{Identifier()};
+////        acceptShared(entity);
+////    }
+//}
+
+TEST(core, passNodeToShared) {
+    {
+        Identifier node;
+        acceptShared(make_shared<Identifier>(node));
+        EXPECT_EQ(node.escapedText, "");
+    }
+
+    {
+        auto node = make_shared<Identifier>();
+        acceptShared(node);
+        EXPECT_EQ(node->escapedText, "changed");
+    }
+}
+
+TEST(core, logicalOrOverload) {
+    sharedOpt<Node> empty;
+    sharedOpt<Node> a = make_shared<Identifier>();
+    sharedOpt<Node> b = make_shared<SourceFile>();
+    sharedOpt<Node> c = make_shared<FunctionDeclaration>();
+
+    EXPECT_EQ(a.get(), a.get());
+    EXPECT_EQ(a.get(), (a || b).get());
+    EXPECT_EQ(a.get(), (a || empty).get());
+    EXPECT_EQ(a.get(), (empty || a).get());
+    EXPECT_EQ(empty.get(), (empty || empty).get());
+
+    EXPECT_EQ(b.get(), (empty || b || a).get());
+
+    EXPECT_EQ(a.get(), (a || b || c).get());
+    EXPECT_EQ(b.get(), (empty || b || c).get());
+    EXPECT_EQ(c.get(), (empty || empty || c).get());
+}
+
+//TEST(core, assignUnionKeepsRef) {
+//    //this is important so that moving around NodeUnion (even accidentally via by-value) doesn't mean we lose the reference
+//    //since NodeUnion should act as regular {} in JS.
+//    NodeUnion<Identifier, SourceFile> i1;
+//    EXPECT_EQ(i1.kind(), SyntaxKind::Identifier);
+//    i1.to<SourceFile>();
+//    EXPECT_EQ(i1.kind(), SyntaxKind::SourceFile);
+//
+//    NodeUnion<Identifier, SourceFile> i2 = i1;
+//    EXPECT_EQ(i2.kind(), SyntaxKind::SourceFile);
+//    EXPECT_EQ(&(*i1.node), &(*i2.node));
+//}
+
+
+//NodeUnion has no type related semantics, just meta-data
+SyntaxKind takeUnion(shared<NodeUnion(Identifier, SourceFile)> node) {
+    return node->kind;
+}
+
+SyntaxKind takeNode(shared<Node> node) {
+    return node->kind;
+}
+
+SyntaxKind takeOptionalNode(sharedOpt<Node> node) {
+    if (node) return node->kind;
+    return SyntaxKind::Unknown;
+}
+
+SyntaxKind takeOptionalNodeUnion(sharedOpt<NodeUnion(Identifier, SourceFile)> node) {
+    if (node) return node->kind;
+    return SyntaxKind::Unknown;
+}
+
+TEST(core, ParameterDeclaration) {
+    auto p = make_shared<ParameterDeclaration>();
+
+    EXPECT_EQ(takeUnion(p->name), SyntaxKind::Identifier);
+    EXPECT_EQ(takeNode(p->name), SyntaxKind::Identifier);
+    EXPECT_EQ(takeOptionalNode(p->name), SyntaxKind::Identifier);
+    EXPECT_EQ(takeOptionalNodeUnion(p->name), SyntaxKind::Identifier);
 }
 
 TEST(core, nodeUnion) {
-    NodeUnion<Identifier, SourceFile> i1;
+    shared<NodeUnion(Identifier, SourceFile)> i1 = make_shared<Identifier>();
     EXPECT_EQ(takeUnion(i1), SyntaxKind::Identifier);
     EXPECT_EQ(takeNode(i1), SyntaxKind::Identifier);
+    EXPECT_EQ(takeOptionalNode(i1), SyntaxKind::Identifier);
+    EXPECT_EQ(takeOptionalNodeUnion(i1), SyntaxKind::Identifier);
 
-    NodeUnion<Identifier, SourceFile> i2{SourceFile()};
+    shared<NodeUnion(Identifier, SourceFile)> i2(new SourceFile);
     EXPECT_EQ(takeUnion(i2), SyntaxKind::SourceFile);
     EXPECT_EQ(takeNode(i2), SyntaxKind::SourceFile);
+    EXPECT_EQ(takeOptionalNode(i2), SyntaxKind::SourceFile);
+    EXPECT_EQ(takeOptionalNodeUnion(i2), SyntaxKind::SourceFile);
 
-    EXPECT_EQ(takeOptionalNode(i1), SyntaxKind::Identifier);
-    optional<NodeUnion<Identifier, SourceFile>> o1;
-    o1.emplace(Identifier());
+    sharedOpt<NodeUnion(Identifier, SourceFile)> o1(new Identifier);
+    EXPECT_EQ(takeUnion(o1), SyntaxKind::Identifier);
+    EXPECT_EQ(takeNode(o1), SyntaxKind::Identifier);
     EXPECT_EQ(takeOptionalNode(o1), SyntaxKind::Identifier);
+    EXPECT_EQ(takeOptionalNodeUnion(o1), SyntaxKind::Identifier);
+
+    sharedOpt<NodeUnion(Identifier, SourceFile)> o2;
+    EXPECT_EQ(takeOptionalNode(o2), SyntaxKind::Unknown);
+    EXPECT_EQ(takeOptionalNodeUnion(o2), SyntaxKind::Unknown);
 }
 
 TEST(core, node2) {
@@ -128,100 +289,6 @@ TEST(core, node) {
     EXPECT_EQ(node.to<Identifier>().escapedText, "id");
 }
 
-//TEST(core, nodeUnion) {
-//    NodeType<Identifier, QualifiedName> node;
-//
-//    EXPECT_EQ(node.kinds()[0], SyntaxKind::Identifier);
-//    EXPECT_EQ(node.kinds()[1], SyntaxKind::QualifiedName);
-//
-//    EXPECT_EQ(node.contains(SyntaxKind::Identifier), true);
-//    EXPECT_EQ(node.contains(SyntaxKind::QualifiedName), true);
-//    EXPECT_EQ(node.contains(SyntaxKind::TypeParameter), false);
-//
-////    using MyIds = variant<Identifier, QualifiedName>;
-//////    struct MyIds: NodeType<Identifier, QualifiedName>{};
-////
-////    auto id = createBaseNode<Identifier>();
-////    id.to<Identifier>().escapedText = "id";
-////
-////    auto id2 = id.toUnion<MyIds>();
-//}
-
-struct A {
-    constexpr static auto kind = types::SyntaxKind::TypeParameter;
-};
-
-#include <type_traits>
-
-struct B {
-//    using kind = types::SyntaxKind::Identifier;
-    constexpr static auto kind = types::SyntaxKind::Identifier;
-};
-
-//template<template <int> typename T, int N>
-//constexpr auto extract(const T<N>&...) -> val<N>;
-
-//template<typename ... T>
-//constexpr auto extract_N = declval(T...)::kind;
-
-//template<typename ... T>
-//struct NodeUnion2: public Node {
-//    using ETypes = std::tuple<decltype(T{})...>;
-//    ETypes types;
-//
-//    bool contains(types::SyntaxKind kind) {
-//        getKinds(types);
-//        return false;
-//    }
-//};
-
-////    using Ts::g...;
-//
-//    template<Ts... Values> // expands to a non-type template parameter
-//    struct apply {};      // list, such as <int, char, int(&)[5]>
-//
-//    int types() {
-//        vector<int> kinds{...Ts::kind};
-////        auto lm = [&, Ts...] { return g(Ts...); };
-//    }
-//};
-
-//void myFunction(BaseNodeStructureWithoutDecorators &node) {
-//    auto sourceFile = to<SourceFile>(node);
-//}
-//
-//TEST(core, variants) {
-//    SourceFile sourceFile;
-//    myFunction(sourceFile);
-//}
-
-TEST(core, variantUnion) {
-//    NodeUnion2<A, B> n;
-//    n.contains(types::SyntaxKind::Identifier);
-////    std::cout << n.contains(types::SyntaxKind::Identifier) << '\n';
-////    std::cout << n.contains(types::SyntaxKind::TypeParameter) << '\n';
-////    std::cout << n.contains(types::SyntaxKind::ArrayType) << '\n';
-////    std::cout << std::get<0>(n.types).kind;
-////    std::cout << std::get<1>(n.types).kind;
-}
-
-template<class T>
-int extractKind() {
-//    auto a = declval<T>();
-//    std::cout << a;
-    return T::kind;
-}
-
-template<typename ... T>
-struct NodeUnion: public Node {
-    using T2 = std::tuple<decltype(T{})...>;
-};
-
-TEST(core, extractKind) {
-    std::cout << extractKind<A>() << '\n';
-    std::cout << extractKind<B>() << '\n';
-}
-
 TEST(core, logicalOrOverride) {
     auto a = LogicalOrReturnLast(0);
     auto b = LogicalOrReturnLast(1);
@@ -239,16 +306,13 @@ TEST(core, logicalOrOverride) {
     EXPECT_EQ((int) ((LogicalOrReturnLast<int>) 3 || a || b), 3);
 }
 
-//#include <regex>
-//#include <iostream>
-//
-//TEST_CASE( "test regex" ) {
-//    std::regex regex("^///?\\s*@(ts-expect-error|ts-ignore)");
-//    std::cmatch m;
-//
-//    if(std::regex_search("//@ts-ignore", m, regex)) {
-//        std::cout << m[1] << "\n";
-//    }
-//
-//    REQUIRE( 1 == 1 );
-//}
+TEST(core, regex) {
+    std::regex regex("^///?\\s*@(ts-expect-error|ts-ignore)");
+    std::cmatch m;
+
+    if (std::regex_search("//@ts-ignore", m, regex)) {
+        std::cout << m[1] << "\n";
+    }
+
+    EXPECT_EQ(m[1], "ts-ignore");
+}
