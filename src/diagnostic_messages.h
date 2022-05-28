@@ -123,6 +123,7 @@ namespace ts {
         static inline const auto String_literal_expected = diag(1141, DiagnosticCategory::Error, "String_literal_expected_1141", "String literal expected.");
         static inline const auto Line_break_not_permitted_here = diag(1142, DiagnosticCategory::Error, "Line_break_not_permitted_here_1142", "Line break not permitted here.");
         static inline const auto or_expected = diag(1144, DiagnosticCategory::Error, "or_expected_1144", "'{' or ';' expected.");
+        static inline const auto or_JSX_element_expected = diag(1145, DiagnosticCategory::Error, "or_JSX_element_expected_1145", "{' or JSX element expected.");
         static inline const auto Declaration_expected = diag(1146, DiagnosticCategory::Error, "Declaration_expected_1146", "Declaration expected.");
         static inline const auto Import_declarations_in_a_namespace_cannot_reference_a_module = diag(1147, DiagnosticCategory::Error, "Import_declarations_in_a_namespace_cannot_reference_a_module_1147", "Import declarations in a namespace cannot reference a module.");
         static inline const auto Cannot_use_imports_exports_or_module_augmentations_when_module_is_none = diag(1148, DiagnosticCategory::Error, "Cannot_use_imports_exports_or_module_augmentations_when_module_is_none_1148", "Cannot use imports, exports, or module augmentations when '--module' is 'none'.");

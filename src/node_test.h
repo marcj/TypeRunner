@@ -1,6 +1,6 @@
 #pragma once
 
-#include "types.h";
+#include "types.h"
 
 namespace ts {
     // Literals
@@ -17,6 +17,23 @@ namespace ts {
         }
 
         throw runtime_error(format("resolveNamToNode with kind %d no valid name property", (int) node->kind));
+    }
+
+    shared<NodeUnion(JsxTagNameExpression)> getTagName(shared<NodeUnion(JsxOpeningElement, JsxOpeningFragment)> node) {
+        switch (node->kind) {
+            case SyntaxKind::JsxClosingElement: return node->to<JsxClosingElement>().tagName;
+            case SyntaxKind::JsxOpeningElement: return node->to<JsxOpeningElement>().tagName;
+            default: throw runtime_error(format("node %d has no tagName", node->kind));
+        }
+    }
+
+    string &getEscapedName(const shared<Node> &node) {
+        switch (node->kind) {
+            case SyntaxKind::Identifier: return dynamic_pointer_cast<Identifier>(node)->escapedText;
+            case SyntaxKind::PrivateIdentifier: return dynamic_pointer_cast<PrivateIdentifier>(node)->escapedText;
+        }
+
+        throw runtime_error(format("getEscapedName with kind %d no valid", (int) node->kind));
     }
 
     sharedOpt<NodeUnion(PropertyName)> getName(const shared<Node> &node) {

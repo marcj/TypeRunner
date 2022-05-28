@@ -1,9 +1,578 @@
 #pragma once
 
+#include <utility>
+
 #include "types.h"
 #include "utilities.h"
 #include "scanner.h"
 #include "node_test.h"
+
+namespace ts::factory {
+    shared<ParenthesizedExpression> createParenthesizedExpression(shared<Expression> expression);
+}
+
+namespace ts::parenthesizerRules {
+    using namespace ts;
+    using namespace ts::types;
+
+//
+//    function getParenthesizeLeftSideOfBinaryForOperator(operatorKind: BinaryOperator) {
+//        binaryLeftOperandParenthesizerCache ||= new Map();
+//        let parenthesizerRule = binaryLeftOperandParenthesizerCache.get(operatorKind);
+//        if (!parenthesizerRule) {
+//            parenthesizerRule = node => parenthesizeLeftSideOfBinary(operatorKind, node);
+//            binaryLeftOperandParenthesizerCache.set(operatorKind, parenthesizerRule);
+//        }
+//        return parenthesizerRule;
+//    }
+//
+//    function getParenthesizeRightSideOfBinaryForOperator(operatorKind: BinaryOperator) {
+//        binaryRightOperandParenthesizerCache ||= new Map();
+//        let parenthesizerRule = binaryRightOperandParenthesizerCache.get(operatorKind);
+//        if (!parenthesizerRule) {
+//            parenthesizerRule = node => parenthesizeRightSideOfBinary(operatorKind, /*leftSide*/ undefined, node);
+//            binaryRightOperandParenthesizerCache.set(operatorKind, parenthesizerRule);
+//        }
+//        return parenthesizerRule;
+//    }
+//
+//    /**
+//     * Determines whether the operand to a BinaryExpression needs to be parenthesized.
+//     *
+//     * @param binaryOperator The operator for the BinaryExpression.
+//     * @param operand The operand for the BinaryExpression.
+//     * @param isLeftSideOfBinary A value indicating whether the operand is the left side of the
+//     *                           BinaryExpression.
+//     */
+//    function binaryOperandNeedsParentheses(binaryOperator: SyntaxKind, operand: Expression, isLeftSideOfBinary: boolean, leftOperand: Expression | undefined) {
+//        // If the operand has lower precedence, then it needs to be parenthesized to preserve the
+//        // intent of the expression. For example, if the operand is `a + b` and the operator is
+//        // `*`, then we need to parenthesize the operand to preserve the intended order of
+//        // operations: `(a + b) * x`.
+//        //
+//        // If the operand has higher precedence, then it does not need to be parenthesized. For
+//        // example, if the operand is `a * b` and the operator is `+`, then we do not need to
+//        // parenthesize to preserve the intended order of operations: `a * b + x`.
+//        //
+//        // If the operand has the same precedence, then we need to check the associativity of
+//        // the operator based on whether this is the left or right operand of the expression.
+//        //
+//        // For example, if `a / d` is on the right of operator `*`, we need to parenthesize
+//        // to preserve the intended order of operations: `x * (a / d)`
+//        //
+//        // If `a ** d` is on the left of operator `**`, we need to parenthesize to preserve
+//        // the intended order of operations: `(a ** b) ** c`
+//        auto binaryOperatorPrecedence = getOperatorPrecedence(SyntaxKind::BinaryExpression, binaryOperator);
+//        auto binaryOperatorAssociativity = getOperatorAssociativity(SyntaxKind::BinaryExpression, binaryOperator);
+//        auto emittedOperand = skipPartiallyEmittedExpressions(operand);
+//        if (!isLeftSideOfBinary && operand.kind === SyntaxKind::ArrowFunction && binaryOperatorPrecedence > OperatorPrecedence.Assignment) {
+//            // We need to parenthesize arrow functions on the right side to avoid it being
+//            // parsed as parenthesized expression: `a && (() => {})`
+//            return true;
+//        }
+//        auto operandPrecedence = getExpressionPrecedence(emittedOperand);
+//        switch (compareValues(operandPrecedence, binaryOperatorPrecedence)) {
+//            case Comparison.LessThan:
+//                // If the operand is the right side of a right-associative binary operation
+//                // and is a yield expression, then we do not need parentheses.
+//                if (!isLeftSideOfBinary
+//                    && binaryOperatorAssociativity === Associativity.Right
+//                    && operand.kind === SyntaxKind::YieldExpression) {
+//                    return false;
+//                }
+//
+//                return true;
+//
+//            case Comparison.GreaterThan:
+//                return false;
+//
+//            case Comparison.EqualTo:
+//                if (isLeftSideOfBinary) {
+//                    // No need to parenthesize the left operand when the binary operator is
+//                    // left associative:
+//                    //  (a*b)/x    -> a*b/x
+//                    //  (a**b)/x   -> a**b/x
+//                    //
+//                    // Parentheses are needed for the left operand when the binary operator is
+//                    // right associative:
+//                    //  (a/b)**x   -> (a/b)**x
+//                    //  (a**b)**x  -> (a**b)**x
+//                    return binaryOperatorAssociativity === Associativity.Right;
+//                }
+//                else {
+//                    if (isBinaryExpression(emittedOperand)
+//                        && emittedOperand.operatorToken.kind === binaryOperator) {
+//                        // No need to parenthesize the right operand when the binary operator and
+//                        // operand are the same and one of the following:
+//                        //  x*(a*b)     => x*a*b
+//                        //  x|(a|b)     => x|a|b
+//                        //  x&(a&b)     => x&a&b
+//                        //  x^(a^b)     => x^a^b
+//                        if (operatorHasAssociativeProperty(binaryOperator)) {
+//                            return false;
+//                        }
+//
+//                        // No need to parenthesize the right operand when the binary operator
+//                        // is plus (+) if both the left and right operands consist solely of either
+//                        // literals of the same kind or binary plus (+) expressions for literals of
+//                        // the same kind (recursively).
+//                        //  "a"+(1+2)       => "a"+(1+2)
+//                        //  "a"+("b"+"c")   => "a"+"b"+"c"
+//                        if (binaryOperator === SyntaxKind::PlusToken) {
+//                            auto leftKind = leftOperand ? getLiteralKindOfBinaryPlusOperand(leftOperand) : SyntaxKind::Unknown;
+//                            if (isLiteralKind(leftKind) && leftKind === getLiteralKindOfBinaryPlusOperand(emittedOperand)) {
+//                                return false;
+//                            }
+//                        }
+//                    }
+//
+//                    // No need to parenthesize the right operand when the operand is right
+//                    // associative:
+//                    //  x/(a**b)    -> x/a**b
+//                    //  x**(a**b)   -> x**a**b
+//                    //
+//                    // Parentheses are needed for the right operand when the operand is left
+//                    // associative:
+//                    //  x/(a*b)     -> x/(a*b)
+//                    //  x**(a/b)    -> x**(a/b)
+//                    auto operandAssociativity = getExpressionAssociativity(emittedOperand);
+//                    return operandAssociativity === Associativity.Left;
+//                }
+//        }
+//    }
+//
+//    /**
+//     * Determines whether a binary operator is mathematically associative.
+//     *
+//     * @param binaryOperator The binary operator.
+//     */
+//    function operatorHasAssociativeProperty(binaryOperator: SyntaxKind) {
+//        // The following operators are associative in JavaScript:
+//        //  (a*b)*c     -> a*(b*c)  -> a*b*c
+//        //  (a|b)|c     -> a|(b|c)  -> a|b|c
+//        //  (a&b)&c     -> a&(b&c)  -> a&b&c
+//        //  (a^b)^c     -> a^(b^c)  -> a^b^c
+//        //
+//        // While addition is associative in mathematics, JavaScript's `+` is not
+//        // guaranteed to be associative as it is overloaded with string concatenation.
+//        return binaryOperator === SyntaxKind::AsteriskToken
+//            || binaryOperator === SyntaxKind::BarToken
+//            || binaryOperator === SyntaxKind::AmpersandToken
+//            || binaryOperator === SyntaxKind::CaretToken;
+//    }
+//
+//    /**
+//     * This function determines whether an expression consists of a homogeneous set of
+//     * literal expressions or binary plus expressions that all share the same literal kind.
+//     * It is used to determine whether the right-hand operand of a binary plus expression can be
+//     * emitted without parentheses.
+//     */
+//    function getLiteralKindOfBinaryPlusOperand(node: Expression): SyntaxKind {
+//        node = skipPartiallyEmittedExpressions(node);
+//
+//        if (isLiteralKind(node.kind)) {
+//            return node.kind;
+//        }
+//
+//        if (node.kind === SyntaxKind::BinaryExpression && (node as BinaryExpression).operatorToken.kind === SyntaxKind::PlusToken) {
+//            if ((node as BinaryPlusExpression).cachedLiteralKind !== undefined) {
+//                return (node as BinaryPlusExpression).cachedLiteralKind;
+//            }
+//
+//            auto leftKind = getLiteralKindOfBinaryPlusOperand((node as BinaryExpression).left);
+//            auto literalKind = isLiteralKind(leftKind)
+//                && leftKind === getLiteralKindOfBinaryPlusOperand((node as BinaryExpression).right)
+//                    ? leftKind
+//                    : SyntaxKind::Unknown;
+//
+//            (node as BinaryPlusExpression).cachedLiteralKind = literalKind;
+//            return literalKind;
+//        }
+//
+//        return SyntaxKind::Unknown;
+//    }
+//
+//    /**
+//     * Wraps the operand to a BinaryExpression in parentheses if they are needed to preserve the intended
+//     * order of operations.
+//     *
+//     * @param binaryOperator The operator for the BinaryExpression.
+//     * @param operand The operand for the BinaryExpression.
+//     * @param isLeftSideOfBinary A value indicating whether the operand is the left side of the
+//     *                           BinaryExpression.
+//     */
+//    function parenthesizeBinaryOperand(binaryOperator: SyntaxKind, operand: Expression, isLeftSideOfBinary: boolean, leftOperand?: Expression) {
+//        auto skipped = skipPartiallyEmittedExpressions(operand);
+//
+//        // If the resulting expression is already parenthesized, we do not need to do any further processing.
+//        if (skipped.kind === SyntaxKind::ParenthesizedExpression) {
+//            return operand;
+//        }
+//
+//        return binaryOperandNeedsParentheses(binaryOperator, operand, isLeftSideOfBinary, leftOperand)
+//            ? factory::createParenthesizedExpression(operand)
+//            : operand;
+//    }
+//
+//
+//    function parenthesizeLeftSideOfBinary(binaryOperator: SyntaxKind, leftSide: Expression): Expression {
+//        return parenthesizeBinaryOperand(binaryOperator, leftSide, /*isLeftSideOfBinary*/ true);
+//    }
+//
+//    function parenthesizeRightSideOfBinary(binaryOperator: SyntaxKind, leftSide: Expression | undefined, rightSide: Expression): Expression {
+//        return parenthesizeBinaryOperand(binaryOperator, rightSide, /*isLeftSideOfBinary*/ false, leftSide);
+//    }
+
+    shared<Expression> parenthesizeExpressionOfComputedPropertyName(shared<Expression> expression) {
+        return isCommaSequence(expression) ? factory::createParenthesizedExpression(expression) : expression;
+    }
+//
+//    function parenthesizeConditionOfConditionalExpression(condition: Expression): Expression {
+//        auto conditionalPrecedence = getOperatorPrecedence(SyntaxKind::ConditionalExpression, SyntaxKind::QuestionToken);
+//        auto emittedCondition = skipPartiallyEmittedExpressions(condition);
+//        auto conditionPrecedence = getExpressionPrecedence(emittedCondition);
+//        if (compareValues(conditionPrecedence, conditionalPrecedence) !== Comparison.GreaterThan) {
+//            return factory::createParenthesizedExpression(condition);
+//        }
+//        return condition;
+//    }
+//
+//    function parenthesizeBranchOfConditionalExpression(branch: Expression): Expression {
+//        // per ES grammar both 'whenTrue' and 'whenFalse' parts of conditional expression are assignment expressions
+//        // so in case when comma expression is introduced as a part of previous transformations
+//        // if should be wrapped in parens since comma operator has the lowest precedence
+//        auto emittedExpression = skipPartiallyEmittedExpressions(branch);
+//        return isCommaSequence(emittedExpression)
+//            ? factory::createParenthesizedExpression(branch)
+//            : branch;
+//    }
+//
+//    /**
+//     *  [Per the spec](https://tc39.github.io/ecma262/#prod-ExportDeclaration), `export default` accepts _AssigmentExpression_ but
+//     *  has a lookahead restriction for `function`, `async function`, and `class`.
+//     *
+//     * Basically, that means we need to parenthesize in the following cases:
+//     *
+//     * - BinaryExpression of CommaToken
+//     * - CommaList (synthetic list of multiple comma expressions)
+//     * - FunctionExpression
+//     * - ClassExpression
+//     */
+//    function parenthesizeExpressionOfExportDefault(expression: Expression): Expression {
+//        auto check = skipPartiallyEmittedExpressions(expression);
+//        let needsParens = isCommaSequence(check);
+//        if (!needsParens) {
+//            switch (getLeftmostExpression(check, /*stopAtCallExpression*/ false).kind) {
+//                case SyntaxKind::ClassExpression:
+//                case SyntaxKind::FunctionExpression:
+//                    needsParens = true;
+//            }
+//        }
+//        return needsParens ? factory::createParenthesizedExpression(expression) : expression;
+//    }
+//
+//    /**
+//     * Wraps an expression in parentheses if it is needed in order to use the expression
+//     * as the expression of a `NewExpression` node.
+//     */
+//    function parenthesizeExpressionOfNew(expression: Expression): LeftHandSideExpression {
+//        auto leftmostExpr = getLeftmostExpression(expression, /*stopAtCallExpressions*/ true);
+//        switch (leftmostExpr.kind) {
+//            case SyntaxKind::CallExpression:
+//                return factory::createParenthesizedExpression(expression);
+//
+//            case SyntaxKind::NewExpression:
+//                return !(leftmostExpr as NewExpression).arguments
+//                    ? factory::createParenthesizedExpression(expression)
+//                    : expression as LeftHandSideExpression; // TODO(rbuckton): Verify this assertion holds
+//        }
+//
+//        return parenthesizeLeftSideOfAccess(expression);
+//    }
+//
+//    /**
+//     * Wraps an expression in parentheses if it is needed in order to use the expression for
+//     * property or element access.
+//     */
+    shared<LeftHandSideExpression> parenthesizeLeftSideOfAccess(shared<Expression> expression) {
+        // isLeftHandSideExpression is almost the correct criterion for when it is not necessary
+        // to parenthesize the expression before a dot. The known exception is:
+        //
+        //    NewExpression:
+        //       new C.x        -> not the same as (new C).x
+        //
+        auto emittedExpression = skipPartiallyEmittedExpressions(expression);
+        if (isLeftHandSideExpression(emittedExpression)
+            && (emittedExpression->kind != SyntaxKind::NewExpression || emittedExpression->to<NewExpression>().arguments)) {
+            // TODO(rbuckton): Verify whether this assertion holds.
+            return dynamic_pointer_cast<LeftHandSideExpression>(expression);
+        }
+
+        // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
+        return setTextRange(factory::createParenthesizedExpression(expression), expression);
+    }
+//
+//    function parenthesizeOperandOfPostfixUnary(operand: Expression): LeftHandSideExpression {
+//        // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
+//        return isLeftHandSideExpression(operand) ? operand : setTextRange(factory::createParenthesizedExpression(operand), operand);
+//    }
+
+    shared<Expression> parenthesizeOperandOfPrefixUnary(shared<Expression> operand) {
+        // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
+        return isUnaryExpression(operand) ? operand : setTextRange(factory::createParenthesizedExpression(operand), operand);
+    }
+
+//    function parenthesizeExpressionsOfCommaDelimitedList(elements: NodeArray<Expression>): NodeArray<Expression> {
+//        auto result = sameMap(elements, parenthesizeExpressionForDisallowedComma);
+//        return setTextRange(factory::createNodeArray(result, elements.hasTrailingComma), elements);
+//    }
+
+    shared<Expression> parenthesizeExpressionForDisallowedComma(shared<Expression> expression) {
+        auto emittedExpression = skipPartiallyEmittedExpressions(expression);
+        auto expressionPrecedence = getExpressionPrecedence(emittedExpression);
+        auto commaPrecedence = getOperatorPrecedence(SyntaxKind::BinaryExpression, SyntaxKind::CommaToken);
+        // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
+        return expressionPrecedence > commaPrecedence ? expression : setTextRange(factory::createParenthesizedExpression(expression), expression);
+    }
+
+//    function parenthesizeExpressionOfExpressionStatement(expression: Expression): Expression {
+//        auto emittedExpression = skipPartiallyEmittedExpressions(expression);
+//        if (isCallExpression(emittedExpression)) {
+//            auto callee = emittedExpression.expression;
+//            auto kind = skipPartiallyEmittedExpressions(callee).kind;
+//            if (kind === SyntaxKind::FunctionExpression || kind === SyntaxKind::ArrowFunction) {
+//                // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
+//                auto updated = factory::updateCallExpression(
+//                    emittedExpression,
+//                    setTextRange(factory::createParenthesizedExpression(callee), callee),
+//                    emittedExpression.typeArguments,
+//                    emittedExpression.arguments
+//                );
+//                return factory::restoreOuterExpressions(expression, updated, OuterExpressionKinds.PartiallyEmittedExpressions);
+//            }
+//        }
+//
+//        auto leftmostExpressionKind = getLeftmostExpression(emittedExpression, /*stopAtCallExpressions*/ false).kind;
+//        if (leftmostExpressionKind === SyntaxKind::ObjectLiteralExpression || leftmostExpressionKind === SyntaxKind::FunctionExpression) {
+//            // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
+//            return setTextRange(factory::createParenthesizedExpression(expression), expression);
+//        }
+//
+//        return expression;
+//    }
+//
+//    function parenthesizeConciseBodyOfArrowFunction(body: Expression): Expression;
+//    function parenthesizeConciseBodyOfArrowFunction(body: ConciseBody): ConciseBody;
+//    function parenthesizeConciseBodyOfArrowFunction(body: ConciseBody): ConciseBody {
+//        if (!isBlock(body) && (isCommaSequence(body) || getLeftmostExpression(body, /*stopAtCallExpressions*/ false).kind === SyntaxKind::ObjectLiteralExpression)) {
+//            // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
+//            return setTextRange(factory::createParenthesizedExpression(body), body);
+//        }
+//
+//        return body;
+//    }
+//
+//    // Type[Extends] :
+//    //     FunctionOrConstructorType
+//    //     ConditionalType[?Extends]
+//
+//    // ConditionalType[Extends] :
+//    //     UnionType[?Extends]
+//    //     [~Extends] UnionType[~Extends] `extends` Type[+Extends] `?` Type[~Extends] `:` Type[~Extends]
+//    //
+//    // - The check type (the `UnionType`, above) does not allow function, constructor, or conditional types (they must be parenthesized)
+//    // - The extends type (the first `Type`, above) does not allow conditional types (they must be parenthesized). Function and constructor types are fine.
+//    // - The true and false branch types (the second and third `Type` non-terminals, above) allow any type
+//    function parenthesizeCheckTypeOfConditionalType(checkType: TypeNode): TypeNode {
+//        switch (checkType.kind) {
+//            case SyntaxKind::FunctionType:
+//            case SyntaxKind::ConstructorType:
+//            case SyntaxKind::ConditionalType:
+//                return factory::createParenthesizedType(checkType);
+//        }
+//        return checkType;
+//    }
+//
+//    function parenthesizeExtendsTypeOfConditionalType(extendsType: TypeNode): TypeNode {
+//        switch (extendsType.kind) {
+//            case SyntaxKind::ConditionalType:
+//                return factory::createParenthesizedType(extendsType);
+//        }
+//        return extendsType;
+//    }
+//
+//    // UnionType[Extends] :
+//    //     `|`? IntersectionType[?Extends]
+//    //     UnionType[?Extends] `|` IntersectionType[?Extends]
+//    //
+//    // - A union type constituent has the same precedence as the check type of a conditional type
+//    function parenthesizeConstituentTypeOfUnionType(type: TypeNode) {
+//        switch (type.kind) {
+//            case SyntaxKind::UnionType: // Not strictly necessary, but a union containing a union should have been flattened
+//            case SyntaxKind::IntersectionType: // Not strictly necessary, but makes generated output more readable and avoids breaks in DT tests
+//                return factory::createParenthesizedType(type);
+//        }
+//        return parenthesizeCheckTypeOfConditionalType(type);
+//    }
+//
+//    function parenthesizeConstituentTypesOfUnionType(members: readonly TypeNode[]): NodeArray<TypeNode> {
+//        return factory::createNodeArray(sameMap(members, parenthesizeConstituentTypeOfUnionType));
+//    }
+//
+//    // IntersectionType[Extends] :
+//    //     `&`? TypeOperator[?Extends]
+//    //     IntersectionType[?Extends] `&` TypeOperator[?Extends]
+//    //
+//    // - An intersection type constituent does not allow function, constructor, conditional, or union types (they must be parenthesized)
+//    function parenthesizeConstituentTypeOfIntersectionType(type: TypeNode) {
+//        switch (type.kind) {
+//            case SyntaxKind::UnionType:
+//            case SyntaxKind::IntersectionType: // Not strictly necessary, but an intersection containing an intersection should have been flattened
+//                return factory::createParenthesizedType(type);
+//        }
+//        return parenthesizeConstituentTypeOfUnionType(type);
+//    }
+//
+//    function parenthesizeConstituentTypesOfIntersectionType(members: readonly TypeNode[]): NodeArray<TypeNode> {
+//        return factory::createNodeArray(sameMap(members, parenthesizeConstituentTypeOfIntersectionType));
+//    }
+//
+//    // TypeOperator[Extends] :
+//    //     PostfixType
+//    //     InferType[?Extends]
+//    //     `keyof` TypeOperator[?Extends]
+//    //     `unique` TypeOperator[?Extends]
+//    //     `readonly` TypeOperator[?Extends]
+//    //
+//    function parenthesizeOperandOfTypeOperator(type: TypeNode) {
+//        switch (type.kind) {
+//            case SyntaxKind::IntersectionType:
+//                return factory::createParenthesizedType(type);
+//        }
+//        return parenthesizeConstituentTypeOfIntersectionType(type);
+//    }
+//
+//    function parenthesizeOperandOfReadonlyTypeOperator(type: TypeNode) {
+//        switch (type.kind) {
+//            case SyntaxKind::TypeOperator:
+//                return factory::createParenthesizedType(type);
+//        }
+//        return parenthesizeOperandOfTypeOperator(type);
+//    }
+//
+//    // PostfixType :
+//    //     NonArrayType
+//    //     NonArrayType [no LineTerminator here] `!` // JSDoc
+//    //     NonArrayType [no LineTerminator here] `?` // JSDoc
+//    //     IndexedAccessType
+//    //     ArrayType
+//    //
+//    // IndexedAccessType :
+//    //     NonArrayType `[` Type[~Extends] `]`
+//    //
+//    // ArrayType :
+//    //     NonArrayType `[` `]`
+//    //
+//    function parenthesizeNonArrayTypeOfPostfixType(type: TypeNode) {
+//        switch (type.kind) {
+//            case SyntaxKind::InferType:
+//            case SyntaxKind::TypeOperator:
+//            case SyntaxKind::TypeQuery: // Not strictly necessary, but makes generated output more readable and avoids breaks in DT tests
+//                return factory::createParenthesizedType(type);
+//        }
+//        return parenthesizeOperandOfTypeOperator(type);
+//    }
+//
+//    // TupleType :
+//    //     `[` Elision? `]`
+//    //     `[` NamedTupleElementTypes `]`
+//    //     `[` NamedTupleElementTypes `,` Elision? `]`
+//    //     `[` TupleElementTypes `]`
+//    //     `[` TupleElementTypes `,` Elision? `]`
+//    //
+//    // NamedTupleElementTypes :
+//    //     Elision? NamedTupleMember
+//    //     NamedTupleElementTypes `,` Elision? NamedTupleMember
+//    //
+//    // NamedTupleMember :
+//    //     Identifier `?`? `:` Type[~Extends]
+//    //     `...` Identifier `:` Type[~Extends]
+//    //
+//    // TupleElementTypes :
+//    //     Elision? TupleElementType
+//    //     TupleElementTypes `,` Elision? TupleElementType
+//    //
+//    // TupleElementType :
+//    //     Type[~Extends] // NOTE: Needs cover grammar to disallow JSDoc postfix-optional
+//    //     OptionalType
+//    //     RestType
+//    //
+//    // OptionalType :
+//    //     Type[~Extends] `?` // NOTE: Needs cover grammar to disallow JSDoc postfix-optional
+//    //
+//    // RestType :
+//    //     `...` Type[~Extends]
+//    //
+//    function parenthesizeElementTypesOfTupleType(types: readonly (TypeNode | NamedTupleMember)[]): NodeArray<TypeNode> {
+//        return factory::createNodeArray(sameMap(types, parenthesizeElementTypeOfTupleType));
+//    }
+//
+//    function parenthesizeElementTypeOfTupleType(type: TypeNode | NamedTupleMember): TypeNode {
+//        if (hasJSDocPostfixQuestion(type)) return factory::createParenthesizedType(type);
+//        return type;
+//    }
+//
+//    function hasJSDocPostfixQuestion(type: TypeNode | NamedTupleMember): boolean {
+//        if (isJSDocNullableType(type)) return type.postfix;
+//        if (isNamedTupleMember(type)) return hasJSDocPostfixQuestion(type.type);
+//        if (isFunctionTypeNode(type) || isConstructorTypeNode(type) || isTypeOperatorNode(type)) return hasJSDocPostfixQuestion(type.type);
+//        if (isConditionalTypeNode(type)) return hasJSDocPostfixQuestion(type.falseType);
+//        if (isUnionTypeNode(type)) return hasJSDocPostfixQuestion(last(type.types));
+//        if (isIntersectionTypeNode(type)) return hasJSDocPostfixQuestion(last(type.types));
+//        if (isInferTypeNode(type)) return !!type.typeParameter.constraint && hasJSDocPostfixQuestion(type.typeParameter.constraint);
+//        return false;
+//    }
+//
+//    function parenthesizeTypeOfOptionalType(type: TypeNode): TypeNode {
+//        if (hasJSDocPostfixQuestion(type)) return factory::createParenthesizedType(type);
+//        return parenthesizeNonArrayTypeOfPostfixType(type);
+//    }
+//
+//    // function parenthesizeMemberOfElementType(member: TypeNode): TypeNode {
+//    //     switch (member.kind) {
+//    //         case SyntaxKind::UnionType:
+//    //         case SyntaxKind::IntersectionType:
+//    //         case SyntaxKind::FunctionType:
+//    //         case SyntaxKind::ConstructorType:
+//    //             return factory::createParenthesizedType(member);
+//    //     }
+//    //     return parenthesizeMemberOfConditionalType(member);
+//    // }
+//
+//    // function parenthesizeElementTypeOfArrayType(member: TypeNode): TypeNode {
+//    //     switch (member.kind) {
+//    //         case SyntaxKind::TypeQuery:
+//    //         case SyntaxKind::TypeOperator:
+//    //         case SyntaxKind::InferType:
+//    //             return factory::createParenthesizedType(member);
+//    //     }
+//    //     return parenthesizeMemberOfElementType(member);
+//    // }
+//
+//    function parenthesizeLeadingTypeArgument(node: TypeNode) {
+//        return isFunctionOrConstructorTypeNode(node) && node.typeParameters ? factory::createParenthesizedType(node) : node;
+//    }
+//
+//    function parenthesizeOrdinalTypeArgument(node: TypeNode, i: number) {
+//        return i === 0 ? parenthesizeLeadingTypeArgument(node) : node;
+//    }
+//
+//    function parenthesizeTypeArguments(typeArguments: NodeArray<TypeNode> | undefined): NodeArray<TypeNode> | undefined {
+//        if (some(typeArguments)) {
+//            return factory::createNodeArray(sameMap(typeArguments, parenthesizeOrdinalTypeArgument));
+//        }
+//    }
+}
 
 namespace ts::factory {
     int nextAutoGenerateId = 0;
@@ -15,9 +584,9 @@ namespace ts::factory {
     /* @internal */
     enum class NodeFactoryFlags {
         None = 0,
-        // Disables the parenthesizer rules for the factory.
+        // Disables the parenthesizer rules for the factory::
         NoParenthesizerRules = 1 << 0,
-        // Disables the node converters for the factory.
+        // Disables the node converters for the factory::
         NoNodeConverters = 1 << 1,
         // Ensures new `PropertyAccessExpression` nodes are created with the `NoIndentation` emit flag set.
         NoIndentationOnFreshPropertyAccess = 1 << 2,
@@ -25,7 +594,7 @@ namespace ts::factory {
         NoOriginalNode = 1 << 3,
     };
 
-    int propagatePropertyNameFlagsOfChild(auto shared<NodeUnion(PropertyName)> &node, int transformFlags) {
+    int propagatePropertyNameFlagsOfChild(shared<NodeUnion(PropertyName)> &node, int transformFlags) {
         return transformFlags | (node->transformFlags & (int) TransformFlags::PropertyNamePropagatingFlags);
     }
 
@@ -37,9 +606,9 @@ namespace ts::factory {
         return name ? propagatePropertyNameFlagsOfChild(name, childFlags) : childFlags;
     }
 
-    int propagateIdentifierNameFlags(shared<Identifier> node) {
+    int propagateIdentifierNameFlags(shared<Node> node) {
         // An IdentifierName is allowed to be `await`
-        return propagateChildFlags(node) & ~ (int) TransformFlags::ContainsPossibleTopLevelAwait;
+        return propagateChildFlags(std::move(node)) & ~ (int) TransformFlags::ContainsPossibleTopLevelAwait;
     }
 
     int propagateChildrenFlags(optional<NodeArray> children) {
@@ -54,23 +623,7 @@ namespace ts::factory {
         children.transformFlags = subtreeFlags;
     }
 
-    // @api
-    NodeArray createNodeArray(auto vector<shared<Node>> &elements, bool hasTrailingComma = false) {
-        // Since the element list of a node array is typically created by starting with an empty array and
-        // repeatedly calling push(), the list may not have the optimal memory layout. We invoke slice() for
-        // small arrays (1 to 4 elements) to give the VM a chance to allocate an optimal representation.
-//            auto length = elements.length;
-        NodeArray array;
-        for (auto node: elements) array.list.push_back(node);
-//            auto array = (length >= 1 && length <= 4 ? elements.slice() : elements) as MutableNodeArray<T>;
-        setTextRangePosEnd(array, - 1, - 1);
-        array.hasTrailingComma = hasTrailingComma;
-        aggregateChildrenFlags(array);
-//            Debug.attachNodeArrayDebugInfo(array);
-        return array;
-    }
-
-    NodeArray createNodeArray(NodeArray &elements, optional<bool> hasTrailingComma = {}) {
+    NodeArray createNodeArray(NodeArray elements, optional<bool> hasTrailingComma = {}) {
         if (! hasTrailingComma || elements.hasTrailingComma == hasTrailingComma) {
             // Ensure the transform flags have been aggregated for this NodeArray
             if (elements.transformFlags == (int) types::TransformFlags::None) {
@@ -86,10 +639,48 @@ namespace ts::factory {
         NodeArray array = elements;
         array.pos = elements.pos;
         array.end = elements.end;
-        array.hasTrailingComma = hasTrailingComma ? *hasTrailingComma : false;
+        array.hasTrailingComma = *hasTrailingComma;
         array.transformFlags = elements.transformFlags;
 //            Debug.attachNodeArrayDebugInfo(array);
         return array;
+    }
+
+    optional<NodeArray> asNodeArray(optional<NodeArray> array) {
+        return array;
+    }
+
+    template<class T>
+    NodeArray asNodeArray(vector<shared<T>> array) {
+        NodeArray nodeArray;
+        for (auto node: array) nodeArray.list.push_back(node);
+        return nodeArray;
+    }
+
+    template<class T>
+    optional<NodeArray> asNodeArray(optional<vector<shared<T>>> array) {
+        if (! array) return nullopt;
+
+        return asNodeArray(*array);
+    }
+
+    shared<Identifier> createIdentifier(string text, optional<NodeArray> typeArguments = {}, optional<SyntaxKind> originalKeywordKind = {});
+
+    shared<Node> asName(variant<string, shared<Node>> name = {}) {
+        if (holds_alternative<string>(name)) return createIdentifier(get<string>(name));
+        return get<shared<Node>>(name);
+    }
+
+    sharedOpt<Node> asName(optional<variant<string, shared<Node>>> name = {}) {
+        if (! name) return nullptr;
+        return asName(*name);
+    }
+
+    // @api
+    NodeArray createNodeArray(vector<shared<Node>> elements, optional<bool> hasTrailingComma = {}) {
+        // Since the element list of a node array is typically created by starting with an empty array and
+        // repeatedly calling push(), the list may not have the optimal memory layout. We invoke slice() for
+        // small arrays (1 to 4 elements) to give the VM a chance to allocate an optimal representation.
+        return createNodeArray(asNodeArray(elements), hasTrailingComma);
     }
 
     template<class T>
@@ -112,66 +703,68 @@ namespace ts::factory {
     }
 
 //        function createBaseNode<T extends Node>(kind: T["kind"]) {
-//            return baseFactory.createBaseNode(kind) as Mutable<T>;
+//            return basefactory::createBaseNode(kind) as Mutable<T>;
 //        }
 //
-//        function createBaseDeclaration<T extends Declaration | VariableStatement | ImportDeclaration>(
-//            kind: T["kind"],
-//            decorators: readonly Decorator[] | undefined,
-//            modifiers: readonly Modifier[] | undefined
-//        ) {
-//            auto node = createBaseNode(kind);
-//            node.decorators = asNodeArray(decorators);
-//            node.modifiers = asNodeArray(modifiers);
-//            node.transformFlags |=
-//                propagateChildrenFlags(node.decorators) |
-//                propagateChildrenFlags(node.modifiers);
-//            // NOTE: The following properties are commonly set by the binder and are added here to
-//            // ensure declarations have a stable shape.
-//            node.symbol = undefined!; // initialized by binder
-//            node.localSymbol = undefined; // initialized by binder
-//            node.locals = undefined; // initialized by binder
-//            node.nextContainer = undefined; // initialized by binder
-//            return node;
-//        }
-//
-//        function createBaseNamedDeclaration<T extends NamedDeclaration>(
-//            kind: T["kind"],
-//            decorators: readonly Decorator[] | undefined,
-//            modifiers: readonly Modifier[] | undefined,
-//            name: Identifier | PrivateIdentifier | StringLiteralLike | NumericLiteral | ComputedPropertyName | BindingPattern | string | undefined
-//        ) {
-//            auto node = createBaseDeclaration(
-//                kind,
-//                decorators,
-//                modifiers
-//            );
-//            name = asName(name);
-//            node.name = name;
-//
-//            // The PropertyName of a member is allowed to be `await`.
-//            // We don't need to exclude `await` for type signatures since types
-//            // don't propagate child flags.
-//            if (name) {
-//                switch (node.kind) {
-//                    case SyntaxKind::MethodDeclaration:
-//                    case SyntaxKind::GetAccessor:
-//                    case SyntaxKind::SetAccessor:
-//                    case SyntaxKind::PropertyDeclaration:
-//                    case SyntaxKind::PropertyAssignment:
-//                        if (isIdentifier(name)) {
-//                            node.transformFlags |= propagateIdentifierNameFlags(name);
-//                            break;
-//                        }
-//                        // fall through
-//                    default:
-//                        node.transformFlags |= propagateChildFlags(name);
-//                        break;
-//                }
-//            }
-//            return node;
-//        }
-//
+    template<class T>
+    shared<T> createBaseDeclaration(
+            SyntaxKind kind,
+            optional<vector<shared<Decorator>>> decorators = {},
+            optional<vector<shared<Modifier>>> modifiers = {}
+    ) {
+        auto node = createBaseNode<T>(kind);
+        node->decorators = asNodeArray(decorators);
+        node->modifiers = asNodeArray(modifiers);
+        node->transformFlags |=
+                propagateChildrenFlags(node->decorators) |
+                propagateChildrenFlags(node->modifiers);
+        // NOTE: The following properties are commonly set by the binder and are added here to
+        // ensure declarations have a stable shape.
+//            node->symbol = undefined!; // initialized by binder
+//            node->localSymbol = undefined; // initialized by binder
+//            node->locals = undefined; // initialized by binder
+//            node->nextContainer = undefined; // initialized by binder
+        return node;
+    }
+
+    template<class T>
+    shared<T> createBaseNamedDeclaration(
+            SyntaxKind kind,
+            optional<vector<shared<Decorator>>> decorators = {},
+            optional<vector<shared<Modifier>>> modifiers = {},
+            optional<variant<string, shared<Node>>> _name = {}
+    ) {
+        auto node = createBaseDeclaration<T>(
+                kind,
+                decorators,
+                modifiers
+        );
+        auto name = asName(_name);
+        node->name = name;
+
+        // The PropertyName of a member is allowed to be `await`.
+        // We don't need to exclude `await` for type signatures since types
+        // don't propagate child flags.
+        if (name) {
+            switch (node->kind) {
+                case SyntaxKind::MethodDeclaration:
+                case SyntaxKind::GetAccessor:
+                case SyntaxKind::SetAccessor:
+                case SyntaxKind::PropertyDeclaration:
+                case SyntaxKind::PropertyAssignment:
+                    if (isIdentifier(name)) {
+                        node->transformFlags |= propagateIdentifierNameFlags(name);
+                        break;
+                    }
+                    // fall through
+                default:
+                    node->transformFlags |= propagateChildFlags(name);
+                    break;
+            }
+        }
+        return node;
+    }
+
 //        function createBaseGenericNamedDeclaration<T extends NamedDeclaration & { typeParameters?: NodeArray<TypeParameterDeclaration> }>(
 //            kind: T["kind"],
 //            decorators: readonly Decorator[] | undefined,
@@ -185,8 +778,8 @@ namespace ts::factory {
 //                modifiers,
 //                name
 //            );
-//            node.typeParameters = asNodeArray(typeParameters);
-//            node.transformFlags |= propagateChildrenFlags(node.typeParameters);
+//            node->typeParameters = asNodeArray(typeParameters);
+//            node->transformFlags |= propagateChildrenFlags(node.typeParameters);
 //            if (typeParameters) node.transformFlags |= TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
@@ -207,9 +800,9 @@ namespace ts::factory {
 //                name,
 //                typeParameters
 //            );
-//            node.parameters = createNodeArray(parameters);
-//            node.type = type;
-//            node.transformFlags |=
+//            node->parameters = createNodeArray(parameters);
+//            node->type = type;
+//            node->transformFlags |=
 //                propagateChildrenFlags(node.parameters) |
 //                propagateChildFlags(node.type);
 //            if (type) node.transformFlags |= TransformFlags::ContainsTypeScript;
@@ -241,8 +834,8 @@ namespace ts::factory {
 //                parameters,
 //                type
 //            );
-//            node.body = body;
-//            node.transformFlags |= propagateChildFlags(node.body) & ~TransformFlags::ContainsPossibleTopLevelAwait;
+//            node->body = body;
+//            node->transformFlags |= propagateChildFlags(node.body) & ~TransformFlags::ContainsPossibleTopLevelAwait;
 //            if (!body) node.transformFlags |= TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
@@ -269,8 +862,8 @@ namespace ts::factory {
 //                name,
 //                typeParameters
 //            );
-//            node.heritageClauses = asNodeArray(heritageClauses);
-//            node.transformFlags |= propagateChildrenFlags(node.heritageClauses);
+//            node->heritageClauses = asNodeArray(heritageClauses);
+//            node->transformFlags |= propagateChildrenFlags(node.heritageClauses);
 //            return node;
 //        }
 //
@@ -291,29 +884,30 @@ namespace ts::factory {
 //                typeParameters,
 //                heritageClauses
 //            );
-//            node.members = createNodeArray(members);
-//            node.transformFlags |= propagateChildrenFlags(node.members);
+//            node->members = createNodeArray(members);
+//            node->transformFlags |= propagateChildrenFlags(node.members);
 //            return node;
 //        }
-//
-//        function createBaseBindingLikeDeclaration<T extends PropertyDeclaration | VariableDeclaration | ParameterDeclaration | BindingElement>(
-//            kind: T["kind"],
-//            decorators: readonly Decorator[] | undefined,
-//            modifiers: readonly Modifier[] | undefined,
-//            name: string | T["name"] | undefined,
-//            initializer: Expression | undefined
-//        ) {
-//            auto node = createBaseNamedDeclaration(
-//                kind,
-//                decorators,
-//                modifiers,
-//                name
-//            );
-//            node.initializer = initializer;
-//            node.transformFlags |= propagateChildFlags(node.initializer);
-//            return node;
-//        }
-//
+
+    template<class T>
+    shared<T> createBaseBindingLikeDeclaration(
+            SyntaxKind kind,
+            optional<vector<shared<Decorator>>> decorators = {},
+            optional<vector<shared<Modifier>>> modifiers = {},
+            optional<variant<string, shared<Node>>> name = {},
+            sharedOpt<Expression> initializer = {}
+    ) {
+        auto node = createBaseNamedDeclaration<T>(
+                kind,
+                decorators,
+                modifiers,
+                name
+        );
+        node->initializer = initializer;
+        node->transformFlags |= propagateChildFlags(node->initializer);
+        return node;
+    }
+
 //        function createBaseVariableLikeDeclaration<T extends PropertyDeclaration | VariableDeclaration | ParameterDeclaration>(
 //            kind: T["kind"],
 //            decorators: readonly Decorator[] | undefined,
@@ -329,80 +923,112 @@ namespace ts::factory {
 //                name,
 //                initializer
 //            );
-//            node.type = type;
-//            node.transformFlags |= propagateChildFlags(type);
+//            node->type = type;
+//            node->transformFlags |= propagateChildFlags(type);
 //            if (type) node.transformFlags |= TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
-//
-//        //
-//        // Literals
-//        //
-//
-//        function createBaseLiteral<T extends LiteralToken>(
-//            kind: T["kind"],
-//            text: string
-//        ) {
-//            auto node = createBaseToken(kind);
-//            node.text = text;
-//            return node;
-//        }
-//
-//        // @api
-//        function createNumericLiteral(value: string | number, numericLiteralFlags: TokenFlags = TokenFlags.None): NumericLiteral {
-//            auto node = createBaseLiteral<NumericLiteral>(SyntaxKind::NumericLiteral, typeof value == "number" ? value + "" : value);
-//            node.numericLiteralFlags = numericLiteralFlags;
-//            if (numericLiteralFlags & TokenFlags.BinaryOrOctalSpecifier) node.transformFlags |= TransformFlags::ContainsES2015;
-//            return node;
-//        }
-//
-//        // @api
-//        function createBigIntLiteral(value: string | PseudoBigInt): BigIntLiteral {
-//            auto node = createBaseLiteral<BigIntLiteral>(SyntaxKind::BigIntLiteral, typeof value == "string" ? value : pseudoBigIntToString(value) + "n");
-//            node.transformFlags |= TransformFlags::ContainsESNext;
-//            return node;
-//        }
-//
-//        function createBaseStringLiteral(text: string, isSingleQuote?: boolean) {
-//            auto node = createBaseLiteral<StringLiteral>(SyntaxKind::StringLiteral, text);
-//            node.singleQuote = isSingleQuote;
-//            return node;
-//        }
-//
-//        // @api
-//        function createStringLiteral(text: string, isSingleQuote?: boolean, hasExtendedUnicodeEscape?: boolean): StringLiteral {
-//            auto node = createBaseStringLiteral(text, isSingleQuote);
-//            node.hasExtendedUnicodeEscape = hasExtendedUnicodeEscape;
-//            if (hasExtendedUnicodeEscape) node.transformFlags |= TransformFlags::ContainsES2015;
-//            return node;
-//        }
-//
+
+    //
+    // Literals
+    //
+
+    template<typename T>
+    shared<T> createBaseLiteral(SyntaxKind kind, string text) {
+        auto node = createBaseToken<T>(kind);
+        node->text = text;
+        return node;
+    }
+
+    // @api
+    shared<NumericLiteral> createNumericLiteral(string value, int numericLiteralFlags = (int) types::TokenFlags::None) {
+        auto node = createBaseLiteral<NumericLiteral>(SyntaxKind::NumericLiteral, std::move(value));
+        node->numericLiteralFlags = numericLiteralFlags;
+        if (numericLiteralFlags & TokenFlags::BinaryOrOctalSpecifier) node->transformFlags |= (int) TransformFlags::ContainsES2015;
+        return node;
+    }
+
+    shared<NumericLiteral> createNumericLiteral(double value, types::TokenFlags numericLiteralFlags = types::TokenFlags::None) {
+        return createNumericLiteral(std::to_string(value), numericLiteralFlags);
+    }
+
+    // @api
+    shared<BigIntLiteral> createBigIntLiteral(variant<string, PseudoBigInt> value) {
+        string v = holds_alternative<string>(value) ? get<string>(value) : pseudoBigIntToString(get<PseudoBigInt>(value)) + "n";
+        auto node = createBaseLiteral<BigIntLiteral>(SyntaxKind::BigIntLiteral, v);
+        node->transformFlags |= (int) TransformFlags::ContainsESNext;
+        return node;
+    }
+
+    shared<StringLiteral> createBaseStringLiteral(string text, optional<bool> isSingleQuote = {}) {
+        auto node = createBaseLiteral<StringLiteral>(SyntaxKind::StringLiteral, std::move(text));
+        node->singleQuote = isSingleQuote;
+        return node;
+    }
+
+    // @api
+    shared<StringLiteral> createStringLiteral(string text, optional<bool> isSingleQuote = {}, optional<bool> hasExtendedUnicodeEscape = {}) {
+        auto node = createBaseStringLiteral(std::move(text), isSingleQuote);
+        node->hasExtendedUnicodeEscape = hasExtendedUnicodeEscape;
+        if (hasExtendedUnicodeEscape) node->transformFlags |= (int) TransformFlags::ContainsES2015;
+        return node;
+    }
+
 //        // @api
 //        function createStringLiteralFromNode(sourceNode: PropertyNameLiteral): StringLiteral {
 //            auto node = createBaseStringLiteral(getTextOfIdentifierOrLiteral(sourceNode), /*isSingleQuote*/ undefined);
-//            node.textSourceNode = sourceNode;
+//            node->textSourceNode = sourceNode;
 //            return node;
 //        }
 //
-//        // @api
-//        function createRegularExpressionLiteral(text: string): RegularExpressionLiteral {
-//            auto node = createBaseLiteral<RegularExpressionLiteral>(SyntaxKind::RegularExpressionLiteral, text);
-//            return node;
-//        }
-//
-//        // @api
-//        function createLiteralLikeNode(kind: LiteralToken["kind"] | SyntaxKind::JsxTextAllWhiteSpaces, text: string): LiteralToken {
-//            switch (kind) {
-//                case SyntaxKind::NumericLiteral: return createNumericLiteral(text, /*numericLiteralFlags*/ 0);
-//                case SyntaxKind::BigIntLiteral: return createBigIntLiteral(text);
-//                case SyntaxKind::StringLiteral: return createStringLiteral(text, /*isSingleQuote*/ undefined);
-//                case SyntaxKind::JsxText: return createJsxText(text, /*containsOnlyTriviaWhiteSpaces*/ false);
-//                case SyntaxKind::JsxTextAllWhiteSpaces: return createJsxText(text, /*containsOnlyTriviaWhiteSpaces*/ true);
-//                case SyntaxKind::RegularExpressionLiteral: return createRegularExpressionLiteral(text);
-//                case SyntaxKind::NoSubstitutionTemplateLiteral: return createTemplateLiteralLikeNode(kind, text, /*rawText*/ undefined, /*templateFlags*/ 0) as NoSubstitutionTemplateLiteral;
-//            }
-//        }
-//
+    // @api
+    shared<RegularExpressionLiteral> createRegularExpressionLiteral(string text) {
+        auto node = createBaseLiteral<RegularExpressionLiteral>(SyntaxKind::RegularExpressionLiteral, text);
+        return node;
+    }
+
+    // @api
+    shared<JsxText> createJsxText(string text, optional<bool> containsOnlyTriviaWhiteSpaces = {}) {
+        auto node = createBaseNode<JsxText>(SyntaxKind::JsxText);
+        node->text = text;
+        node->containsOnlyTriviaWhiteSpaces = containsOnlyTriviaWhiteSpaces ? *containsOnlyTriviaWhiteSpaces : false;
+        node->transformFlags |= (int) TransformFlags::ContainsJsx;
+        return node;
+    }
+
+    // @api
+    shared<TemplateLiteralLikeNode> createTemplateLiteralLikeNode(SyntaxKind kind, string text, optional<string> rawText = {}, optional<int> templateFlags = {}) {
+        auto node = createBaseToken<TemplateLiteralLikeNode>(kind);
+        node->text = std::move(text);
+        node->rawText = std::move(rawText);
+        node->templateFlags = (templateFlags ? *templateFlags : 0) & (int) TokenFlags::TemplateLiteralLikeFlags;
+        node->transformFlags |= (int) TransformFlags::ContainsES2015;
+        if (node->templateFlags) {
+            node->transformFlags |= (int) TransformFlags::ContainsES2018;
+        }
+        return node;
+    }
+
+    // @api
+    shared<LiteralLikeNode> createLiteralLikeNode(SyntaxKind kind, string text) {
+        switch (kind) {
+            case SyntaxKind::NumericLiteral:
+                return createNumericLiteral(text, /*numericLiteralFlags*/ 0);
+            case SyntaxKind::BigIntLiteral:
+                return createBigIntLiteral(text);
+            case SyntaxKind::StringLiteral:
+                return createStringLiteral(text, /*isSingleQuote*/ {});
+            case SyntaxKind::JsxText:
+                return createJsxText(text, /*containsOnlyTriviaWhiteSpaces*/ false);
+            case SyntaxKind::JsxTextAllWhiteSpaces:
+                return createJsxText(text, /*containsOnlyTriviaWhiteSpaces*/ true);
+            case SyntaxKind::RegularExpressionLiteral:
+                return createRegularExpressionLiteral(text);
+            case SyntaxKind::NoSubstitutionTemplateLiteral:
+                return createTemplateLiteralLikeNode(kind, text, /*rawText*/ {}, /*templateFlags*/ 0);
+        }
+    }
+
 //        //
 //        // Identifiers
 //        //
@@ -422,15 +1048,15 @@ namespace ts::factory {
 
     shared<Identifier> createBaseGeneratedIdentifier(string text, GeneratedIdentifierFlags autoGenerateFlags) {
         auto node = createBaseIdentifier(text, /*originalKeywordKind*/ {});
-        node->autoGenerateFlags = autoGenerateFlags;
+        node->autoGenerateFlags = (int) autoGenerateFlags;
         node->autoGenerateId = nextAutoGenerateId;
         nextAutoGenerateId ++;
         return node;
     }
 
     // @api
-    shared<Identifier> createIdentifier(string &text, optional<NodeArray> typeArguments, optional<SyntaxKind> originalKeywordKind) {
-        auto node = createBaseIdentifier(text, originalKeywordKind);
+    shared<Identifier> createIdentifier(string text, optional<NodeArray> typeArguments, optional<SyntaxKind> originalKeywordKind) {
+        auto node = createBaseIdentifier(std::move(text), originalKeywordKind);
         if (typeArguments) {
             // NOTE: we do not use `setChildren` here because typeArguments in an identifier do not contribute to transformations
             node->typeArguments = createNodeArray(*typeArguments);
@@ -484,15 +1110,15 @@ namespace ts::factory {
 //            return name;
 //        }
 //
-//        // @api
-//        function createPrivateIdentifier(text: string): PrivateIdentifier {
-//            if (!startsWith(text, "#")) Debug.fail("First character of private identifier must be #: " + text);
-//            auto node = baseFactory.createBasePrivateIdentifierNode(SyntaxKind::PrivateIdentifier) as Mutable<PrivateIdentifier>;
-//            node.escapedText = escapeLeadingUnderscores(text);
-//            node.transformFlags |= TransformFlags::ContainsClassFields;
-//            return node;
-//        }
-//
+    // @api
+    shared<PrivateIdentifier> createPrivateIdentifier(string text) {
+        if (! startsWith(text, "#")) throw runtime_error("First character of private identifier must be #: " + text);
+        auto node = createBaseNode<PrivateIdentifier>(SyntaxKind::PrivateIdentifier);
+        node->escapedText = escapeLeadingUnderscores(text);
+        node->transformFlags |= (int) TransformFlags::ContainsClassFields;
+        return node;
+    }
+
 //        //
 //        // Punctuation
 //        //
@@ -562,7 +1188,7 @@ namespace ts::factory {
         }
         return node;
     }
-//
+
 //        //
 //        // Reserved words
 //        //
@@ -628,9 +1254,9 @@ namespace ts::factory {
 //        // @api
 //        function createQualifiedName(left: EntityName, right: string | Identifier) {
 //            auto node = createBaseNode<QualifiedName>(SyntaxKind::QualifiedName);
-//            node.left = left;
-//            node.right = asName(right);
-//            node.transformFlags |=
+//            node->left = left;
+//            node->right = asName(right);
+//            node->transformFlags |=
 //                propagateChildFlags(node.left) |
 //                propagateIdentifierNameFlags(node.right);
 //            return node;
@@ -644,17 +1270,17 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createComputedPropertyName(expression: Expression) {
-//            auto node = createBaseNode<ComputedPropertyName>(SyntaxKind::ComputedPropertyName);
-//            node.expression = parenthesizerRules().parenthesizeExpressionOfComputedPropertyName(expression);
-//            node.transformFlags |=
-//                propagateChildFlags(node.expression) |
-//                TransformFlags::ContainsES2015 |
-//                TransformFlags::ContainsComputedPropertyName;
-//            return node;
-//        }
-//
+    // @api
+    shared<ComputedPropertyName> createComputedPropertyName(shared<Expression> expression) {
+        auto node = createBaseNode<ComputedPropertyName>(SyntaxKind::ComputedPropertyName);
+        node->expression = parenthesizerRules::parenthesizeExpressionOfComputedPropertyName(expression);
+        node->transformFlags |=
+                propagateChildFlags(node->expression) |
+                (int) TransformFlags::ContainsES2015 |
+                (int) TransformFlags::ContainsComputedPropertyName;
+        return node;
+    }
+
 //        // @api
 //        function updateComputedPropertyName(node: ComputedPropertyName, expression: Expression) {
 //            return node.expression != expression
@@ -690,9 +1316,9 @@ namespace ts::factory {
 //                modifiers,
 //                name
 //            );
-//            node.constraint = constraint;
-//            node.default = defaultType;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->constraint = constraint;
+//            node->default = defaultType;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -738,15 +1364,15 @@ namespace ts::factory {
 //                modifiers,
 //                name,
 //                type,
-//                initializer && parenthesizerRules().parenthesizeExpressionForDisallowedComma(initializer)
+//                initializer && parenthesizerRules::parenthesizeExpressionForDisallowedComma(initializer)
 //            );
-//            node.dotDotDotToken = dotDotDotToken;
-//            node.questionToken = questionToken;
+//            node->dotDotDotToken = dotDotDotToken;
+//            node->questionToken = questionToken;
 //            if (isThisIdentifier(node.name)) {
-//                node.transformFlags = TransformFlags::ContainsTypeScript;
+//                node->transformFlags = TransformFlags::ContainsTypeScript;
 //            }
 //            else {
-//                node.transformFlags |=
+//                node->transformFlags |=
 //                    propagateChildFlags(node.dotDotDotToken) |
 //                    propagateChildFlags(node.questionToken);
 //                if (questionToken) node.transformFlags |= TransformFlags::ContainsTypeScript;
@@ -781,8 +1407,8 @@ namespace ts::factory {
 //        // @api
 //        function createDecorator(expression: Expression) {
 //            auto node = createBaseNode<Decorator>(SyntaxKind::Decorator);
-//            node.expression = parenthesizerRules().parenthesizeLeftSideOfAccess(expression);
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                TransformFlags::ContainsTypeScript |
 //                TransformFlags::ContainsTypeScriptClassSyntax;
@@ -813,9 +1439,9 @@ namespace ts::factory {
 //                modifiers,
 //                name
 //            );
-//            node.type = type;
-//            node.questionToken = questionToken;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->type = type;
+//            node->questionToken = questionToken;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -852,17 +1478,17 @@ namespace ts::factory {
 //                type,
 //                initializer
 //            );
-//            node.questionToken = questionOrExclamationToken && isQuestionToken(questionOrExclamationToken) ? questionOrExclamationToken : undefined;
-//            node.exclamationToken = questionOrExclamationToken && isExclamationToken(questionOrExclamationToken) ? questionOrExclamationToken : undefined;
-//            node.transformFlags |=
+//            node->questionToken = questionOrExclamationToken && isQuestionToken(questionOrExclamationToken) ? questionOrExclamationToken : undefined;
+//            node->exclamationToken = questionOrExclamationToken && isExclamationToken(questionOrExclamationToken) ? questionOrExclamationToken : undefined;
+//            node->transformFlags |=
 //                propagateChildFlags(node.questionToken) |
 //                propagateChildFlags(node.exclamationToken) |
 //                TransformFlags::ContainsClassFields;
 //            if (isComputedPropertyName(node.name) || (hasStaticModifier(node) && node.initializer)) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScriptClassSyntax;
+//                node->transformFlags |= TransformFlags::ContainsTypeScriptClassSyntax;
 //            }
 //            if (questionOrExclamationToken || modifiersToFlags(node.modifiers) & ModifierFlags.Ambient) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScript;
+//                node->transformFlags |= TransformFlags::ContainsTypeScript;
 //            }
 //            return node;
 //        }
@@ -906,8 +1532,8 @@ namespace ts::factory {
 //                parameters,
 //                type
 //            );
-//            node.questionToken = questionToken;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->questionToken = questionToken;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -953,25 +1579,25 @@ namespace ts::factory {
 //                type,
 //                body
 //            );
-//            node.asteriskToken = asteriskToken;
-//            node.questionToken = questionToken;
-//            node.transformFlags |=
+//            node->asteriskToken = asteriskToken;
+//            node->questionToken = questionToken;
+//            node->transformFlags |=
 //                propagateChildFlags(node.asteriskToken) |
 //                propagateChildFlags(node.questionToken) |
 //                TransformFlags::ContainsES2015;
 //            if (questionToken) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScript;
+//                node->transformFlags |= TransformFlags::ContainsTypeScript;
 //            }
 //            if (modifiersToFlags(node.modifiers) & ModifierFlags.Async) {
 //                if (asteriskToken) {
-//                    node.transformFlags |= TransformFlags::ContainsES2018;
+//                    node->transformFlags |= TransformFlags::ContainsES2018;
 //                }
 //                else {
-//                    node.transformFlags |= TransformFlags::ContainsES2017;
+//                    node->transformFlags |= TransformFlags::ContainsES2017;
 //                }
 //            }
 //            else if (asteriskToken) {
-//                node.transformFlags |= TransformFlags::ContainsGenerator;
+//                node->transformFlags |= TransformFlags::ContainsGenerator;
 //            }
 //            return node;
 //        }
@@ -1015,8 +1641,8 @@ namespace ts::factory {
 //                /*name*/ undefined,
 //                /*typeParameters*/ undefined
 //            );
-//            node.body = body;
-//            node.transformFlags = propagateChildFlags(body) | TransformFlags::ContainsClassFields;
+//            node->body = body;
+//            node->transformFlags = propagateChildFlags(body) | TransformFlags::ContainsClassFields;
 //            return node;
 //        }
 //
@@ -1051,7 +1677,7 @@ namespace ts::factory {
 //                /*type*/ undefined,
 //                body
 //            );
-//            node.transformFlags |= TransformFlags::ContainsES2015;
+//            node->transformFlags |= TransformFlags::ContainsES2015;
 //            return node;
 //        }
 //
@@ -1165,7 +1791,7 @@ namespace ts::factory {
 //                parameters,
 //                type
 //            );
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1198,7 +1824,7 @@ namespace ts::factory {
 //                parameters,
 //                type
 //            );
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1232,7 +1858,7 @@ namespace ts::factory {
 //                parameters,
 //                type
 //            );
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1255,9 +1881,9 @@ namespace ts::factory {
 //        // @api
 //        function createTemplateLiteralTypeSpan(type: TypeNode, literal: TemplateMiddle | TemplateTail) {
 //            auto node = createBaseNode<TemplateLiteralTypeSpan>(SyntaxKind::TemplateLiteralTypeSpan);
-//            node.type = type;
-//            node.literal = literal;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->type = type;
+//            node->literal = literal;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1281,10 +1907,10 @@ namespace ts::factory {
 //        // @api
 //        function createTypePredicateNode(assertsModifier: AssertsKeyword | undefined, parameterName: Identifier | ThisTypeNode | string, type: TypeNode | undefined) {
 //            auto node = createBaseNode<TypePredicateNode>(SyntaxKind::TypePredicate);
-//            node.assertsModifier = assertsModifier;
-//            node.parameterName = asName(parameterName);
-//            node.type = type;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->assertsModifier = assertsModifier;
+//            node->parameterName = asName(parameterName);
+//            node->type = type;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1300,9 +1926,9 @@ namespace ts::factory {
 //        // @api
 //        function createTypeReferenceNode(typeName: string | EntityName, typeArguments: readonly TypeNode[] | undefined) {
 //            auto node = createBaseNode<TypeReferenceNode>(SyntaxKind::TypeReference);
-//            node.typeName = asName(typeName);
-//            node.typeArguments = typeArguments && parenthesizerRules().parenthesizeTypeArguments(createNodeArray(typeArguments));
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->typeName = asName(typeName);
+//            node->typeArguments = typeArguments && parenthesizerRules::parenthesizeTypeArguments(createNodeArray(typeArguments));
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1329,7 +1955,7 @@ namespace ts::factory {
 //                parameters,
 //                type
 //            );
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1369,7 +1995,7 @@ namespace ts::factory {
 //                parameters,
 //                type
 //            );
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1417,9 +2043,9 @@ namespace ts::factory {
 //        // @api
 //        function createTypeQueryNode(exprName: EntityName, typeArguments?: readonly TypeNode[]) {
 //            auto node = createBaseNode<TypeQueryNode>(SyntaxKind::TypeQuery);
-//            node.exprName = exprName;
-//            node.typeArguments = typeArguments && parenthesizerRules().parenthesizeTypeArguments(typeArguments);
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->exprName = exprName;
+//            node->typeArguments = typeArguments && parenthesizerRules::parenthesizeTypeArguments(typeArguments);
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1434,8 +2060,8 @@ namespace ts::factory {
 //        // @api
 //        function createTypeLiteralNode(members: readonly TypeElement[] | undefined) {
 //            auto node = createBaseNode<TypeLiteralNode>(SyntaxKind::TypeLiteral);
-//            node.members = createNodeArray(members);
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->members = createNodeArray(members);
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1449,8 +2075,8 @@ namespace ts::factory {
 //        // @api
 //        function createArrayTypeNode(elementType: TypeNode) {
 //            auto node = createBaseNode<ArrayTypeNode>(SyntaxKind::ArrayType);
-//            node.elementType = parenthesizerRules().parenthesizeNonArrayTypeOfPostfixType(elementType);
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->elementType = parenthesizerRules::parenthesizeNonArrayTypeOfPostfixType(elementType);
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1464,8 +2090,8 @@ namespace ts::factory {
 //        // @api
 //        function createTupleTypeNode(elements: readonly (TypeNode | NamedTupleMember)[]) {
 //            auto node = createBaseNode<TupleTypeNode>(SyntaxKind::TupleType);
-//            node.elements = createNodeArray(parenthesizerRules().parenthesizeElementTypesOfTupleType(elements));
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->elements = createNodeArray(parenthesizerRules::parenthesizeElementTypesOfTupleType(elements));
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1479,11 +2105,11 @@ namespace ts::factory {
 //        // @api
 //        function createNamedTupleMember(dotDotDotToken: DotDotDotToken | undefined, name: Identifier, questionToken: QuestionToken | undefined, type: TypeNode) {
 //            auto node = createBaseNode<NamedTupleMember>(SyntaxKind::NamedTupleMember);
-//            node.dotDotDotToken = dotDotDotToken;
-//            node.name = name;
-//            node.questionToken = questionToken;
-//            node.type = type;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->dotDotDotToken = dotDotDotToken;
+//            node->name = name;
+//            node->questionToken = questionToken;
+//            node->type = type;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1500,8 +2126,8 @@ namespace ts::factory {
 //        // @api
 //        function createOptionalTypeNode(type: TypeNode) {
 //            auto node = createBaseNode<OptionalTypeNode>(SyntaxKind::OptionalType);
-//            node.type = parenthesizerRules().parenthesizeTypeOfOptionalType(type);
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->type = parenthesizerRules::parenthesizeTypeOfOptionalType(type);
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1515,8 +2141,8 @@ namespace ts::factory {
 //        // @api
 //        function createRestTypeNode(type: TypeNode) {
 //            auto node = createBaseNode<RestTypeNode>(SyntaxKind::RestType);
-//            node.type = type;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->type = type;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1529,8 +2155,8 @@ namespace ts::factory {
 //
 //        function createUnionOrIntersectionTypeNode(kind: SyntaxKind::UnionType | SyntaxKind::IntersectionType, types: readonly TypeNode[], parenthesize: (nodes: readonly TypeNode[]) => readonly TypeNode[]) {
 //            auto node = createBaseNode<UnionTypeNode | IntersectionTypeNode>(kind);
-//            node.types = factory.createNodeArray(parenthesize(types));
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->types = factory::createNodeArray(parenthesize(types));
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1542,32 +2168,32 @@ namespace ts::factory {
 //
 //        // @api
 //        function createUnionTypeNode(types: readonly TypeNode[]): UnionTypeNode {
-//            return createUnionOrIntersectionTypeNode(SyntaxKind::UnionType, types, parenthesizerRules().parenthesizeConstituentTypesOfUnionType) as UnionTypeNode;
+//            return createUnionOrIntersectionTypeNode(SyntaxKind::UnionType, types, parenthesizerRules::parenthesizeConstituentTypesOfUnionType) as UnionTypeNode;
 //        }
 //
 //        // @api
 //        function updateUnionTypeNode(node: UnionTypeNode, types: NodeArray<TypeNode>) {
-//            return updateUnionOrIntersectionTypeNode(node, types, parenthesizerRules().parenthesizeConstituentTypesOfUnionType);
+//            return updateUnionOrIntersectionTypeNode(node, types, parenthesizerRules::parenthesizeConstituentTypesOfUnionType);
 //        }
 //
 //        // @api
 //        function createIntersectionTypeNode(types: readonly TypeNode[]): IntersectionTypeNode {
-//            return createUnionOrIntersectionTypeNode(SyntaxKind::IntersectionType, types, parenthesizerRules().parenthesizeConstituentTypesOfIntersectionType) as IntersectionTypeNode;
+//            return createUnionOrIntersectionTypeNode(SyntaxKind::IntersectionType, types, parenthesizerRules::parenthesizeConstituentTypesOfIntersectionType) as IntersectionTypeNode;
 //        }
 //
 //        // @api
 //        function updateIntersectionTypeNode(node: IntersectionTypeNode, types: NodeArray<TypeNode>) {
-//            return updateUnionOrIntersectionTypeNode(node, types, parenthesizerRules().parenthesizeConstituentTypesOfIntersectionType);
+//            return updateUnionOrIntersectionTypeNode(node, types, parenthesizerRules::parenthesizeConstituentTypesOfIntersectionType);
 //        }
 //
 //        // @api
 //        function createConditionalTypeNode(checkType: TypeNode, extendsType: TypeNode, trueType: TypeNode, falseType: TypeNode) {
 //            auto node = createBaseNode<ConditionalTypeNode>(SyntaxKind::ConditionalType);
-//            node.checkType = parenthesizerRules().parenthesizeCheckTypeOfConditionalType(checkType);
-//            node.extendsType = parenthesizerRules().parenthesizeExtendsTypeOfConditionalType(extendsType);
-//            node.trueType = trueType;
-//            node.falseType = falseType;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->checkType = parenthesizerRules::parenthesizeCheckTypeOfConditionalType(checkType);
+//            node->extendsType = parenthesizerRules::parenthesizeExtendsTypeOfConditionalType(extendsType);
+//            node->trueType = trueType;
+//            node->falseType = falseType;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1584,8 +2210,8 @@ namespace ts::factory {
 //        // @api
 //        function createInferTypeNode(typeParameter: TypeParameterDeclaration) {
 //            auto node = createBaseNode<InferTypeNode>(SyntaxKind::InferType);
-//            node.typeParameter = typeParameter;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->typeParameter = typeParameter;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1599,9 +2225,9 @@ namespace ts::factory {
 //        // @api
 //        function createTemplateLiteralType(head: TemplateHead, templateSpans: readonly TemplateLiteralTypeSpan[]) {
 //            auto node = createBaseNode<TemplateLiteralTypeNode>(SyntaxKind::TemplateLiteralType);
-//            node.head = head;
-//            node.templateSpans = createNodeArray(templateSpans);
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->head = head;
+//            node->templateSpans = createNodeArray(templateSpans);
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1630,12 +2256,12 @@ namespace ts::factory {
 //            isTypeOf = typeof isTypeOfOrTypeArguments == "boolean" ? isTypeOfOrTypeArguments : typeof isTypeOf == "boolean" ? isTypeOf : false;
 //
 //            auto node = createBaseNode<ImportTypeNode>(SyntaxKind::ImportType);
-//            node.argument = argument;
-//            node.assertions = assertion;
-//            node.qualifier = qualifier;
-//            node.typeArguments = typeArguments && parenthesizerRules().parenthesizeTypeArguments(typeArguments);
-//            node.isTypeOf = isTypeOf;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->argument = argument;
+//            node->assertions = assertion;
+//            node->qualifier = qualifier;
+//            node->typeArguments = typeArguments && parenthesizerRules::parenthesizeTypeArguments(typeArguments);
+//            node->isTypeOf = isTypeOf;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1668,8 +2294,8 @@ namespace ts::factory {
 //        // @api
 //        function createParenthesizedType(type: TypeNode) {
 //            auto node = createBaseNode<ParenthesizedTypeNode>(SyntaxKind::ParenthesizedType);
-//            node.type = type;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->type = type;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1683,18 +2309,18 @@ namespace ts::factory {
 //        // @api
 //        function createThisTypeNode() {
 //            auto node = createBaseNode<ThisTypeNode>(SyntaxKind::ThisType);
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
 //        // @api
 //        function createTypeOperatorNode(operator: SyntaxKind::KeyOfKeyword | SyntaxKind::UniqueKeyword | SyntaxKind::ReadonlyKeyword, type: TypeNode): TypeOperatorNode {
 //            auto node = createBaseNode<TypeOperatorNode>(SyntaxKind::TypeOperator);
-//            node.operator = operator;
-//            node.type = operator == SyntaxKind::ReadonlyKeyword ?
-//                parenthesizerRules().parenthesizeOperandOfReadonlyTypeOperator(type) :
-//                parenthesizerRules().parenthesizeOperandOfTypeOperator(type);
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->operator = operator;
+//            node->type = operator == SyntaxKind::ReadonlyKeyword ?
+//                parenthesizerRules::parenthesizeOperandOfReadonlyTypeOperator(type) :
+//                parenthesizerRules::parenthesizeOperandOfTypeOperator(type);
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1708,9 +2334,9 @@ namespace ts::factory {
 //        // @api
 //        function createIndexedAccessTypeNode(objectType: TypeNode, indexType: TypeNode) {
 //            auto node = createBaseNode<IndexedAccessTypeNode>(SyntaxKind::IndexedAccessType);
-//            node.objectType = parenthesizerRules().parenthesizeNonArrayTypeOfPostfixType(objectType);
-//            node.indexType = indexType;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->objectType = parenthesizerRules::parenthesizeNonArrayTypeOfPostfixType(objectType);
+//            node->indexType = indexType;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1725,13 +2351,13 @@ namespace ts::factory {
 //        // @api
 //        function createMappedTypeNode(readonlyToken: ReadonlyKeyword | PlusToken | MinusToken | undefined, typeParameter: TypeParameterDeclaration, nameType: TypeNode | undefined, questionToken: QuestionToken | PlusToken | MinusToken | undefined, type: TypeNode | undefined, members: readonly TypeElement[] | undefined): MappedTypeNode {
 //            auto node = createBaseNode<MappedTypeNode>(SyntaxKind::MappedType);
-//            node.readonlyToken = readonlyToken;
-//            node.typeParameter = typeParameter;
-//            node.nameType = nameType;
-//            node.questionToken = questionToken;
-//            node.type = type;
-//            node.members = members && createNodeArray(members);
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->readonlyToken = readonlyToken;
+//            node->typeParameter = typeParameter;
+//            node->nameType = nameType;
+//            node->questionToken = questionToken;
+//            node->type = type;
+//            node->members = members && createNodeArray(members);
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1750,8 +2376,8 @@ namespace ts::factory {
 //        // @api
 //        function createLiteralTypeNode(literal: LiteralTypeNode["literal"]) {
 //            auto node = createBaseNode<LiteralTypeNode>(SyntaxKind::LiteralType);
-//            node.literal = literal;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->literal = literal;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -1766,21 +2392,21 @@ namespace ts::factory {
 //        // Binding Patterns
 //        //
 //
-//        // @api
-//        function createObjectBindingPattern(elements: readonly BindingElement[]) {
-//            auto node = createBaseNode<ObjectBindingPattern>(SyntaxKind::ObjectBindingPattern);
-//            node.elements = createNodeArray(elements);
-//            node.transformFlags |=
-//                propagateChildrenFlags(node.elements) |
-//                TransformFlags::ContainsES2015 |
-//                TransformFlags::ContainsBindingPattern;
-//            if (node.transformFlags & TransformFlags::ContainsRestOrSpread) {
-//                node.transformFlags |=
-//                    TransformFlags::ContainsES2018 |
-//                    TransformFlags::ContainsObjectRestOrSpread;
-//            }
-//            return node;
-//        }
+    // @api
+    shared<ObjectBindingPattern> createObjectBindingPattern(NodeArray elements) {
+        auto node = createBaseNode<ObjectBindingPattern>(SyntaxKind::ObjectBindingPattern);
+        node->elements = createNodeArray(elements);
+        node->transformFlags |=
+                propagateChildrenFlags(node->elements) |
+                (int) TransformFlags::ContainsES2015 |
+                (int) TransformFlags::ContainsBindingPattern;
+        if (node->transformFlags & (int) TransformFlags::ContainsRestOrSpread) {
+            node->transformFlags |=
+                    (int) TransformFlags::ContainsES2018 |
+                    (int) TransformFlags::ContainsObjectRestOrSpread;
+        }
+        return node;
+    }
 //
 //        // @api
 //        function updateObjectBindingPattern(node: ObjectBindingPattern, elements: readonly BindingElement[]) {
@@ -1789,17 +2415,17 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createArrayBindingPattern(elements: readonly ArrayBindingElement[]) {
-//            auto node = createBaseNode<ArrayBindingPattern>(SyntaxKind::ArrayBindingPattern);
-//            node.elements = createNodeArray(elements);
-//            node.transformFlags |=
-//                propagateChildrenFlags(node.elements) |
-//                TransformFlags::ContainsES2015 |
-//                TransformFlags::ContainsBindingPattern;
-//            return node;
-//        }
-//
+    // @api
+    shared<ArrayBindingPattern> createArrayBindingPattern(NodeArray elements) {
+        auto node = createBaseNode<ArrayBindingPattern>(SyntaxKind::ArrayBindingPattern);
+        node->elements = createNodeArray(elements);
+        node->transformFlags |=
+                propagateChildrenFlags(node->elements) |
+                (int) TransformFlags::ContainsES2015 |
+                (int) TransformFlags::ContainsBindingPattern;
+        return node;
+    }
+
 //        // @api
 //        function updateArrayBindingPattern(node: ArrayBindingPattern, elements: readonly ArrayBindingElement[]) {
 //            return node.elements != elements
@@ -1807,29 +2433,32 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createBindingElement(dotDotDotToken: DotDotDotToken | undefined, propertyName: string | PropertyName | undefined, name: string | BindingName, initializer?: Expression) {
-//            auto node = createBaseBindingLikeDeclaration<BindingElement>(
-//                SyntaxKind::BindingElement,
-//                /*decorators*/ undefined,
-//                /*modifiers*/ undefined,
-//                name,
-//                initializer && parenthesizerRules().parenthesizeExpressionForDisallowedComma(initializer)
-//            );
-//            node.propertyName = asName(propertyName);
-//            node.dotDotDotToken = dotDotDotToken;
-//            node.transformFlags |=
-//                propagateChildFlags(node.dotDotDotToken) |
-//                TransformFlags::ContainsES2015;
-//            if (node.propertyName) {
-//                node.transformFlags |= isIdentifier(node.propertyName) ?
-//                    propagateIdentifierNameFlags(node.propertyName) :
-//                    propagateChildFlags(node.propertyName);
-//            }
-//            if (dotDotDotToken) node.transformFlags |= TransformFlags::ContainsRestOrSpread;
-//            return node;
-//        }
-//
+    // @api
+    shared<BindingElement> createBindingElement(
+            sharedOpt<DotDotDotToken> dotDotDotToken,
+            optional<variant<string, shared<NodeUnion(PropertyName)>>> propertyName = {},
+            variant<string, shared<NodeUnion(BindingName)>> name = "",
+            sharedOpt<Expression> initializer = {}
+    ) {
+        auto node = createBaseBindingLikeDeclaration<BindingElement>(
+                SyntaxKind::BindingElement,
+                /*decorators*/ {},
+                /*modifiers*/ {},
+                name,
+                initializer ? parenthesizerRules::parenthesizeExpressionForDisallowedComma(initializer) : nullptr
+        );
+        node->propertyName = asName(*propertyName);
+        node->dotDotDotToken = dotDotDotToken;
+        node->transformFlags |= propagateChildFlags(node->dotDotDotToken) | (int) TransformFlags::ContainsES2015;
+        if (node->propertyName) {
+            node->transformFlags |= isIdentifier(node->propertyName) ?
+                                    propagateIdentifierNameFlags(node->propertyName) :
+                                    propagateChildFlags(node->propertyName);
+        }
+        if (dotDotDotToken) node->transformFlags |= (int) TransformFlags::ContainsRestOrSpread;
+        return node;
+    }
+
 //        // @api
 //        function updateBindingElement(node: BindingElement, dotDotDotToken: DotDotDotToken | undefined, propertyName: PropertyName | undefined, name: BindingName, initializer: Expression | undefined) {
 //            return node.propertyName != propertyName
@@ -1859,9 +2488,9 @@ namespace ts::factory {
 //            // a trailing comma.
 //            auto lastElement = elements && lastOrUndefined(elements);
 //            auto elementsArray = createNodeArray(elements, lastElement && isOmittedExpression(lastElement) ? true : undefined);
-//            node.elements = parenthesizerRules().parenthesizeExpressionsOfCommaDelimitedList(elementsArray);
-//            node.multiLine = multiLine;
-//            node.transformFlags |= propagateChildrenFlags(node.elements);
+//            node->elements = parenthesizerRules::parenthesizeExpressionsOfCommaDelimitedList(elementsArray);
+//            node->multiLine = multiLine;
+//            node->transformFlags |= propagateChildrenFlags(node.elements);
 //            return node;
 //        }
 //
@@ -1875,9 +2504,9 @@ namespace ts::factory {
 //        // @api
 //        function createObjectLiteralExpression(properties?: readonly ObjectLiteralElementLike[], multiLine?: boolean) {
 //            auto node = createBaseExpression<ObjectLiteralExpression>(SyntaxKind::ObjectLiteralExpression);
-//            node.properties = createNodeArray(properties);
-//            node.multiLine = multiLine;
-//            node.transformFlags |= propagateChildrenFlags(node.properties);
+//            node->properties = createNodeArray(properties);
+//            node->multiLine = multiLine;
+//            node->transformFlags |= propagateChildrenFlags(node.properties);
 //            return node;
 //        }
 //
@@ -1888,26 +2517,26 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createPropertyAccessExpression(expression: Expression, name: string | Identifier | PrivateIdentifier) {
-//            auto node = createBaseExpression<PropertyAccessExpression>(SyntaxKind::PropertyAccessExpression);
-//            node.expression = parenthesizerRules().parenthesizeLeftSideOfAccess(expression);
-//            node.name = asName(name);
-//            node.transformFlags =
-//                propagateChildFlags(node.expression) |
-//                (isIdentifier(node.name) ?
-//                    propagateIdentifierNameFlags(node.name) :
-//                    propagateChildFlags(node.name));
-//            if (isSuperKeyword(expression)) {
-//                // super method calls require a lexical 'this'
-//                // super method calls require 'super' hoisting in ES2017 and ES2018 async functions and async generators
-//                node.transformFlags |=
-//                    TransformFlags::ContainsES2017 |
-//                    TransformFlags::ContainsES2018;
-//            }
-//            return node;
-//        }
-//
+    // @api
+    shared<PropertyAccessExpression> createPropertyAccessExpression(shared<Expression> expression, variant<string, shared<Node>> _name) {
+        auto node = createBaseExpression<PropertyAccessExpression>(SyntaxKind::PropertyAccessExpression);
+        node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
+        node->name = asName(_name);
+        node->transformFlags =
+                propagateChildFlags(node->expression) |
+                (isIdentifier(node->name) ?
+                 propagateIdentifierNameFlags(node->name) :
+                 propagateChildFlags(node->name));
+        if (isSuperKeyword(expression)) {
+            // super method calls require a lexical 'this'
+            // super method calls require 'super' hoisting in ES2017 and ES2018 async functions and async generators
+            node->transformFlags |=
+                    (int) TransformFlags::ContainsES2017 |
+                    (int) TransformFlags::ContainsES2018;
+        }
+        return node;
+    }
+
 //        // @api
 //        function updatePropertyAccessExpression(node: PropertyAccessExpression, expression: Expression, name: Identifier | PrivateIdentifier) {
 //            if (isPropertyAccessChain(node)) {
@@ -1922,11 +2551,11 @@ namespace ts::factory {
 //        // @api
 //        function createPropertyAccessChain(expression: Expression, questionDotToken: QuestionDotToken | undefined, name: string | Identifier | PrivateIdentifier) {
 //            auto node = createBaseExpression<PropertyAccessChain>(SyntaxKind::PropertyAccessExpression);
-//            node.flags |= NodeFlags.OptionalChain;
-//            node.expression = parenthesizerRules().parenthesizeLeftSideOfAccess(expression);
-//            node.questionDotToken = questionDotToken;
-//            node.name = asName(name);
-//            node.transformFlags |=
+//            node->flags |= NodeFlags.OptionalChain;
+//            node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
+//            node->questionDotToken = questionDotToken;
+//            node->name = asName(name);
+//            node->transformFlags |=
 //                TransformFlags::ContainsES2020 |
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.questionDotToken) |
@@ -1951,15 +2580,15 @@ namespace ts::factory {
 //        // @api
 //        function createElementAccessExpression(expression: Expression, index: number | Expression) {
 //            auto node = createBaseExpression<ElementAccessExpression>(SyntaxKind::ElementAccessExpression);
-//            node.expression = parenthesizerRules().parenthesizeLeftSideOfAccess(expression);
-//            node.argumentExpression = asExpression(index);
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
+//            node->argumentExpression = asExpression(index);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.argumentExpression);
 //            if (isSuperKeyword(expression)) {
 //                // super method calls require a lexical 'this'
 //                // super method calls require 'super' hoisting in ES2017 and ES2018 async functions and async generators
-//                node.transformFlags |=
+//                node->transformFlags |=
 //                    TransformFlags::ContainsES2017 |
 //                    TransformFlags::ContainsES2018;
 //            }
@@ -1980,11 +2609,11 @@ namespace ts::factory {
 //        // @api
 //        function createElementAccessChain(expression: Expression, questionDotToken: QuestionDotToken | undefined, index: number | Expression) {
 //            auto node = createBaseExpression<ElementAccessChain>(SyntaxKind::ElementAccessExpression);
-//            node.flags |= NodeFlags.OptionalChain;
-//            node.expression = parenthesizerRules().parenthesizeLeftSideOfAccess(expression);
-//            node.questionDotToken = questionDotToken;
-//            node.argumentExpression = asExpression(index);
-//            node.transformFlags |=
+//            node->flags |= NodeFlags.OptionalChain;
+//            node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
+//            node->questionDotToken = questionDotToken;
+//            node->argumentExpression = asExpression(index);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.questionDotToken) |
 //                propagateChildFlags(node.argumentExpression) |
@@ -2007,21 +2636,21 @@ namespace ts::factory {
 //        // @api
 //        function createCallExpression(expression: Expression, typeArguments: readonly TypeNode[] | undefined, argumentsArray: readonly Expression[] | undefined) {
 //            auto node = createBaseExpression<CallExpression>(SyntaxKind::CallExpression);
-//            node.expression = parenthesizerRules().parenthesizeLeftSideOfAccess(expression);
-//            node.typeArguments = asNodeArray(typeArguments);
-//            node.arguments = parenthesizerRules().parenthesizeExpressionsOfCommaDelimitedList(createNodeArray(argumentsArray));
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
+//            node->typeArguments = asNodeArray(typeArguments);
+//            node->arguments = parenthesizerRules::parenthesizeExpressionsOfCommaDelimitedList(createNodeArray(argumentsArray));
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildrenFlags(node.typeArguments) |
 //                propagateChildrenFlags(node.arguments);
 //            if (node.typeArguments) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScript;
+//                node->transformFlags |= TransformFlags::ContainsTypeScript;
 //            }
 //            if (isImportKeyword(node.expression)) {
-//                node.transformFlags |= TransformFlags::ContainsDynamicImport;
+//                node->transformFlags |= TransformFlags::ContainsDynamicImport;
 //            }
 //            else if (isSuperProperty(node.expression)) {
-//                node.transformFlags |= TransformFlags::ContainsLexicalThis;
+//                node->transformFlags |= TransformFlags::ContainsLexicalThis;
 //            }
 //            return node;
 //        }
@@ -2041,22 +2670,22 @@ namespace ts::factory {
 //        // @api
 //        function createCallChain(expression: Expression, questionDotToken: QuestionDotToken | undefined, typeArguments: readonly TypeNode[] | undefined, argumentsArray: readonly Expression[] | undefined) {
 //            auto node = createBaseExpression<CallChain>(SyntaxKind::CallExpression);
-//            node.flags |= NodeFlags.OptionalChain;
-//            node.expression = parenthesizerRules().parenthesizeLeftSideOfAccess(expression);
-//            node.questionDotToken = questionDotToken;
-//            node.typeArguments = asNodeArray(typeArguments);
-//            node.arguments = parenthesizerRules().parenthesizeExpressionsOfCommaDelimitedList(createNodeArray(argumentsArray));
-//            node.transformFlags |=
+//            node->flags |= NodeFlags.OptionalChain;
+//            node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
+//            node->questionDotToken = questionDotToken;
+//            node->typeArguments = asNodeArray(typeArguments);
+//            node->arguments = parenthesizerRules::parenthesizeExpressionsOfCommaDelimitedList(createNodeArray(argumentsArray));
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.questionDotToken) |
 //                propagateChildrenFlags(node.typeArguments) |
 //                propagateChildrenFlags(node.arguments) |
 //                TransformFlags::ContainsES2020;
 //            if (node.typeArguments) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScript;
+//                node->transformFlags |= TransformFlags::ContainsTypeScript;
 //            }
 //            if (isSuperProperty(node.expression)) {
-//                node.transformFlags |= TransformFlags::ContainsLexicalThis;
+//                node->transformFlags |= TransformFlags::ContainsLexicalThis;
 //            }
 //            return node;
 //        }
@@ -2075,16 +2704,16 @@ namespace ts::factory {
 //        // @api
 //        function createNewExpression(expression: Expression, typeArguments: readonly TypeNode[] | undefined, argumentsArray: readonly Expression[] | undefined) {
 //            auto node = createBaseExpression<NewExpression>(SyntaxKind::NewExpression);
-//            node.expression = parenthesizerRules().parenthesizeExpressionOfNew(expression);
-//            node.typeArguments = asNodeArray(typeArguments);
-//            node.arguments = argumentsArray ? parenthesizerRules().parenthesizeExpressionsOfCommaDelimitedList(argumentsArray) : undefined;
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeExpressionOfNew(expression);
+//            node->typeArguments = asNodeArray(typeArguments);
+//            node->arguments = argumentsArray ? parenthesizerRules::parenthesizeExpressionsOfCommaDelimitedList(argumentsArray) : undefined;
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildrenFlags(node.typeArguments) |
 //                propagateChildrenFlags(node.arguments) |
 //                TransformFlags::ContainsES2020;
 //            if (node.typeArguments) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScript;
+//                node->transformFlags |= TransformFlags::ContainsTypeScript;
 //            }
 //            return node;
 //        }
@@ -2101,19 +2730,19 @@ namespace ts::factory {
 //        // @api
 //        function createTaggedTemplateExpression(tag: Expression, typeArguments: readonly TypeNode[] | undefined, template: TemplateLiteral) {
 //            auto node = createBaseExpression<TaggedTemplateExpression>(SyntaxKind::TaggedTemplateExpression);
-//            node.tag = parenthesizerRules().parenthesizeLeftSideOfAccess(tag);
-//            node.typeArguments = asNodeArray(typeArguments);
-//            node.template = template;
-//            node.transformFlags |=
+//            node->tag = parenthesizerRules::parenthesizeLeftSideOfAccess(tag);
+//            node->typeArguments = asNodeArray(typeArguments);
+//            node->template = template;
+//            node->transformFlags |=
 //                propagateChildFlags(node.tag) |
 //                propagateChildrenFlags(node.typeArguments) |
 //                propagateChildFlags(node.template) |
 //                TransformFlags::ContainsES2015;
 //            if (node.typeArguments) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScript;
+//                node->transformFlags |= TransformFlags::ContainsTypeScript;
 //            }
 //            if (hasInvalidEscape(node.template)) {
-//                node.transformFlags |= TransformFlags::ContainsES2018;
+//                node->transformFlags |= TransformFlags::ContainsES2018;
 //            }
 //            return node;
 //        }
@@ -2130,9 +2759,9 @@ namespace ts::factory {
 //        // @api
 //        function createTypeAssertion(type: TypeNode, expression: Expression) {
 //            auto node = createBaseExpression<TypeAssertion>(SyntaxKind::TypeAssertionExpression);
-//            node.expression = parenthesizerRules().parenthesizeOperandOfPrefixUnary(expression);
-//            node.type = type;
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeOperandOfPrefixUnary(expression);
+//            node->type = type;
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.type) |
 //                TransformFlags::ContainsTypeScript;
@@ -2147,14 +2776,14 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createParenthesizedExpression(expression: Expression) {
-//            auto node = createBaseExpression<ParenthesizedExpression>(SyntaxKind::ParenthesizedExpression);
-//            node.expression = expression;
-//            node.transformFlags = propagateChildFlags(node.expression);
-//            return node;
-//        }
-//
+    // @api
+    shared<ParenthesizedExpression> createParenthesizedExpression(shared<Expression> expression) {
+        auto node = createBaseExpression<ParenthesizedExpression>(SyntaxKind::ParenthesizedExpression);
+        node->expression = expression;
+        node->transformFlags = propagateChildFlags(node->expression);
+        return node;
+    }
+
 //        // @api
 //        function updateParenthesizedExpression(node: ParenthesizedExpression, expression: Expression) {
 //            return node.expression != expression
@@ -2182,21 +2811,21 @@ namespace ts::factory {
 //                type,
 //                body
 //            );
-//            node.asteriskToken = asteriskToken;
-//            node.transformFlags |= propagateChildFlags(node.asteriskToken);
+//            node->asteriskToken = asteriskToken;
+//            node->transformFlags |= propagateChildFlags(node.asteriskToken);
 //            if (node.typeParameters) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScript;
+//                node->transformFlags |= TransformFlags::ContainsTypeScript;
 //            }
 //            if (modifiersToFlags(node.modifiers) & ModifierFlags.Async) {
 //                if (node.asteriskToken) {
-//                    node.transformFlags |= TransformFlags::ContainsES2018;
+//                    node->transformFlags |= TransformFlags::ContainsES2018;
 //                }
 //                else {
-//                    node.transformFlags |= TransformFlags::ContainsES2017;
+//                    node->transformFlags |= TransformFlags::ContainsES2017;
 //                }
 //            }
 //            else if (node.asteriskToken) {
-//                node.transformFlags |= TransformFlags::ContainsGenerator;
+//                node->transformFlags |= TransformFlags::ContainsGenerator;
 //            }
 //            return node;
 //        }
@@ -2240,14 +2869,14 @@ namespace ts::factory {
 //                typeParameters,
 //                parameters,
 //                type,
-//                parenthesizerRules().parenthesizeConciseBodyOfArrowFunction(body)
+//                parenthesizerRules::parenthesizeConciseBodyOfArrowFunction(body)
 //            );
-//            node.equalsGreaterThanToken = equalsGreaterThanToken ?? createToken(SyntaxKind::EqualsGreaterThanToken);
-//            node.transformFlags |=
+//            node->equalsGreaterThanToken = equalsGreaterThanToken ?? createToken(SyntaxKind::EqualsGreaterThanToken);
+//            node->transformFlags |=
 //                propagateChildFlags(node.equalsGreaterThanToken) |
 //                TransformFlags::ContainsES2015;
 //            if (modifiersToFlags(node.modifiers) & ModifierFlags.Async) {
-//                node.transformFlags |= TransformFlags::ContainsES2017 | TransformFlags::ContainsLexicalThis;
+//                node->transformFlags |= TransformFlags::ContainsES2017 | TransformFlags::ContainsLexicalThis;
 //            }
 //            return node;
 //        }
@@ -2275,8 +2904,8 @@ namespace ts::factory {
 //        // @api
 //        function createDeleteExpression(expression: Expression) {
 //            auto node = createBaseExpression<DeleteExpression>(SyntaxKind::DeleteExpression);
-//            node.expression = parenthesizerRules().parenthesizeOperandOfPrefixUnary(expression);
-//            node.transformFlags |= propagateChildFlags(node.expression);
+//            node->expression = parenthesizerRules::parenthesizeOperandOfPrefixUnary(expression);
+//            node->transformFlags |= propagateChildFlags(node.expression);
 //            return node;
 //        }
 //
@@ -2290,8 +2919,8 @@ namespace ts::factory {
 //        // @api
 //        function createTypeOfExpression(expression: Expression) {
 //            auto node = createBaseExpression<TypeOfExpression>(SyntaxKind::TypeOfExpression);
-//            node.expression = parenthesizerRules().parenthesizeOperandOfPrefixUnary(expression);
-//            node.transformFlags |= propagateChildFlags(node.expression);
+//            node->expression = parenthesizerRules::parenthesizeOperandOfPrefixUnary(expression);
+//            node->transformFlags |= propagateChildFlags(node.expression);
 //            return node;
 //        }
 //
@@ -2305,8 +2934,8 @@ namespace ts::factory {
 //        // @api
 //        function createVoidExpression(expression: Expression) {
 //            auto node = createBaseExpression<VoidExpression>(SyntaxKind::VoidExpression);
-//            node.expression = parenthesizerRules().parenthesizeOperandOfPrefixUnary(expression);
-//            node.transformFlags |= propagateChildFlags(node.expression);
+//            node->expression = parenthesizerRules::parenthesizeOperandOfPrefixUnary(expression);
+//            node->transformFlags |= propagateChildFlags(node.expression);
 //            return node;
 //        }
 //
@@ -2320,8 +2949,8 @@ namespace ts::factory {
 //        // @api
 //        function createAwaitExpression(expression: Expression) {
 //            auto node = createBaseExpression<AwaitExpression>(SyntaxKind::AwaitExpression);
-//            node.expression = parenthesizerRules().parenthesizeOperandOfPrefixUnary(expression);
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeOperandOfPrefixUnary(expression);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                TransformFlags::ContainsES2017 |
 //                TransformFlags::ContainsES2018 |
@@ -2336,23 +2965,23 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createPrefixUnaryExpression(operator: PrefixUnaryOperator, operand: Expression) {
-//            auto node = createBaseExpression<PrefixUnaryExpression>(SyntaxKind::PrefixUnaryExpression);
-//            node.operator = operator;
-//            node.operand = parenthesizerRules().parenthesizeOperandOfPrefixUnary(operand);
-//            node.transformFlags |= propagateChildFlags(node.operand);
-//            // Only set this flag for non-generated identifiers and non-"local" names. See the
-//            // comment in `visitPreOrPostfixUnaryExpression` in module.ts
-//            if ((operator == SyntaxKind::PlusPlusToken || operator == SyntaxKind::MinusMinusToken) &&
-//                isIdentifier(node.operand) &&
-//                !isGeneratedIdentifier(node.operand) &&
-//                !isLocalName(node.operand)) {
-//                node.transformFlags |= TransformFlags::ContainsUpdateExpressionForIdentifier;
-//            }
-//            return node;
-//        }
-//
+    // @api
+    shared<PrefixUnaryExpression> createPrefixUnaryExpression(SyntaxKind operatorKind, shared<Expression> operand) {
+        auto node = createBaseExpression<PrefixUnaryExpression>(SyntaxKind::PrefixUnaryExpression);
+        node->operatorKind = operatorKind;
+        node->operand = parenthesizerRules::parenthesizeOperandOfPrefixUnary(operand);
+        node->transformFlags |= propagateChildFlags(node->operand);
+        // Only set this flag for non-generated identifiers and non-"local" names. See the
+        // comment in `visitPreOrPostfixUnaryExpression` in module.ts
+        if ((operatorKind == SyntaxKind::PlusPlusToken || operatorKind == SyntaxKind::MinusMinusToken) &&
+            isIdentifier(node->operand) &&
+            ! isGeneratedIdentifier(node->operand)) {
+            //!isLocalName(node->operand)) { //<- this is always false as its set by transformer/emit stuff
+            node->transformFlags |= (int) TransformFlags::ContainsUpdateExpressionForIdentifier;
+        }
+        return node;
+    }
+
 //        // @api
 //        function updatePrefixUnaryExpression(node: PrefixUnaryExpression, operand: Expression) {
 //            return node.operand != operand
@@ -2363,15 +2992,15 @@ namespace ts::factory {
 //        // @api
 //        function createPostfixUnaryExpression(operand: Expression, operator: PostfixUnaryOperator) {
 //            auto node = createBaseExpression<PostfixUnaryExpression>(SyntaxKind::PostfixUnaryExpression);
-//            node.operator = operator;
-//            node.operand = parenthesizerRules().parenthesizeOperandOfPostfixUnary(operand);
-//            node.transformFlags |= propagateChildFlags(node.operand);
+//            node->operator = operator;
+//            node->operand = parenthesizerRules::parenthesizeOperandOfPostfixUnary(operand);
+//            node->transformFlags |= propagateChildFlags(node.operand);
 //            // Only set this flag for non-generated identifiers and non-"local" names. See the
 //            // comment in `visitPreOrPostfixUnaryExpression` in module.ts
 //            if (isIdentifier(node.operand) &&
 //                !isGeneratedIdentifier(node.operand) &&
 //                !isLocalName(node.operand)) {
-//                node.transformFlags |= TransformFlags::ContainsUpdateExpressionForIdentifier;
+//                node->transformFlags |= TransformFlags::ContainsUpdateExpressionForIdentifier;
 //            }
 //            return node;
 //        }
@@ -2388,36 +3017,36 @@ namespace ts::factory {
         auto node = createBaseExpression<BinaryExpression>(SyntaxKind::BinaryExpression);
 //            auto operatorToken = asToken(operatorNode);
 //            auto operatorKind = operatorToken.kind;
-//            node.left = parenthesizerRules().parenthesizeLeftSideOfBinary(operatorKind, left);
-//            node.operatorToken = operatorToken;
-//            node.right = parenthesizerRules().parenthesizeRightSideOfBinary(operatorKind, node.left, right);
-//            node.transformFlags |=
+//            node->left = parenthesizerRules::parenthesizeLeftSideOfBinary(operatorKind, left);
+//            node->operatorToken = operatorToken;
+//            node->right = parenthesizerRules::parenthesizeRightSideOfBinary(operatorKind, node.left, right);
+//            node->transformFlags |=
 //                propagateChildFlags(node.left) |
 //                propagateChildFlags(node.operatorToken) |
 //                propagateChildFlags(node.right);
 //            if (operatorKind == SyntaxKind::QuestionQuestionToken) {
-//                node.transformFlags |= TransformFlags::ContainsES2020;
+//                node->transformFlags |= TransformFlags::ContainsES2020;
 //            }
 //            else if (operatorKind == SyntaxKind::EqualsToken) {
 //                if (isObjectLiteralExpression(node.left)) {
-//                    node.transformFlags |=
+//                    node->transformFlags |=
 //                        TransformFlags::ContainsES2015 |
 //                        TransformFlags::ContainsES2018 |
 //                        TransformFlags::ContainsDestructuringAssignment |
 //                        propagateAssignmentPatternFlags(node.left);
 //                }
 //                else if (isArrayLiteralExpression(node.left)) {
-//                    node.transformFlags |=
+//                    node->transformFlags |=
 //                        TransformFlags::ContainsES2015 |
 //                        TransformFlags::ContainsDestructuringAssignment |
 //                        propagateAssignmentPatternFlags(node.left);
 //                }
 //            }
 //            else if (operatorKind == SyntaxKind::AsteriskAsteriskToken || operatorKind == SyntaxKind::AsteriskAsteriskEqualsToken) {
-//                node.transformFlags |= TransformFlags::ContainsES2016;
+//                node->transformFlags |= TransformFlags::ContainsES2016;
 //            }
 //            else if (isLogicalOrCoalescingAssignmentOperator(operatorKind)) {
-//                node.transformFlags |= TransformFlags::ContainsES2021;
+//                node->transformFlags |= TransformFlags::ContainsES2021;
 //            }
         return node;
     }
@@ -2455,12 +3084,12 @@ namespace ts::factory {
 //        // @api
 //        function createConditionalExpression(condition: Expression, questionToken: QuestionToken | undefined, whenTrue: Expression, colonToken: ColonToken | undefined, whenFalse: Expression) {
 //            auto node = createBaseExpression<ConditionalExpression>(SyntaxKind::ConditionalExpression);
-//            node.condition = parenthesizerRules().parenthesizeConditionOfConditionalExpression(condition);
-//            node.questionToken = questionToken ?? createToken(SyntaxKind::QuestionToken);
-//            node.whenTrue = parenthesizerRules().parenthesizeBranchOfConditionalExpression(whenTrue);
-//            node.colonToken = colonToken ?? createToken(SyntaxKind::ColonToken);
-//            node.whenFalse = parenthesizerRules().parenthesizeBranchOfConditionalExpression(whenFalse);
-//            node.transformFlags |=
+//            node->condition = parenthesizerRules::parenthesizeConditionOfConditionalExpression(condition);
+//            node->questionToken = questionToken ?? createToken(SyntaxKind::QuestionToken);
+//            node->whenTrue = parenthesizerRules::parenthesizeBranchOfConditionalExpression(whenTrue);
+//            node->colonToken = colonToken ?? createToken(SyntaxKind::ColonToken);
+//            node->whenFalse = parenthesizerRules::parenthesizeBranchOfConditionalExpression(whenFalse);
+//            node->transformFlags |=
 //                propagateChildFlags(node.condition) |
 //                propagateChildFlags(node.questionToken) |
 //                propagateChildFlags(node.whenTrue) |
@@ -2490,9 +3119,9 @@ namespace ts::factory {
 //        // @api
 //        function createTemplateExpression(head: TemplateHead, templateSpans: readonly TemplateSpan[]) {
 //            auto node = createBaseExpression<TemplateExpression>(SyntaxKind::TemplateExpression);
-//            node.head = head;
-//            node.templateSpans = createNodeArray(templateSpans);
-//            node.transformFlags |=
+//            node->head = head;
+//            node->templateSpans = createNodeArray(templateSpans);
+//            node->transformFlags |=
 //                propagateChildFlags(node.head) |
 //                propagateChildrenFlags(node.templateSpans) |
 //                TransformFlags::ContainsES2015;
@@ -2507,8 +3136,8 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        function createTemplateLiteralLikeNodeChecked(kind: TemplateLiteralToken["kind"], text: string | undefined, rawText: string | undefined, templateFlags = TokenFlags.None) {
-//            Debug.assert(!(templateFlags & ~TokenFlags.TemplateLiteralLikeFlags), "Unsupported template flags.");
+//        function createTemplateLiteralLikeNodeChecked(kind: TemplateLiteralToken["kind"], text: string | undefined, rawText: string | undefined, templateFlags = TokenFlags::None) {
+//            Debug.assert(!(templateFlags & ~TokenFlags::TemplateLiteralLikeFlags), "Unsupported template flags.");
 //            // NOTE: without the assignment to `undefined`, we don't narrow the initial type of `cooked`.
 //            // eslint-disable-next-line no-undef-init
 //            let cooked: string | object | undefined = undefined;
@@ -2528,19 +3157,6 @@ namespace ts::factory {
 //                Debug.assert(text == cooked, "Expected argument 'text' to be the normalized (i.e. 'cooked') version of argument 'rawText'.");
 //            }
 //            return createTemplateLiteralLikeNode(kind, text, rawText, templateFlags);
-//        }
-//
-//        // @api
-//        function createTemplateLiteralLikeNode(kind: TemplateLiteralToken["kind"], text: string, rawText: string | undefined, templateFlags: TokenFlags | undefined) {
-//            auto node = createBaseToken<TemplateLiteralLikeNode>(kind);
-//            node.text = text;
-//            node.rawText = rawText;
-//            node.templateFlags = templateFlags! & TokenFlags.TemplateLiteralLikeFlags;
-//            node.transformFlags |= TransformFlags::ContainsES2015;
-//            if (node.templateFlags) {
-//                node.transformFlags |= TransformFlags::ContainsES2018;
-//            }
-//            return node;
 //        }
 //
 //        // @api
@@ -2567,9 +3183,9 @@ namespace ts::factory {
 //        function createYieldExpression(asteriskToken: AsteriskToken | undefined, expression: Expression | undefined): YieldExpression {
 //            Debug.assert(!asteriskToken || !!expression, "A `YieldExpression` with an asteriskToken must have an expression.");
 //            auto node = createBaseExpression<YieldExpression>(SyntaxKind::YieldExpression);
-//            node.expression = expression && parenthesizerRules().parenthesizeExpressionForDisallowedComma(expression);
-//            node.asteriskToken = asteriskToken;
-//            node.transformFlags |=
+//            node->expression = expression && parenthesizerRules::parenthesizeExpressionForDisallowedComma(expression);
+//            node->asteriskToken = asteriskToken;
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.asteriskToken) |
 //                TransformFlags::ContainsES2015 |
@@ -2589,8 +3205,8 @@ namespace ts::factory {
 //        // @api
 //        function createSpreadElement(expression: Expression) {
 //            auto node = createBaseExpression<SpreadElement>(SyntaxKind::SpreadElement);
-//            node.expression = parenthesizerRules().parenthesizeExpressionForDisallowedComma(expression);
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeExpressionForDisallowedComma(expression);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                TransformFlags::ContainsES2015 |
 //                TransformFlags::ContainsRestOrSpread;
@@ -2622,7 +3238,7 @@ namespace ts::factory {
 //                heritageClauses,
 //                members
 //            );
-//            node.transformFlags |= TransformFlags::ContainsES2015;
+//            node->transformFlags |= TransformFlags::ContainsES2015;
 //            return node;
 //        }
 //
@@ -2646,17 +3262,17 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createOmittedExpression() {
-//            return createBaseExpression<OmittedExpression>(SyntaxKind::OmittedExpression);
-//        }
-//
+    // @api
+    shared<OmittedExpression> createOmittedExpression() {
+        return createBaseExpression<OmittedExpression>(SyntaxKind::OmittedExpression);
+    }
+
 //        // @api
 //        function createExpressionWithTypeArguments(expression: Expression, typeArguments: readonly TypeNode[] | undefined) {
 //            auto node = createBaseNode<ExpressionWithTypeArguments>(SyntaxKind::ExpressionWithTypeArguments);
-//            node.expression = parenthesizerRules().parenthesizeLeftSideOfAccess(expression);
-//            node.typeArguments = typeArguments && parenthesizerRules().parenthesizeTypeArguments(typeArguments);
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
+//            node->typeArguments = typeArguments && parenthesizerRules::parenthesizeTypeArguments(typeArguments);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildrenFlags(node.typeArguments) |
 //                TransformFlags::ContainsES2015;
@@ -2674,9 +3290,9 @@ namespace ts::factory {
 //        // @api
 //        function createAsExpression(expression: Expression, type: TypeNode) {
 //            auto node = createBaseExpression<AsExpression>(SyntaxKind::AsExpression);
-//            node.expression = expression;
-//            node.type = type;
-//            node.transformFlags |=
+//            node->expression = expression;
+//            node->type = type;
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.type) |
 //                TransformFlags::ContainsTypeScript;
@@ -2694,8 +3310,8 @@ namespace ts::factory {
 //        // @api
 //        function createNonNullExpression(expression: Expression) {
 //            auto node = createBaseExpression<NonNullExpression>(SyntaxKind::NonNullExpression);
-//            node.expression = parenthesizerRules().parenthesizeLeftSideOfAccess(expression);
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                TransformFlags::ContainsTypeScript;
 //            return node;
@@ -2714,9 +3330,9 @@ namespace ts::factory {
 //        // @api
 //        function createNonNullChain(expression: Expression) {
 //            auto node = createBaseExpression<NonNullChain>(SyntaxKind::NonNullExpression);
-//            node.flags |= NodeFlags.OptionalChain;
-//            node.expression = parenthesizerRules().parenthesizeLeftSideOfAccess(expression);
-//            node.transformFlags |=
+//            node->flags |= NodeFlags.OptionalChain;
+//            node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                TransformFlags::ContainsTypeScript;
 //            return node;
@@ -2733,15 +3349,15 @@ namespace ts::factory {
 //        // @api
 //        function createMetaProperty(keywordToken: MetaProperty["keywordToken"], name: Identifier) {
 //            auto node = createBaseExpression<MetaProperty>(SyntaxKind::MetaProperty);
-//            node.keywordToken = keywordToken;
-//            node.name = name;
-//            node.transformFlags |= propagateChildFlags(node.name);
+//            node->keywordToken = keywordToken;
+//            node->name = name;
+//            node->transformFlags |= propagateChildFlags(node.name);
 //            switch (keywordToken) {
 //                case SyntaxKind::NewKeyword:
-//                    node.transformFlags |= TransformFlags::ContainsES2015;
+//                    node->transformFlags |= TransformFlags::ContainsES2015;
 //                    break;
 //                case SyntaxKind::ImportKeyword:
-//                    node.transformFlags |= TransformFlags::ContainsESNext;
+//                    node->transformFlags |= TransformFlags::ContainsESNext;
 //                    break;
 //                default:
 //                    return Debug.assertNever(keywordToken);
@@ -2763,9 +3379,9 @@ namespace ts::factory {
 //        // @api
 //        function createTemplateSpan(expression: Expression, literal: TemplateMiddle | TemplateTail) {
 //            auto node = createBaseNode<TemplateSpan>(SyntaxKind::TemplateSpan);
-//            node.expression = expression;
-//            node.literal = literal;
-//            node.transformFlags |=
+//            node->expression = expression;
+//            node->literal = literal;
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.literal) |
 //                TransformFlags::ContainsES2015;
@@ -2783,7 +3399,7 @@ namespace ts::factory {
 //        // @api
 //        function createSemicolonClassElement() {
 //            auto node = createBaseNode<SemicolonClassElement>(SyntaxKind::SemicolonClassElement);
-//            node.transformFlags |= TransformFlags::ContainsES2015;
+//            node->transformFlags |= TransformFlags::ContainsES2015;
 //            return node;
 //        }
 //
@@ -2794,9 +3410,9 @@ namespace ts::factory {
 //        // @api
 //        function createBlock(statements: readonly Statement[], multiLine?: boolean): Block {
 //            auto node = createBaseNode<Block>(SyntaxKind::Block);
-//            node.statements = createNodeArray(statements);
-//            node.multiLine = multiLine;
-//            node.transformFlags |= propagateChildrenFlags(node.statements);
+//            node->statements = createNodeArray(statements);
+//            node->multiLine = multiLine;
+//            node->transformFlags |= propagateChildrenFlags(node.statements);
 //            return node;
 //        }
 //
@@ -2810,11 +3426,11 @@ namespace ts::factory {
 //        // @api
 //        function createVariableStatement(modifiers: readonly Modifier[] | undefined, declarationList: VariableDeclarationList | readonly VariableDeclaration[]) {
 //            auto node = createBaseDeclaration<VariableStatement>(SyntaxKind::VariableStatement, /*decorators*/ undefined, modifiers);
-//            node.declarationList = isArray(declarationList) ? createVariableDeclarationList(declarationList) : declarationList;
-//            node.transformFlags |=
+//            node->declarationList = isArray(declarationList) ? createVariableDeclarationList(declarationList) : declarationList;
+//            node->transformFlags |=
 //                propagateChildFlags(node.declarationList);
 //            if (modifiersToFlags(node.modifiers) & ModifierFlags.Ambient) {
-//                node.transformFlags = TransformFlags::ContainsTypeScript;
+//                node->transformFlags = TransformFlags::ContainsTypeScript;
 //            }
 //            return node;
 //        }
@@ -2835,8 +3451,8 @@ namespace ts::factory {
 //        // @api
 //        function createExpressionStatement(expression: Expression): ExpressionStatement {
 //            auto node = createBaseNode<ExpressionStatement>(SyntaxKind::ExpressionStatement);
-//            node.expression = parenthesizerRules().parenthesizeExpressionOfExpressionStatement(expression);
-//            node.transformFlags |= propagateChildFlags(node.expression);
+//            node->expression = parenthesizerRules::parenthesizeExpressionOfExpressionStatement(expression);
+//            node->transformFlags |= propagateChildFlags(node.expression);
 //            return node;
 //        }
 //
@@ -2850,10 +3466,10 @@ namespace ts::factory {
 //        // @api
 //        function createIfStatement(expression: Expression, thenStatement: Statement, elseStatement?: Statement) {
 //            auto node = createBaseNode<IfStatement>(SyntaxKind::IfStatement);
-//            node.expression = expression;
-//            node.thenStatement = asEmbeddedStatement(thenStatement);
-//            node.elseStatement = asEmbeddedStatement(elseStatement);
-//            node.transformFlags |=
+//            node->expression = expression;
+//            node->thenStatement = asEmbeddedStatement(thenStatement);
+//            node->elseStatement = asEmbeddedStatement(elseStatement);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.thenStatement) |
 //                propagateChildFlags(node.elseStatement);
@@ -2872,9 +3488,9 @@ namespace ts::factory {
 //        // @api
 //        function createDoStatement(statement: Statement, expression: Expression) {
 //            auto node = createBaseNode<DoStatement>(SyntaxKind::DoStatement);
-//            node.statement = asEmbeddedStatement(statement);
-//            node.expression = expression;
-//            node.transformFlags |=
+//            node->statement = asEmbeddedStatement(statement);
+//            node->expression = expression;
+//            node->transformFlags |=
 //                propagateChildFlags(node.statement) |
 //                propagateChildFlags(node.expression);
 //            return node;
@@ -2891,9 +3507,9 @@ namespace ts::factory {
 //        // @api
 //        function createWhileStatement(expression: Expression, statement: Statement) {
 //            auto node = createBaseNode<WhileStatement>(SyntaxKind::WhileStatement);
-//            node.expression = expression;
-//            node.statement = asEmbeddedStatement(statement);
-//            node.transformFlags |=
+//            node->expression = expression;
+//            node->statement = asEmbeddedStatement(statement);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.statement);
 //            return node;
@@ -2910,11 +3526,11 @@ namespace ts::factory {
 //        // @api
 //        function createForStatement(initializer: ForInitializer | undefined, condition: Expression | undefined, incrementor: Expression | undefined, statement: Statement) {
 //            auto node = createBaseNode<ForStatement>(SyntaxKind::ForStatement);
-//            node.initializer = initializer;
-//            node.condition = condition;
-//            node.incrementor = incrementor;
-//            node.statement = asEmbeddedStatement(statement);
-//            node.transformFlags |=
+//            node->initializer = initializer;
+//            node->condition = condition;
+//            node->incrementor = incrementor;
+//            node->statement = asEmbeddedStatement(statement);
+//            node->transformFlags |=
 //                propagateChildFlags(node.initializer) |
 //                propagateChildFlags(node.condition) |
 //                propagateChildFlags(node.incrementor) |
@@ -2935,10 +3551,10 @@ namespace ts::factory {
 //        // @api
 //        function createForInStatement(initializer: ForInitializer, expression: Expression, statement: Statement) {
 //            auto node = createBaseNode<ForInStatement>(SyntaxKind::ForInStatement);
-//            node.initializer = initializer;
-//            node.expression = expression;
-//            node.statement = asEmbeddedStatement(statement);
-//            node.transformFlags |=
+//            node->initializer = initializer;
+//            node->expression = expression;
+//            node->statement = asEmbeddedStatement(statement);
+//            node->transformFlags |=
 //                propagateChildFlags(node.initializer) |
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.statement);
@@ -2957,11 +3573,11 @@ namespace ts::factory {
 //        // @api
 //        function createForOfStatement(awaitModifier: AwaitKeyword | undefined, initializer: ForInitializer, expression: Expression, statement: Statement) {
 //            auto node = createBaseNode<ForOfStatement>(SyntaxKind::ForOfStatement);
-//            node.awaitModifier = awaitModifier;
-//            node.initializer = initializer;
-//            node.expression = parenthesizerRules().parenthesizeExpressionForDisallowedComma(expression);
-//            node.statement = asEmbeddedStatement(statement);
-//            node.transformFlags |=
+//            node->awaitModifier = awaitModifier;
+//            node->initializer = initializer;
+//            node->expression = parenthesizerRules::parenthesizeExpressionForDisallowedComma(expression);
+//            node->statement = asEmbeddedStatement(statement);
+//            node->transformFlags |=
 //                propagateChildFlags(node.awaitModifier) |
 //                propagateChildFlags(node.initializer) |
 //                propagateChildFlags(node.expression) |
@@ -2984,8 +3600,8 @@ namespace ts::factory {
 //        // @api
 //        function createContinueStatement(label?: string | Identifier): ContinueStatement {
 //            auto node = createBaseNode<ContinueStatement>(SyntaxKind::ContinueStatement);
-//            node.label = asName(label);
-//            node.transformFlags |=
+//            node->label = asName(label);
+//            node->transformFlags |=
 //                propagateChildFlags(node.label) |
 //                TransformFlags::ContainsHoistedDeclarationOrCompletion;
 //            return node;
@@ -3001,8 +3617,8 @@ namespace ts::factory {
 //        // @api
 //        function createBreakStatement(label?: string | Identifier): BreakStatement {
 //            auto node = createBaseNode<BreakStatement>(SyntaxKind::BreakStatement);
-//            node.label = asName(label);
-//            node.transformFlags |=
+//            node->label = asName(label);
+//            node->transformFlags |=
 //                propagateChildFlags(node.label) |
 //                TransformFlags::ContainsHoistedDeclarationOrCompletion;
 //            return node;
@@ -3018,9 +3634,9 @@ namespace ts::factory {
 //        // @api
 //        function createReturnStatement(expression?: Expression): ReturnStatement {
 //            auto node = createBaseNode<ReturnStatement>(SyntaxKind::ReturnStatement);
-//            node.expression = expression;
+//            node->expression = expression;
 //            // return in an ES2018 async generator must be awaited
-//            node.transformFlags |=
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                TransformFlags::ContainsES2018 |
 //                TransformFlags::ContainsHoistedDeclarationOrCompletion;
@@ -3037,9 +3653,9 @@ namespace ts::factory {
 //        // @api
 //        function createWithStatement(expression: Expression, statement: Statement) {
 //            auto node = createBaseNode<WithStatement>(SyntaxKind::WithStatement);
-//            node.expression = expression;
-//            node.statement = asEmbeddedStatement(statement);
-//            node.transformFlags |=
+//            node->expression = expression;
+//            node->statement = asEmbeddedStatement(statement);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.statement);
 //            return node;
@@ -3056,9 +3672,9 @@ namespace ts::factory {
 //        // @api
 //        function createSwitchStatement(expression: Expression, caseBlock: CaseBlock): SwitchStatement {
 //            auto node = createBaseNode<SwitchStatement>(SyntaxKind::SwitchStatement);
-//            node.expression = parenthesizerRules().parenthesizeExpressionForDisallowedComma(expression);
-//            node.caseBlock = caseBlock;
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeExpressionForDisallowedComma(expression);
+//            node->caseBlock = caseBlock;
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.caseBlock);
 //            return node;
@@ -3075,9 +3691,9 @@ namespace ts::factory {
 //        // @api
 //        function createLabeledStatement(label: string | Identifier, statement: Statement) {
 //            auto node = createBaseNode<LabeledStatement>(SyntaxKind::LabeledStatement);
-//            node.label = asName(label);
-//            node.statement = asEmbeddedStatement(statement);
-//            node.transformFlags |=
+//            node->label = asName(label);
+//            node->statement = asEmbeddedStatement(statement);
+//            node->transformFlags |=
 //                propagateChildFlags(node.label) |
 //                propagateChildFlags(node.statement);
 //            return node;
@@ -3094,8 +3710,8 @@ namespace ts::factory {
 //        // @api
 //        function createThrowStatement(expression: Expression) {
 //            auto node = createBaseNode<ThrowStatement>(SyntaxKind::ThrowStatement);
-//            node.expression = expression;
-//            node.transformFlags |= propagateChildFlags(node.expression);
+//            node->expression = expression;
+//            node->transformFlags |= propagateChildFlags(node.expression);
 //            return node;
 //        }
 //
@@ -3109,10 +3725,10 @@ namespace ts::factory {
 //        // @api
 //        function createTryStatement(tryBlock: Block, catchClause: CatchClause | undefined, finallyBlock: Block | undefined) {
 //            auto node = createBaseNode<TryStatement>(SyntaxKind::TryStatement);
-//            node.tryBlock = tryBlock;
-//            node.catchClause = catchClause;
-//            node.finallyBlock = finallyBlock;
-//            node.transformFlags |=
+//            node->tryBlock = tryBlock;
+//            node->catchClause = catchClause;
+//            node->finallyBlock = finallyBlock;
+//            node->transformFlags |=
 //                propagateChildFlags(node.tryBlock) |
 //                propagateChildFlags(node.catchClause) |
 //                propagateChildFlags(node.finallyBlock);
@@ -3141,12 +3757,12 @@ namespace ts::factory {
 //                /*modifiers*/ undefined,
 //                name,
 //                type,
-//                initializer && parenthesizerRules().parenthesizeExpressionForDisallowedComma(initializer)
+//                initializer && parenthesizerRules::parenthesizeExpressionForDisallowedComma(initializer)
 //            );
-//            node.exclamationToken = exclamationToken;
-//            node.transformFlags |= propagateChildFlags(node.exclamationToken);
+//            node->exclamationToken = exclamationToken;
+//            node->transformFlags |= propagateChildFlags(node.exclamationToken);
 //            if (exclamationToken) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScript;
+//                node->transformFlags |= TransformFlags::ContainsTypeScript;
 //            }
 //            return node;
 //        }
@@ -3164,13 +3780,13 @@ namespace ts::factory {
 //        // @api
 //        function createVariableDeclarationList(declarations: readonly VariableDeclaration[], flags = NodeFlags.None) {
 //            auto node = createBaseNode<VariableDeclarationList>(SyntaxKind::VariableDeclarationList);
-//            node.flags |= flags & NodeFlags.BlockScoped;
-//            node.declarations = createNodeArray(declarations);
-//            node.transformFlags |=
+//            node->flags |= flags & NodeFlags.BlockScoped;
+//            node->declarations = createNodeArray(declarations);
+//            node->transformFlags |=
 //                propagateChildrenFlags(node.declarations) |
 //                TransformFlags::ContainsHoistedDeclarationOrCompletion;
 //            if (flags & NodeFlags.BlockScoped) {
-//                node.transformFlags |=
+//                node->transformFlags |=
 //                    TransformFlags::ContainsES2015 |
 //                    TransformFlags::ContainsBlockScopedBinding;
 //            }
@@ -3205,24 +3821,24 @@ namespace ts::factory {
 //                type,
 //                body
 //            );
-//            node.asteriskToken = asteriskToken;
+//            node->asteriskToken = asteriskToken;
 //            if (!node.body || modifiersToFlags(node.modifiers) & ModifierFlags.Ambient) {
-//                node.transformFlags = TransformFlags::ContainsTypeScript;
+//                node->transformFlags = TransformFlags::ContainsTypeScript;
 //            }
 //            else {
-//                node.transformFlags |=
+//                node->transformFlags |=
 //                    propagateChildFlags(node.asteriskToken) |
 //                    TransformFlags::ContainsHoistedDeclarationOrCompletion;
 //                if (modifiersToFlags(node.modifiers) & ModifierFlags.Async) {
 //                    if (node.asteriskToken) {
-//                        node.transformFlags |= TransformFlags::ContainsES2018;
+//                        node->transformFlags |= TransformFlags::ContainsES2018;
 //                    }
 //                    else {
-//                        node.transformFlags |= TransformFlags::ContainsES2017;
+//                        node->transformFlags |= TransformFlags::ContainsES2017;
 //                    }
 //                }
 //                else if (node.asteriskToken) {
-//                    node.transformFlags |= TransformFlags::ContainsGenerator;
+//                    node->transformFlags |= TransformFlags::ContainsGenerator;
 //                }
 //            }
 //            return node;
@@ -3271,12 +3887,12 @@ namespace ts::factory {
 //                members
 //            );
 //            if (modifiersToFlags(node.modifiers) & ModifierFlags.Ambient) {
-//                node.transformFlags = TransformFlags::ContainsTypeScript;
+//                node->transformFlags = TransformFlags::ContainsTypeScript;
 //            }
 //            else {
-//                node.transformFlags |= TransformFlags::ContainsES2015;
+//                node->transformFlags |= TransformFlags::ContainsES2015;
 //                if (node.transformFlags & TransformFlags::ContainsTypeScriptClassSyntax) {
-//                    node.transformFlags |= TransformFlags::ContainsTypeScript;
+//                    node->transformFlags |= TransformFlags::ContainsTypeScript;
 //                }
 //            }
 //            return node;
@@ -3319,8 +3935,8 @@ namespace ts::factory {
 //                typeParameters,
 //                heritageClauses
 //            );
-//            node.members = createNodeArray(members);
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->members = createNodeArray(members);
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -3359,8 +3975,8 @@ namespace ts::factory {
 //                name,
 //                typeParameters
 //            );
-//            node.type = type;
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->type = type;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -3395,11 +4011,11 @@ namespace ts::factory {
 //                modifiers,
 //                name
 //            );
-//            node.members = createNodeArray(members);
-//            node.transformFlags |=
+//            node->members = createNodeArray(members);
+//            node->transformFlags |=
 //                propagateChildrenFlags(node.members) |
 //                TransformFlags::ContainsTypeScript;
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // Enum declarations cannot contain `await`
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // Enum declarations cannot contain `await`
 //            return node;
 //        }
 //
@@ -3431,19 +4047,19 @@ namespace ts::factory {
 //                decorators,
 //                modifiers
 //            );
-//            node.flags |= flags & (NodeFlags.Namespace | NodeFlags.NestedNamespace | NodeFlags.GlobalAugmentation);
-//            node.name = name;
-//            node.body = body;
+//            node->flags |= flags & (NodeFlags.Namespace | NodeFlags.NestedNamespace | NodeFlags.GlobalAugmentation);
+//            node->name = name;
+//            node->body = body;
 //            if (modifiersToFlags(node.modifiers) & ModifierFlags.Ambient) {
-//                node.transformFlags = TransformFlags::ContainsTypeScript;
+//                node->transformFlags = TransformFlags::ContainsTypeScript;
 //            }
 //            else {
-//                node.transformFlags |=
+//                node->transformFlags |=
 //                    propagateChildFlags(node.name) |
 //                    propagateChildFlags(node.body) |
 //                    TransformFlags::ContainsTypeScript;
 //            }
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // Module declarations cannot contain `await`.
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // Module declarations cannot contain `await`.
 //            return node;
 //        }
 //
@@ -3466,8 +4082,8 @@ namespace ts::factory {
 //        // @api
 //        function createModuleBlock(statements: readonly Statement[]) {
 //            auto node = createBaseNode<ModuleBlock>(SyntaxKind::ModuleBlock);
-//            node.statements = createNodeArray(statements);
-//            node.transformFlags |= propagateChildrenFlags(node.statements);
+//            node->statements = createNodeArray(statements);
+//            node->transformFlags |= propagateChildrenFlags(node.statements);
 //            return node;
 //        }
 //
@@ -3481,8 +4097,8 @@ namespace ts::factory {
 //        // @api
 //        function createCaseBlock(clauses: readonly CaseOrDefaultClause[]): CaseBlock {
 //            auto node = createBaseNode<CaseBlock>(SyntaxKind::CaseBlock);
-//            node.clauses = createNodeArray(clauses);
-//            node.transformFlags |= propagateChildrenFlags(node.clauses);
+//            node->clauses = createNodeArray(clauses);
+//            node->transformFlags |= propagateChildrenFlags(node.clauses);
 //            return node;
 //        }
 //
@@ -3501,7 +4117,7 @@ namespace ts::factory {
 //                /*modifiers*/ undefined,
 //                name
 //            );
-//            node.transformFlags = TransformFlags::ContainsTypeScript;
+//            node->transformFlags = TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -3526,11 +4142,11 @@ namespace ts::factory {
 //                modifiers,
 //                name
 //            );
-//            node.isTypeOnly = isTypeOnly;
-//            node.moduleReference = moduleReference;
-//            node.transformFlags |= propagateChildFlags(node.moduleReference);
+//            node->isTypeOnly = isTypeOnly;
+//            node->moduleReference = moduleReference;
+//            node->transformFlags |= propagateChildFlags(node.moduleReference);
 //            if (!isExternalModuleReference(node.moduleReference)) node.transformFlags |= TransformFlags::ContainsTypeScript;
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // Import= declaration is always parsed in an Await context
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // Import= declaration is always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3565,13 +4181,13 @@ namespace ts::factory {
 //                decorators,
 //                modifiers
 //            );
-//            node.importClause = importClause;
-//            node.moduleSpecifier = moduleSpecifier;
-//            node.assertClause = assertClause;
-//            node.transformFlags |=
+//            node->importClause = importClause;
+//            node->moduleSpecifier = moduleSpecifier;
+//            node->assertClause = assertClause;
+//            node->transformFlags |=
 //                propagateChildFlags(node.importClause) |
 //                propagateChildFlags(node.moduleSpecifier);
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3596,16 +4212,16 @@ namespace ts::factory {
 //        // @api
 //        function createImportClause(isTypeOnly: boolean, name: Identifier | undefined, namedBindings: NamedImportBindings | undefined): ImportClause {
 //            auto node = createBaseNode<ImportClause>(SyntaxKind::ImportClause);
-//            node.isTypeOnly = isTypeOnly;
-//            node.name = name;
-//            node.namedBindings = namedBindings;
-//            node.transformFlags |=
+//            node->isTypeOnly = isTypeOnly;
+//            node->name = name;
+//            node->namedBindings = namedBindings;
+//            node->transformFlags |=
 //                propagateChildFlags(node.name) |
 //                propagateChildFlags(node.namedBindings);
 //            if (isTypeOnly) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScript;
+//                node->transformFlags |= TransformFlags::ContainsTypeScript;
 //            }
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3621,9 +4237,9 @@ namespace ts::factory {
 //        // @api
 //        function createAssertClause(elements: readonly AssertEntry[], multiLine?: boolean): AssertClause {
 //            auto node = createBaseNode<AssertClause>(SyntaxKind::AssertClause);
-//            node.elements = createNodeArray(elements);
-//            node.multiLine = multiLine;
-//            node.transformFlags |= TransformFlags::ContainsESNext;
+//            node->elements = createNodeArray(elements);
+//            node->multiLine = multiLine;
+//            node->transformFlags |= TransformFlags::ContainsESNext;
 //            return node;
 //        }
 //
@@ -3638,9 +4254,9 @@ namespace ts::factory {
 //        // @api
 //        function createAssertEntry(name: AssertionKey, value: Expression): AssertEntry {
 //            auto node = createBaseNode<AssertEntry>(SyntaxKind::AssertEntry);
-//            node.name = name;
-//            node.value = value;
-//            node.transformFlags |= TransformFlags::ContainsESNext;
+//            node->name = name;
+//            node->value = value;
+//            node->transformFlags |= TransformFlags::ContainsESNext;
 //            return node;
 //        }
 //
@@ -3655,8 +4271,8 @@ namespace ts::factory {
 //        // @api
 //        function createImportTypeAssertionContainer(clause: AssertClause, multiLine?: boolean): ImportTypeAssertionContainer {
 //            auto node = createBaseNode<ImportTypeAssertionContainer>(SyntaxKind::ImportTypeAssertionContainer);
-//            node.assertClause = clause;
-//            node.multiLine = multiLine;
+//            node->assertClause = clause;
+//            node->multiLine = multiLine;
 //            return node;
 //        }
 //
@@ -3671,9 +4287,9 @@ namespace ts::factory {
 //        // @api
 //        function createNamespaceImport(name: Identifier): NamespaceImport {
 //            auto node = createBaseNode<NamespaceImport>(SyntaxKind::NamespaceImport);
-//            node.name = name;
-//            node.transformFlags |= propagateChildFlags(node.name);
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
+//            node->name = name;
+//            node->transformFlags |= propagateChildFlags(node.name);
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3687,11 +4303,11 @@ namespace ts::factory {
 //        // @api
 //        function createNamespaceExport(name: Identifier): NamespaceExport {
 //            auto node = createBaseNode<NamespaceExport>(SyntaxKind::NamespaceExport);
-//            node.name = name;
-//            node.transformFlags |=
+//            node->name = name;
+//            node->transformFlags |=
 //                propagateChildFlags(node.name) |
 //                TransformFlags::ContainsESNext;
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3705,9 +4321,9 @@ namespace ts::factory {
 //        // @api
 //        function createNamedImports(elements: readonly ImportSpecifier[]): NamedImports {
 //            auto node = createBaseNode<NamedImports>(SyntaxKind::NamedImports);
-//            node.elements = createNodeArray(elements);
-//            node.transformFlags |= propagateChildrenFlags(node.elements);
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
+//            node->elements = createNodeArray(elements);
+//            node->transformFlags |= propagateChildrenFlags(node.elements);
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3721,13 +4337,13 @@ namespace ts::factory {
 //        // @api
 //        function createImportSpecifier(isTypeOnly: boolean, propertyName: Identifier | undefined, name: Identifier) {
 //            auto node = createBaseNode<ImportSpecifier>(SyntaxKind::ImportSpecifier);
-//            node.isTypeOnly = isTypeOnly;
-//            node.propertyName = propertyName;
-//            node.name = name;
-//            node.transformFlags |=
+//            node->isTypeOnly = isTypeOnly;
+//            node->propertyName = propertyName;
+//            node->name = name;
+//            node->transformFlags |=
 //                propagateChildFlags(node.propertyName) |
 //                propagateChildFlags(node.name);
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3752,12 +4368,12 @@ namespace ts::factory {
 //                decorators,
 //                modifiers
 //            );
-//            node.isExportEquals = isExportEquals;
-//            node.expression = isExportEquals
-//                ? parenthesizerRules().parenthesizeRightSideOfBinary(SyntaxKind::EqualsToken, /*leftSide*/ undefined, expression)
-//                : parenthesizerRules().parenthesizeExpressionOfExportDefault(expression);
-//            node.transformFlags |= propagateChildFlags(node.expression);
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
+//            node->isExportEquals = isExportEquals;
+//            node->expression = isExportEquals
+//                ? parenthesizerRules::parenthesizeRightSideOfBinary(SyntaxKind::EqualsToken, /*leftSide*/ undefined, expression)
+//                : parenthesizerRules::parenthesizeExpressionOfExportDefault(expression);
+//            node->transformFlags |= propagateChildFlags(node.expression);
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3789,14 +4405,14 @@ namespace ts::factory {
 //                decorators,
 //                modifiers
 //            );
-//            node.isTypeOnly = isTypeOnly;
-//            node.exportClause = exportClause;
-//            node.moduleSpecifier = moduleSpecifier;
-//            node.assertClause = assertClause;
-//            node.transformFlags |=
+//            node->isTypeOnly = isTypeOnly;
+//            node->exportClause = exportClause;
+//            node->moduleSpecifier = moduleSpecifier;
+//            node->assertClause = assertClause;
+//            node->transformFlags |=
 //                propagateChildFlags(node.exportClause) |
 //                propagateChildFlags(node.moduleSpecifier);
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3823,9 +4439,9 @@ namespace ts::factory {
 //        // @api
 //        function createNamedExports(elements: readonly ExportSpecifier[]) {
 //            auto node = createBaseNode<NamedExports>(SyntaxKind::NamedExports);
-//            node.elements = createNodeArray(elements);
-//            node.transformFlags |= propagateChildrenFlags(node.elements);
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
+//            node->elements = createNodeArray(elements);
+//            node->transformFlags |= propagateChildrenFlags(node.elements);
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3839,13 +4455,13 @@ namespace ts::factory {
 //        // @api
 //        function createExportSpecifier(isTypeOnly: boolean, propertyName: string | Identifier | undefined, name: string | Identifier) {
 //            auto node = createBaseNode<ExportSpecifier>(SyntaxKind::ExportSpecifier);
-//            node.isTypeOnly = isTypeOnly;
-//            node.propertyName = asName(propertyName);
-//            node.name = asName(name);
-//            node.transformFlags |=
+//            node->isTypeOnly = isTypeOnly;
+//            node->propertyName = asName(propertyName);
+//            node->name = asName(name);
+//            node->transformFlags |=
 //                propagateChildFlags(node.propertyName) |
 //                propagateChildFlags(node.name);
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3858,16 +4474,16 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createMissingDeclaration() {
-//            auto node = createBaseDeclaration<MissingDeclaration>(
-//                SyntaxKind::MissingDeclaration,
-//                /*decorators*/ undefined,
-//                /*modifiers*/ undefined
-//            );
-//            return node;
-//        }
-//
+    // @api
+    shared<MissingDeclaration> createMissingDeclaration() {
+        auto node = createBaseDeclaration<MissingDeclaration>(
+                SyntaxKind::MissingDeclaration,
+                /*decorators*/ {},
+                /*modifiers*/ {}
+        );
+        return node;
+    }
+
 //        //
 //        // Module references
 //        //
@@ -3875,9 +4491,9 @@ namespace ts::factory {
 //        // @api
 //        function createExternalModuleReference(expression: Expression) {
 //            auto node = createBaseNode<ExternalModuleReference>(SyntaxKind::ExternalModuleReference);
-//            node.expression = expression;
-//            node.transformFlags |= propagateChildFlags(node.expression);
-//            node.transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
+//            node->expression = expression;
+//            node->transformFlags |= propagateChildFlags(node.expression);
+//            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
 //
@@ -3905,9 +4521,9 @@ namespace ts::factory {
 //        function createJSDocPrePostfixUnaryTypeWorker<T extends JSDocType & { readonly type: TypeNode | undefined; readonly postfix: boolean }>(kind: T["kind"], type: T["type"], postfix = false): T {
 //            auto node = createJSDocUnaryTypeWorker(
 //                kind,
-//                postfix ? type && parenthesizerRules().parenthesizeNonArrayTypeOfPostfixType(type) : type
+//                postfix ? type && parenthesizerRules::parenthesizeNonArrayTypeOfPostfixType(type) : type
 //            ) as Mutable<T>;
-//            node.postfix = postfix;
+//            node->postfix = postfix;
 //            return node;
 //        }
 //
@@ -3917,7 +4533,7 @@ namespace ts::factory {
 //        // createJSDocNamepathType
 //        function createJSDocUnaryTypeWorker<T extends JSDocType & { readonly type: TypeNode | undefined; }>(kind: T["kind"], type: T["type"]): T {
 //            auto node = createBaseNode<T>(kind);
-//            node.type = type;
+//            node->type = type;
 //            return node;
 //        }
 //
@@ -3965,8 +4581,8 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocTypeLiteral(propertyTags?: readonly JSDocPropertyLikeTag[], isArrayType = false): JSDocTypeLiteral {
 //            auto node = createBaseNode<JSDocTypeLiteral>(SyntaxKind::JSDocTypeLiteral);
-//            node.jsDocPropertyTags = asNodeArray(propertyTags);
-//            node.isArrayType = isArrayType;
+//            node->jsDocPropertyTags = asNodeArray(propertyTags);
+//            node->isArrayType = isArrayType;
 //            return node;
 //        }
 //
@@ -3981,7 +4597,7 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocTypeExpression(type: TypeNode): JSDocTypeExpression {
 //            auto node = createBaseNode<JSDocTypeExpression>(SyntaxKind::JSDocTypeExpression);
-//            node.type = type;
+//            node->type = type;
 //            return node;
 //        }
 //
@@ -3995,9 +4611,9 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocSignature(typeParameters: readonly JSDocTemplateTag[] | undefined, parameters: readonly JSDocParameterTag[], type?: JSDocReturnTag): JSDocSignature {
 //            auto node = createBaseNode<JSDocSignature>(SyntaxKind::JSDocSignature);
-//            node.typeParameters = asNodeArray(typeParameters);
-//            node.parameters = createNodeArray(parameters);
-//            node.type = type;
+//            node->typeParameters = asNodeArray(typeParameters);
+//            node->parameters = createNodeArray(parameters);
+//            node->type = type;
 //            return node;
 //        }
 //
@@ -4020,16 +4636,16 @@ namespace ts::factory {
 //        // @api
 //        function createBaseJSDocTag<T extends JSDocTag>(kind: T["kind"], tagName: Identifier, comment: string | NodeArray<JSDocComment> | undefined) {
 //            auto node = createBaseNode<T>(kind);
-//            node.tagName = tagName;
-//            node.comment = comment;
+//            node->tagName = tagName;
+//            node->comment = comment;
 //            return node;
 //        }
 //
 //        // @api
 //        function createJSDocTemplateTag(tagName: Identifier | undefined, constraint: JSDocTypeExpression | undefined, typeParameters: readonly TypeParameterDeclaration[], comment?: string | NodeArray<JSDocComment>): JSDocTemplateTag {
 //            auto node = createBaseJSDocTag<JSDocTemplateTag>(SyntaxKind::JSDocTemplateTag, tagName ?? createIdentifier("template"), comment);
-//            node.constraint = constraint;
-//            node.typeParameters = createNodeArray(typeParameters);
+//            node->constraint = constraint;
+//            node->typeParameters = createNodeArray(typeParameters);
 //            return node;
 //        }
 //
@@ -4046,9 +4662,9 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocTypedefTag(tagName: Identifier | undefined, typeExpression?: JSDocTypeExpression, fullName?: Identifier | JSDocNamespaceDeclaration, comment?: string | NodeArray<JSDocComment>): JSDocTypedefTag {
 //            auto node = createBaseJSDocTag<JSDocTypedefTag>(SyntaxKind::JSDocTypedefTag, tagName ?? createIdentifier("typedef"), comment);
-//            node.typeExpression = typeExpression;
-//            node.fullName = fullName;
-//            node.name = getJSDocTypeAliasName(fullName);
+//            node->typeExpression = typeExpression;
+//            node->fullName = fullName;
+//            node->name = getJSDocTypeAliasName(fullName);
 //            return node;
 //        }
 //
@@ -4065,10 +4681,10 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocParameterTag(tagName: Identifier | undefined, name: EntityName, isBracketed: boolean, typeExpression?: JSDocTypeExpression, isNameFirst?: boolean, comment?: string | NodeArray<JSDocComment>): JSDocParameterTag {
 //            auto node = createBaseJSDocTag<JSDocParameterTag>(SyntaxKind::JSDocParameterTag, tagName ?? createIdentifier("param"), comment);
-//            node.typeExpression = typeExpression;
-//            node.name = name;
-//            node.isNameFirst = !!isNameFirst;
-//            node.isBracketed = isBracketed;
+//            node->typeExpression = typeExpression;
+//            node->name = name;
+//            node->isNameFirst = !!isNameFirst;
+//            node->isBracketed = isBracketed;
 //            return node;
 //        }
 //
@@ -4087,10 +4703,10 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocPropertyTag(tagName: Identifier | undefined, name: EntityName, isBracketed: boolean, typeExpression?: JSDocTypeExpression, isNameFirst?: boolean, comment?: string | NodeArray<JSDocComment>): JSDocPropertyTag {
 //            auto node = createBaseJSDocTag<JSDocPropertyTag>(SyntaxKind::JSDocPropertyTag, tagName ?? createIdentifier("prop"), comment);
-//            node.typeExpression = typeExpression;
-//            node.name = name;
-//            node.isNameFirst = !!isNameFirst;
-//            node.isBracketed = isBracketed;
+//            node->typeExpression = typeExpression;
+//            node->name = name;
+//            node->isNameFirst = !!isNameFirst;
+//            node->isBracketed = isBracketed;
 //            return node;
 //        }
 //
@@ -4109,9 +4725,9 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocCallbackTag(tagName: Identifier | undefined, typeExpression: JSDocSignature, fullName?: Identifier | JSDocNamespaceDeclaration, comment?: string | NodeArray<JSDocComment>): JSDocCallbackTag {
 //            auto node = createBaseJSDocTag<JSDocCallbackTag>(SyntaxKind::JSDocCallbackTag, tagName ?? createIdentifier("callback"), comment);
-//            node.typeExpression = typeExpression;
-//            node.fullName = fullName;
-//            node.name = getJSDocTypeAliasName(fullName);
+//            node->typeExpression = typeExpression;
+//            node->fullName = fullName;
+//            node->name = getJSDocTypeAliasName(fullName);
 //            return node;
 //        }
 //
@@ -4128,7 +4744,7 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocAugmentsTag(tagName: Identifier | undefined, className: JSDocAugmentsTag["class"], comment?: string | NodeArray<JSDocComment>): JSDocAugmentsTag {
 //            auto node = createBaseJSDocTag<JSDocAugmentsTag>(SyntaxKind::JSDocAugmentsTag, tagName ?? createIdentifier("augments"), comment);
-//            node.class = className;
+//            node->class = className;
 //            return node;
 //        }
 //
@@ -4144,14 +4760,14 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocImplementsTag(tagName: Identifier | undefined, className: JSDocImplementsTag["class"], comment?: string | NodeArray<JSDocComment>): JSDocImplementsTag {
 //            auto node = createBaseJSDocTag<JSDocImplementsTag>(SyntaxKind::JSDocImplementsTag, tagName ?? createIdentifier("implements"), comment);
-//            node.class = className;
+//            node->class = className;
 //            return node;
 //        }
 //
 //        // @api
 //        function createJSDocSeeTag(tagName: Identifier | undefined, name: JSDocNameReference | undefined, comment?: string | NodeArray<JSDocComment>): JSDocSeeTag {
 //            auto node = createBaseJSDocTag<JSDocSeeTag>(SyntaxKind::JSDocSeeTag, tagName ?? createIdentifier("see"), comment);
-//            node.name = name;
+//            node->name = name;
 //            return node;
 //        }
 //
@@ -4167,7 +4783,7 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocNameReference(name: EntityName | JSDocMemberName): JSDocNameReference {
 //            auto node = createBaseNode<JSDocNameReference>(SyntaxKind::JSDocNameReference);
-//            node.name = name;
+//            node->name = name;
 //            return node;
 //        }
 //
@@ -4181,9 +4797,9 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocMemberName(left: EntityName | JSDocMemberName, right: Identifier) {
 //            auto node = createBaseNode<JSDocMemberName>(SyntaxKind::JSDocMemberName);
-//            node.left = left;
-//            node.right = right;
-//            node.transformFlags |=
+//            node->left = left;
+//            node->right = right;
+//            node->transformFlags |=
 //                propagateChildFlags(node.left) |
 //                propagateChildFlags(node.right);
 //            return node;
@@ -4200,8 +4816,8 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocLink(name: EntityName | JSDocMemberName | undefined, text: string): JSDocLink {
 //            auto node = createBaseNode<JSDocLink>(SyntaxKind::JSDocLink);
-//            node.name = name;
-//            node.text = text;
+//            node->name = name;
+//            node->text = text;
 //            return node;
 //        }
 //
@@ -4215,8 +4831,8 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocLinkCode(name: EntityName | JSDocMemberName | undefined, text: string): JSDocLinkCode {
 //            auto node = createBaseNode<JSDocLinkCode>(SyntaxKind::JSDocLinkCode);
-//            node.name = name;
-//            node.text = text;
+//            node->name = name;
+//            node->text = text;
 //            return node;
 //        }
 //
@@ -4230,8 +4846,8 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocLinkPlain(name: EntityName | JSDocMemberName | undefined, text: string): JSDocLinkPlain {
 //            auto node = createBaseNode<JSDocLinkPlain>(SyntaxKind::JSDocLinkPlain);
-//            node.name = name;
-//            node.text = text;
+//            node->name = name;
+//            node->text = text;
 //            return node;
 //        }
 //
@@ -4286,7 +4902,7 @@ namespace ts::factory {
 //        // createJSDocEnumTag
 //        function createJSDocTypeLikeTagWorker<T extends JSDocTag & { typeExpression?: JSDocTypeExpression }>(kind: T["kind"], tagName: Identifier | undefined, typeExpression?: JSDocTypeExpression, comment?: string | NodeArray<JSDocComment>) {
 //            auto node = createBaseJSDocTag<T>(kind, tagName ?? createIdentifier(getDefaultTagNameForKind(kind)), comment);
-//            node.typeExpression = typeExpression;
+//            node->typeExpression = typeExpression;
 //            return node;
 //        }
 //
@@ -4320,7 +4936,7 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocText(text: string): JSDocText {
 //            auto node = createBaseNode<JSDocText>(SyntaxKind::JSDocText);
-//            node.text = text;
+//            node->text = text;
 //            return node;
 //        }
 //
@@ -4334,8 +4950,8 @@ namespace ts::factory {
 //        // @api
 //        function createJSDocComment(comment?: string | NodeArray<JSDocComment> | undefined, tags?: readonly JSDocTag[] | undefined) {
 //            auto node = createBaseNode<JSDoc>(SyntaxKind::JSDoc);
-//            node.comment = comment;
-//            node.tags = asNodeArray(tags);
+//            node->comment = comment;
+//            node->tags = asNodeArray(tags);
 //            return node;
 //        }
 //
@@ -4351,20 +4967,20 @@ namespace ts::factory {
 //        // JSX
 //        //
 //
-//        // @api
-//        function createJsxElement(openingElement: JsxOpeningElement, children: readonly JsxChild[], closingElement: JsxClosingElement) {
-//            auto node = createBaseNode<JsxElement>(SyntaxKind::JsxElement);
-//            node.openingElement = openingElement;
-//            node.children = createNodeArray(children);
-//            node.closingElement = closingElement;
-//            node.transformFlags |=
-//                propagateChildFlags(node.openingElement) |
-//                propagateChildrenFlags(node.children) |
-//                propagateChildFlags(node.closingElement) |
-//                TransformFlags::ContainsJsx;
-//            return node;
-//        }
-//
+    // @api
+    shared<JsxElement> createJsxElement(shared<JsxOpeningElement> openingElement, NodeArray children, shared<JsxClosingElement> closingElement) {
+        auto node = createBaseNode<JsxElement>(SyntaxKind::JsxElement);
+        node->openingElement = openingElement;
+        node->children = createNodeArray(children);
+        node->closingElement = closingElement;
+        node->transformFlags |=
+                propagateChildFlags(node->openingElement) |
+                propagateChildrenFlags(node->children) |
+                propagateChildFlags(node->closingElement) |
+                (int) TransformFlags::ContainsJsx;
+        return node;
+    }
+
 //        // @api
 //        function updateJsxElement(node: JsxElement, openingElement: JsxOpeningElement, children: readonly JsxChild[], closingElement: JsxClosingElement) {
 //            return node.openingElement != openingElement
@@ -4373,23 +4989,23 @@ namespace ts::factory {
 //                ? update(createJsxElement(openingElement, children, closingElement), node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createJsxSelfClosingElement(tagName: JsxTagNameExpression, typeArguments: readonly TypeNode[] | undefined, attributes: JsxAttributes) {
-//            auto node = createBaseNode<JsxSelfClosingElement>(SyntaxKind::JsxSelfClosingElement);
-//            node.tagName = tagName;
-//            node.typeArguments = asNodeArray(typeArguments);
-//            node.attributes = attributes;
-//            node.transformFlags |=
-//                propagateChildFlags(node.tagName) |
-//                propagateChildrenFlags(node.typeArguments) |
-//                propagateChildFlags(node.attributes) |
-//                TransformFlags::ContainsJsx;
-//            if (node.typeArguments) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScript;
-//            }
-//            return node;
-//        }
+
+        // @api
+        shared<JsxSelfClosingElement> createJsxSelfClosingElement(shared<NodeUnion(JsxTagNameExpression)> tagName, optional<NodeArray> typeArguments, shared<JsxAttributes> attributes) {
+            auto node = createBaseNode<JsxSelfClosingElement>(SyntaxKind::JsxSelfClosingElement);
+            node->tagName = tagName;
+            node->typeArguments = asNodeArray(typeArguments);
+            node->attributes = attributes;
+            node->transformFlags |=
+                propagateChildFlags(node->tagName) |
+                propagateChildrenFlags(node->typeArguments) |
+                propagateChildFlags(node->attributes) |
+                        (int)TransformFlags::ContainsJsx;
+            if (node->typeArguments) {
+                node->transformFlags |= (int)TransformFlags::ContainsTypeScript;
+            }
+            return node;
+        }
 //
 //        // @api
 //        function updateJsxSelfClosingElement(node: JsxSelfClosingElement, tagName: JsxTagNameExpression, typeArguments: readonly TypeNode[] | undefined, attributes: JsxAttributes) {
@@ -4400,22 +5016,22 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createJsxOpeningElement(tagName: JsxTagNameExpression, typeArguments: readonly TypeNode[] | undefined, attributes: JsxAttributes) {
-//            auto node = createBaseNode<JsxOpeningElement>(SyntaxKind::JsxOpeningElement);
-//            node.tagName = tagName;
-//            node.typeArguments = asNodeArray(typeArguments);
-//            node.attributes = attributes;
-//            node.transformFlags |=
-//                propagateChildFlags(node.tagName) |
-//                propagateChildrenFlags(node.typeArguments) |
-//                propagateChildFlags(node.attributes) |
-//                TransformFlags::ContainsJsx;
-//            if (typeArguments) {
-//                node.transformFlags |= TransformFlags::ContainsTypeScript;
-//            }
-//            return node;
-//        }
+    // @api
+    shared<JsxOpeningElement> createJsxOpeningElement(shared<NodeUnion(JsxTagNameExpression)> tagName, optional<NodeArray> typeArguments, shared<JsxAttributes> attributes) {
+        auto node = createBaseNode<JsxOpeningElement>(SyntaxKind::JsxOpeningElement);
+        node->tagName = tagName;
+        node->typeArguments = asNodeArray(typeArguments);
+        node->attributes = attributes;
+        node->transformFlags |=
+                propagateChildFlags(node->tagName) |
+                propagateChildrenFlags(node->typeArguments) |
+                propagateChildFlags(node->attributes) |
+                (int) TransformFlags::ContainsJsx;
+        if (typeArguments) {
+            node->transformFlags |= (int) TransformFlags::ContainsTypeScript;
+        }
+        return node;
+    }
 //
 //        // @api
 //        function updateJsxOpeningElement(node: JsxOpeningElement, tagName: JsxTagNameExpression, typeArguments: readonly TypeNode[] | undefined, attributes: JsxAttributes) {
@@ -4426,37 +5042,37 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createJsxClosingElement(tagName: JsxTagNameExpression) {
-//            auto node = createBaseNode<JsxClosingElement>(SyntaxKind::JsxClosingElement);
-//            node.tagName = tagName;
-//            node.transformFlags |=
-//                propagateChildFlags(node.tagName) |
-//                TransformFlags::ContainsJsx;
-//            return node;
-//        }
-//
+    // @api
+    shared<JsxClosingElement> createJsxClosingElement(shared<NodeUnion(JsxTagNameExpression)> tagName) {
+        auto node = createBaseNode<JsxClosingElement>(SyntaxKind::JsxClosingElement);
+        node->tagName = tagName;
+        node->transformFlags |=
+                propagateChildFlags(node->tagName) |
+                (int) TransformFlags::ContainsJsx;
+        return node;
+    }
+
 //        // @api
 //        function updateJsxClosingElement(node: JsxClosingElement, tagName: JsxTagNameExpression) {
 //            return node.tagName != tagName
 //                ? update(createJsxClosingElement(tagName), node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createJsxFragment(openingFragment: JsxOpeningFragment, children: readonly JsxChild[], closingFragment: JsxClosingFragment) {
-//            auto node = createBaseNode<JsxFragment>(SyntaxKind::JsxFragment);
-//            node.openingFragment = openingFragment;
-//            node.children = createNodeArray(children);
-//            node.closingFragment = closingFragment;
-//            node.transformFlags |=
-//                propagateChildFlags(node.openingFragment) |
-//                propagateChildrenFlags(node.children) |
-//                propagateChildFlags(node.closingFragment) |
-//                TransformFlags::ContainsJsx;
-//            return node;
-//        }
-//
+
+    // @api
+    shared<JsxFragment> createJsxFragment(shared<JsxOpeningFragment> openingFragment, NodeArray children, shared<JsxClosingFragment> closingFragment) {
+        auto node = createBaseNode<JsxFragment>(SyntaxKind::JsxFragment);
+        node->openingFragment = openingFragment;
+        node->children = createNodeArray(children);
+        node->closingFragment = closingFragment;
+        node->transformFlags |=
+                propagateChildFlags(node->openingFragment) |
+                propagateChildrenFlags(node->children) |
+                propagateChildFlags(node->closingFragment) |
+                (int) TransformFlags::ContainsJsx;
+        return node;
+    }
+
 //        // @api
 //        function updateJsxFragment(node: JsxFragment, openingFragment: JsxOpeningFragment, children: readonly JsxChild[], closingFragment: JsxClosingFragment) {
 //            return node.openingFragment != openingFragment
@@ -4466,14 +5082,6 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createJsxText(text: string, containsOnlyTriviaWhiteSpaces?: boolean) {
-//            auto node = createBaseNode<JsxText>(SyntaxKind::JsxText);
-//            node.text = text;
-//            node.containsOnlyTriviaWhiteSpaces = !!containsOnlyTriviaWhiteSpaces;
-//            node.transformFlags |= TransformFlags::ContainsJsx;
-//            return node;
-//        }
 //
 //        // @api
 //        function updateJsxText(node: JsxText, text: string, containsOnlyTriviaWhiteSpaces?: boolean) {
@@ -4483,32 +5091,32 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createJsxOpeningFragment() {
-//            auto node = createBaseNode<JsxOpeningFragment>(SyntaxKind::JsxOpeningFragment);
-//            node.transformFlags |= TransformFlags::ContainsJsx;
-//            return node;
-//        }
-//
-//        // @api
-//        function createJsxJsxClosingFragment() {
-//            auto node = createBaseNode<JsxClosingFragment>(SyntaxKind::JsxClosingFragment);
-//            node.transformFlags |= TransformFlags::ContainsJsx;
-//            return node;
-//        }
-//
-//        // @api
-//        function createJsxAttribute(name: Identifier, initializer: JsxAttributeValue | undefined) {
-//            auto node = createBaseNode<JsxAttribute>(SyntaxKind::JsxAttribute);
-//            node.name = name;
-//            node.initializer = initializer;
-//            node.transformFlags |=
-//                propagateChildFlags(node.name) |
-//                propagateChildFlags(node.initializer) |
-//                TransformFlags::ContainsJsx;
-//            return node;
-//        }
-//
+    // @api
+    shared<JsxOpeningFragment> createJsxOpeningFragment() {
+        auto node = createBaseNode<JsxOpeningFragment>(SyntaxKind::JsxOpeningFragment);
+        node->transformFlags |= (int) TransformFlags::ContainsJsx;
+        return node;
+    }
+
+    // @api
+    shared<JsxClosingFragment> createJsxJsxClosingFragment() {
+        auto node = createBaseNode<JsxClosingFragment>(SyntaxKind::JsxClosingFragment);
+        node->transformFlags |= (int) TransformFlags::ContainsJsx;
+        return node;
+    }
+
+    // @api
+    shared<JsxAttribute> createJsxAttribute(shared<Identifier> name, sharedOpt<NodeUnion(JsxAttributeValue)> initializer = {}) {
+        auto node = createBaseNode<JsxAttribute>(SyntaxKind::JsxAttribute);
+        node->name = name;
+        node->initializer = initializer;
+        node->transformFlags |=
+                propagateChildFlags(node->name) |
+                propagateChildFlags(node->initializer) |
+                (int) TransformFlags::ContainsJsx;
+        return node;
+    }
+
 //        // @api
 //        function updateJsxAttribute(node: JsxAttribute, name: Identifier, initializer: JsxAttributeValue | undefined) {
 //            return node.name != name
@@ -4517,15 +5125,15 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createJsxAttributes(properties: readonly JsxAttributeLike[]) {
-//            auto node = createBaseNode<JsxAttributes>(SyntaxKind::JsxAttributes);
-//            node.properties = createNodeArray(properties);
-//            node.transformFlags |=
-//                propagateChildrenFlags(node.properties) |
-//                TransformFlags::ContainsJsx;
-//            return node;
-//        }
+    // @api
+    shared<JsxAttributes> createJsxAttributes(NodeArray properties) {
+        auto node = createBaseNode<JsxAttributes>(SyntaxKind::JsxAttributes);
+        node->properties = createNodeArray(properties);
+        node->transformFlags |=
+                propagateChildrenFlags(node->properties) |
+                (int) TransformFlags::ContainsJsx;
+        return node;
+    }
 //
 //        // @api
 //        function updateJsxAttributes(node: JsxAttributes, properties: readonly JsxAttributeLike[]) {
@@ -4533,17 +5141,17 @@ namespace ts::factory {
 //                ? update(createJsxAttributes(properties), node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createJsxSpreadAttribute(expression: Expression) {
-//            auto node = createBaseNode<JsxSpreadAttribute>(SyntaxKind::JsxSpreadAttribute);
-//            node.expression = expression;
-//            node.transformFlags |=
-//                propagateChildFlags(node.expression) |
-//                TransformFlags::ContainsJsx;
-//            return node;
-//        }
-//
+
+    // @api
+    shared<JsxSpreadAttribute> createJsxSpreadAttribute(shared<Expression> expression) {
+        auto node = createBaseNode<JsxSpreadAttribute>(SyntaxKind::JsxSpreadAttribute);
+        node->expression = expression;
+        node->transformFlags |=
+                propagateChildFlags(node->expression) |
+                (int) TransformFlags::ContainsJsx;
+        return node;
+    }
+
 //        // @api
 //        function updateJsxSpreadAttribute(node: JsxSpreadAttribute, expression: Expression) {
 //            return node.expression != expression
@@ -4551,18 +5159,18 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createJsxExpression(dotDotDotToken: DotDotDotToken | undefined, expression: Expression | undefined) {
-//            auto node = createBaseNode<JsxExpression>(SyntaxKind::JsxExpression);
-//            node.dotDotDotToken = dotDotDotToken;
-//            node.expression = expression;
-//            node.transformFlags |=
-//                propagateChildFlags(node.dotDotDotToken) |
-//                propagateChildFlags(node.expression) |
-//                TransformFlags::ContainsJsx;
-//            return node;
-//        }
-//
+    // @api
+    shared<JsxExpression> createJsxExpression(sharedOpt<DotDotDotToken> dotDotDotToken, sharedOpt<Expression> expression) {
+        auto node = createBaseNode<JsxExpression>(SyntaxKind::JsxExpression);
+        node->dotDotDotToken = dotDotDotToken;
+        node->expression = expression;
+        node->transformFlags |=
+                propagateChildFlags(node->dotDotDotToken) |
+                propagateChildFlags(node->expression) |
+                (int) TransformFlags::ContainsJsx;
+        return node;
+    }
+
 //        // @api
 //        function updateJsxExpression(node: JsxExpression, expression: Expression | undefined) {
 //            return node.expression != expression
@@ -4577,9 +5185,9 @@ namespace ts::factory {
 //        // @api
 //        function createCaseClause(expression: Expression, statements: readonly Statement[]) {
 //            auto node = createBaseNode<CaseClause>(SyntaxKind::CaseClause);
-//            node.expression = parenthesizerRules().parenthesizeExpressionForDisallowedComma(expression);
-//            node.statements = createNodeArray(statements);
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeExpressionForDisallowedComma(expression);
+//            node->statements = createNodeArray(statements);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildrenFlags(node.statements);
 //            return node;
@@ -4596,8 +5204,8 @@ namespace ts::factory {
 //        // @api
 //        function createDefaultClause(statements: readonly Statement[]) {
 //            auto node = createBaseNode<DefaultClause>(SyntaxKind::DefaultClause);
-//            node.statements = createNodeArray(statements);
-//            node.transformFlags = propagateChildrenFlags(node.statements);
+//            node->statements = createNodeArray(statements);
+//            node->transformFlags = propagateChildrenFlags(node.statements);
 //            return node;
 //        }
 //
@@ -4611,15 +5219,15 @@ namespace ts::factory {
 //        // @api
 //        function createHeritageClause(token: HeritageClause["token"], types: readonly ExpressionWithTypeArguments[]) {
 //            auto node = createBaseNode<HeritageClause>(SyntaxKind::HeritageClause);
-//            node.token = token;
-//            node.types = createNodeArray(types);
-//            node.transformFlags |= propagateChildrenFlags(node.types);
+//            node->token = token;
+//            node->types = createNodeArray(types);
+//            node->transformFlags |= propagateChildrenFlags(node.types);
 //            switch (token) {
 //                case SyntaxKind::ExtendsKeyword:
-//                    node.transformFlags |= TransformFlags::ContainsES2015;
+//                    node->transformFlags |= TransformFlags::ContainsES2015;
 //                    break;
 //                case SyntaxKind::ImplementsKeyword:
-//                    node.transformFlags |= TransformFlags::ContainsTypeScript;
+//                    node->transformFlags |= TransformFlags::ContainsTypeScript;
 //                    break;
 //                default:
 //                    return Debug.assertNever(token);
@@ -4645,9 +5253,9 @@ namespace ts::factory {
 //                    /*initializer*/ undefined
 //                );
 //            }
-//            node.variableDeclaration = variableDeclaration;
-//            node.block = block;
-//            node.transformFlags |=
+//            node->variableDeclaration = variableDeclaration;
+//            node->block = block;
+//            node->transformFlags |=
 //                propagateChildFlags(node.variableDeclaration) |
 //                propagateChildFlags(node.block);
 //            if (!variableDeclaration) node.transformFlags |= TransformFlags::ContainsES2019;
@@ -4674,8 +5282,8 @@ namespace ts::factory {
 //                /*modifiers*/ undefined,
 //                name
 //            );
-//            node.initializer = parenthesizerRules().parenthesizeExpressionForDisallowedComma(initializer);
-//            node.transformFlags |=
+//            node->initializer = parenthesizerRules::parenthesizeExpressionForDisallowedComma(initializer);
+//            node->transformFlags |=
 //                propagateChildFlags(node.name) |
 //                propagateChildFlags(node.initializer);
 //            return node;
@@ -4706,8 +5314,8 @@ namespace ts::factory {
 //                /*modifiers*/ undefined,
 //                name
 //            );
-//            node.objectAssignmentInitializer = objectAssignmentInitializer && parenthesizerRules().parenthesizeExpressionForDisallowedComma(objectAssignmentInitializer);
-//            node.transformFlags |=
+//            node->objectAssignmentInitializer = objectAssignmentInitializer && parenthesizerRules::parenthesizeExpressionForDisallowedComma(objectAssignmentInitializer);
+//            node->transformFlags |=
 //                propagateChildFlags(node.objectAssignmentInitializer) |
 //                TransformFlags::ContainsES2015;
 //            return node;
@@ -4734,8 +5342,8 @@ namespace ts::factory {
 //        // @api
 //        function createSpreadAssignment(expression: Expression) {
 //            auto node = createBaseNode<SpreadAssignment>(SyntaxKind::SpreadAssignment);
-//            node.expression = parenthesizerRules().parenthesizeExpressionForDisallowedComma(expression);
-//            node.transformFlags |=
+//            node->expression = parenthesizerRules::parenthesizeExpressionForDisallowedComma(expression);
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                TransformFlags::ContainsES2018 |
 //                TransformFlags::ContainsObjectRestOrSpread;
@@ -4756,9 +5364,9 @@ namespace ts::factory {
 //        // @api
 //        function createEnumMember(name: string | PropertyName, initializer?: Expression) {
 //            auto node = createBaseNode<EnumMember>(SyntaxKind::EnumMember);
-//            node.name = asName(name);
-//            node.initializer = initializer && parenthesizerRules().parenthesizeExpressionForDisallowedComma(initializer);
-//            node.transformFlags |=
+//            node->name = asName(name);
+//            node->initializer = initializer && parenthesizerRules::parenthesizeExpressionForDisallowedComma(initializer);
+//            node->transformFlags |=
 //                propagateChildFlags(node.name) |
 //                propagateChildFlags(node.initializer) |
 //                TransformFlags::ContainsTypeScript;
@@ -4783,18 +5391,18 @@ namespace ts::factory {
 //            endOfFileToken: EndOfFileToken,
 //            flags: NodeFlags
 //        ) {
-//            auto node = baseFactory.createBaseSourceFileNode(SyntaxKind::SourceFile) as Mutable<SourceFile>;
-//            node.statements = createNodeArray(statements);
-//            node.endOfFileToken = endOfFileToken;
-//            node.flags |= flags;
-//            node.fileName = "";
-//            node.text = "";
-//            node.languageVersion = 0;
-//            node.languageVariant = 0;
-//            node.scriptKind = 0;
-//            node.isDeclarationFile = false;
-//            node.hasNoDefaultLib = false;
-//            node.transformFlags |=
+//            auto node = basefactory::createBaseSourceFileNode(SyntaxKind::SourceFile) as Mutable<SourceFile>;
+//            node->statements = createNodeArray(statements);
+//            node->endOfFileToken = endOfFileToken;
+//            node->flags |= flags;
+//            node->fileName = "";
+//            node->text = "";
+//            node->languageVersion = 0;
+//            node->languageVariant = 0;
+//            node->scriptKind = 0;
+//            node->isDeclarationFile = false;
+//            node->hasNoDefaultLib = false;
+//            node->transformFlags |=
 //                propagateChildrenFlags(node.statements) |
 //                propagateChildFlags(node.endOfFileToken);
 //            return node;
@@ -4809,23 +5417,23 @@ namespace ts::factory {
 //            hasNoDefaultLib: boolean,
 //            libReferences: readonly FileReference[]
 //        ) {
-//            auto node = (source.redirectInfo ? Object.create(source.redirectInfo.redirectTarget) : baseFactory.createBaseSourceFileNode(SyntaxKind::SourceFile)) as Mutable<SourceFile>;
+//            auto node = (source.redirectInfo ? Object.create(source.redirectInfo.redirectTarget) : basefactory::createBaseSourceFileNode(SyntaxKind::SourceFile)) as Mutable<SourceFile>;
 //            for (auto p in source) {
 //                if (p == "emitNode" || hasProperty(node, p) || !hasProperty(source, p)) continue;
 //                (node as any)[p] = (source as any)[p];
 //            }
-//            node.flags |= source.flags;
-//            node.statements = createNodeArray(statements);
-//            node.endOfFileToken = source.endOfFileToken;
-//            node.isDeclarationFile = isDeclarationFile;
-//            node.referencedFiles = referencedFiles;
-//            node.typeReferenceDirectives = typeReferences;
-//            node.hasNoDefaultLib = hasNoDefaultLib;
-//            node.libReferenceDirectives = libReferences;
-//            node.transformFlags =
+//            node->flags |= source.flags;
+//            node->statements = createNodeArray(statements);
+//            node->endOfFileToken = source.endOfFileToken;
+//            node->isDeclarationFile = isDeclarationFile;
+//            node->referencedFiles = referencedFiles;
+//            node->typeReferenceDirectives = typeReferences;
+//            node->hasNoDefaultLib = hasNoDefaultLib;
+//            node->libReferenceDirectives = libReferences;
+//            node->transformFlags =
 //                propagateChildrenFlags(node.statements) |
 //                propagateChildFlags(node.endOfFileToken);
-//            node.impliedNodeFormat = source.impliedNodeFormat;
+//            node->impliedNodeFormat = source.impliedNodeFormat;
 //            return node;
 //        }
 //
@@ -4852,8 +5460,8 @@ namespace ts::factory {
 //        // @api
 //        function createBundle(sourceFiles: readonly SourceFile[], prepends: readonly (UnparsedSource | InputFiles)[] = emptyArray) {
 //            auto node = createBaseNode<Bundle>(SyntaxKind::Bundle);
-//            node.prepends = prepends;
-//            node.sourceFiles = sourceFiles;
+//            node->prepends = prepends;
+//            node->sourceFiles = sourceFiles;
 //            return node;
 //        }
 //
@@ -4868,20 +5476,20 @@ namespace ts::factory {
 //        // @api
 //        function createUnparsedSource(prologues: readonly UnparsedPrologue[], syntheticReferences: readonly UnparsedSyntheticReference[] | undefined, texts: readonly UnparsedSourceText[]) {
 //            auto node = createBaseNode<UnparsedSource>(SyntaxKind::UnparsedSource);
-//            node.prologues = prologues;
-//            node.syntheticReferences = syntheticReferences;
-//            node.texts = texts;
-//            node.fileName = "";
-//            node.text = "";
-//            node.referencedFiles = emptyArray;
-//            node.libReferenceDirectives = emptyArray;
-//            node.getLineAndCharacterOfPosition = pos => getLineAndCharacterOfPosition(node, pos);
+//            node->prologues = prologues;
+//            node->syntheticReferences = syntheticReferences;
+//            node->texts = texts;
+//            node->fileName = "";
+//            node->text = "";
+//            node->referencedFiles = emptyArray;
+//            node->libReferenceDirectives = emptyArray;
+//            node->getLineAndCharacterOfPosition = pos => getLineAndCharacterOfPosition(node, pos);
 //            return node;
 //        }
 //
 //        function createBaseUnparsedNode<T extends UnparsedNode>(kind: T["kind"], data?: string) {
 //            auto node = createBaseNode(kind);
-//            node.data = data;
+//            node->data = data;
 //            return node;
 //        }
 //
@@ -4893,7 +5501,7 @@ namespace ts::factory {
 //        // @api
 //        function createUnparsedPrepend(data: string | undefined, texts: readonly UnparsedTextLike[]): UnparsedPrepend {
 //            auto node = createBaseUnparsedNode<UnparsedPrepend>(SyntaxKind::UnparsedPrepend, data);
-//            node.texts = texts;
+//            node->texts = texts;
 //            return node;
 //        }
 //
@@ -4905,16 +5513,16 @@ namespace ts::factory {
 //        // @api
 //        function createUnparsedSyntheticReference(section: BundleFileHasNoDefaultLib | BundleFileReference): UnparsedSyntheticReference {
 //            auto node = createBaseNode<UnparsedSyntheticReference>(SyntaxKind::UnparsedSyntheticReference);
-//            node.data = section.data;
-//            node.section = section;
+//            node->data = section.data;
+//            node->section = section;
 //            return node;
 //        }
 //
 //        // @api
 //        function createInputFiles(): InputFiles {
 //            auto node = createBaseNode<InputFiles>(SyntaxKind::InputFiles);
-//            node.javascriptText = "";
-//            node.declarationText = "";
+//            node->javascriptText = "";
+//            node->declarationText = "";
 //            return node;
 //        }
 //
@@ -4925,16 +5533,16 @@ namespace ts::factory {
 //        // @api
 //        function createSyntheticExpression(type: Type, isSpread = false, tupleNameSource?: ParameterDeclaration | NamedTupleMember) {
 //            auto node = createBaseNode<SyntheticExpression>(SyntaxKind::SyntheticExpression);
-//            node.type = type;
-//            node.isSpread = isSpread;
-//            node.tupleNameSource = tupleNameSource;
+//            node->type = type;
+//            node->isSpread = isSpread;
+//            node->tupleNameSource = tupleNameSource;
 //            return node;
 //        }
 //
 //        // @api
 //        function createSyntaxList(children: Node[]) {
 //            auto node = createBaseNode<SyntaxList>(SyntaxKind::SyntaxList);
-//            node._children = children;
+//            node->_children = children;
 //            return node;
 //        }
 //
@@ -4951,7 +5559,7 @@ namespace ts::factory {
 //        // @api
 //        function createNotEmittedStatement(original: Node) {
 //            auto node = createBaseNode<NotEmittedStatement>(SyntaxKind::NotEmittedStatement);
-//            node.original = original;
+//            node->original = original;
 //            setTextRange(node, original);
 //            return node;
 //        }
@@ -4966,9 +5574,9 @@ namespace ts::factory {
 //        // @api
 //        function createPartiallyEmittedExpression(expression: Expression, original?: Node) {
 //            auto node = createBaseNode<PartiallyEmittedExpression>(SyntaxKind::PartiallyEmittedExpression);
-//            node.expression = expression;
-//            node.original = original;
-//            node.transformFlags |=
+//            node->expression = expression;
+//            node->original = original;
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                TransformFlags::ContainsTypeScript;
 //            setTextRange(node, original);
@@ -4997,8 +5605,8 @@ namespace ts::factory {
 //        // @api
 //        function createCommaListExpression(elements: readonly Expression[]) {
 //            auto node = createBaseNode<CommaListExpression>(SyntaxKind::CommaListExpression);
-//            node.elements = createNodeArray(sameFlatMap(elements, flattenCommaElements));
-//            node.transformFlags |= propagateChildrenFlags(node.elements);
+//            node->elements = createNodeArray(sameFlatMap(elements, flattenCommaElements));
+//            node->transformFlags |= propagateChildrenFlags(node.elements);
 //            return node;
 //        }
 //
@@ -5016,8 +5624,8 @@ namespace ts::factory {
 //        // @api
 //        function createEndOfDeclarationMarker(original: Node) {
 //            auto node = createBaseNode<EndOfDeclarationMarker>(SyntaxKind::EndOfDeclarationMarker);
-//            node.emitNode = {} as EmitNode;
-//            node.original = original;
+//            node->emitNode = {} as EmitNode;
+//            node->original = original;
 //            return node;
 //        }
 //
@@ -5028,17 +5636,17 @@ namespace ts::factory {
 //        // @api
 //        function createMergeDeclarationMarker(original: Node) {
 //            auto node = createBaseNode<MergeDeclarationMarker>(SyntaxKind::MergeDeclarationMarker);
-//            node.emitNode = {} as EmitNode;
-//            node.original = original;
+//            node->emitNode = {} as EmitNode;
+//            node->original = original;
 //            return node;
 //        }
 //
 //        // @api
 //        function createSyntheticReferenceExpression(expression: Expression, thisArg: Expression) {
 //            auto node = createBaseNode<SyntheticReferenceExpression>(SyntaxKind::SyntheticReferenceExpression);
-//            node.expression = expression;
-//            node.thisArg = thisArg;
-//            node.transformFlags |=
+//            node->expression = expression;
+//            node->thisArg = thisArg;
+//            node->transformFlags |=
 //                propagateChildFlags(node.expression) |
 //                propagateChildFlags(node.thisArg);
 //            return node;
@@ -5063,11 +5671,11 @@ namespace ts::factory {
 //            }
 //
 //            auto clone =
-//                isSourceFile(node) ? baseFactory.createBaseSourceFileNode(SyntaxKind::SourceFile) as T :
-//                isIdentifier(node) ? baseFactory.createBaseIdentifierNode(SyntaxKind::Identifier) as T :
-//                isPrivateIdentifier(node) ? baseFactory.createBasePrivateIdentifierNode(SyntaxKind::PrivateIdentifier) as T :
-//                !isNodeKind(node.kind) ? baseFactory.createBaseTokenNode(node.kind) as T :
-//                baseFactory.createBaseNode(node.kind) as T;
+//                isSourceFile(node) ? basefactory::createBaseSourceFileNode(SyntaxKind::SourceFile) as T :
+//                isIdentifier(node) ? basefactory::createBaseIdentifierNode(SyntaxKind::Identifier) as T :
+//                isPrivateIdentifier(node) ? basefactory::createBasePrivateIdentifierNode(SyntaxKind::PrivateIdentifier) as T :
+//                !isNodeKind(node.kind) ? basefactory::createBaseTokenNode(node.kind) as T :
+//                basefactory::createBaseNode(node.kind) as T;
 //
 //            (clone as Mutable<T>).flags |= (node.flags & ~NodeFlags.Synthesized);
 //            (clone as Mutable<T>).transformFlags = node.transformFlags;
@@ -5149,8 +5757,8 @@ namespace ts::factory {
 //
 //        function createTypeCheck(value: Expression, tag: TypeOfTag) {
 //            return tag == "undefined"
-//                ? factory.createStrictEquality(value, createVoidZero())
-//                : factory.createStrictEquality(createTypeOfExpression(value), createStringLiteral(tag));
+//                ? factory::createStrictEquality(value, createVoidZero())
+//                : factory::createStrictEquality(createTypeOfExpression(value), createStringLiteral(tag));
 //        }
 //
 //        function createMethodCall(object: Expression, methodName: string | Identifier, argumentsList: readonly Expression[]) {
@@ -5328,7 +5936,7 @@ namespace ts::factory {
 //            }
 //            else if (getEmitFlags(callee) & EmitFlags.HelperName) {
 //                thisArg = createVoidZero();
-//                target = parenthesizerRules().parenthesizeLeftSideOfAccess(callee);
+//                target = parenthesizerRules::parenthesizeLeftSideOfAccess(callee);
 //            }
 //            else if (isPropertyAccessExpression(callee)) {
 //                if (shouldBeCapturedInTempVariable(callee.expression, cacheIdentifiers)) {
@@ -5336,7 +5944,7 @@ namespace ts::factory {
 //                    thisArg = createTempVariable(recordTempVariable);
 //                    target = createPropertyAccessExpression(
 //                        setTextRange(
-//                            factory.createAssignment(
+//                            factory::createAssignment(
 //                                thisArg,
 //                                callee.expression
 //                            ),
@@ -5357,7 +5965,7 @@ namespace ts::factory {
 //                    thisArg = createTempVariable(recordTempVariable);
 //                    target = createElementAccessExpression(
 //                        setTextRange(
-//                            factory.createAssignment(
+//                            factory::createAssignment(
 //                                thisArg,
 //                                callee.expression
 //                            ),
@@ -5375,7 +5983,7 @@ namespace ts::factory {
 //            else {
 //                // for `a()` target is `a` and thisArg is `void 0`
 //                thisArg = createVoidZero();
-//                target = parenthesizerRules().parenthesizeLeftSideOfAccess(expression);
+//                target = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
 //            }
 //
 //            return { target, thisArg };
@@ -5414,7 +6022,7 @@ namespace ts::factory {
 //            // stack size exceeded" errors.
 //            return expressions.length > 10
 //                ? createCommaListExpression(expressions)
-//                : reduceLeft(expressions, factory.createComma)!;
+//                : reduceLeft(expressions, factory::createComma)!;
 //        }
 //
 //        function getName(node: Declaration | undefined, allowComments?: boolean, allowSourceMaps?: boolean, emitFlags: EmitFlags = 0) {
@@ -5764,11 +6372,6 @@ namespace ts::factory {
 //            return array ? createNodeArray(array) : undefined;
 //        }
 //
-//        function asName<T extends DeclarationName | Identifier | BindingName | PropertyName | NoSubstitutionTemplateLiteral | EntityName | ThisTypeNode | undefined>(name: string | T): T | Identifier {
-//            return typeof name == "string" ? createIdentifier(name) :
-//                name;
-//        }
-//
 //        function asExpression<T extends Expression | undefined>(value: string | number | boolean | T): T | StringLiteral | NumericLiteral | BooleanLiteral {
 //            return typeof value == "string" ? createStringLiteral(value) :
 //                typeof value == "number" ? createNumericLiteral(value) :
@@ -5963,11 +6566,11 @@ namespace ts::factory {
 //    }
 //
 //    auto syntheticFactory: BaseNodeFactory = {
-//        createBaseSourceFileNode: kind => makeSynthetic(baseFactory.createBaseSourceFileNode(kind)),
-//        createBaseIdentifierNode: kind => makeSynthetic(baseFactory.createBaseIdentifierNode(kind)),
-//        createBasePrivateIdentifierNode: kind => makeSynthetic(baseFactory.createBasePrivateIdentifierNode(kind)),
-//        createBaseTokenNode: kind => makeSynthetic(baseFactory.createBaseTokenNode(kind)),
-//        createBaseNode: kind => makeSynthetic(baseFactory.createBaseNode(kind)),
+//        createBaseSourceFileNode: kind => makeSynthetic(basefactory::createBaseSourceFileNode(kind)),
+//        createBaseIdentifierNode: kind => makeSynthetic(basefactory::createBaseIdentifierNode(kind)),
+//        createBasePrivateIdentifierNode: kind => makeSynthetic(basefactory::createBasePrivateIdentifierNode(kind)),
+//        createBaseTokenNode: kind => makeSynthetic(basefactory::createBaseTokenNode(kind)),
+//        createBaseNode: kind => makeSynthetic(basefactory::createBaseNode(kind)),
 //    };
 //
 //    export auto factory = createNodeFactory(NodeFactoryFlags.NoIndentationOnFreshPropertyAccess, syntheticFactory);
@@ -6011,17 +6614,17 @@ namespace ts::factory {
 //        auto node = oldFileOfCurrentEmit ?
 //            parseOldFileOfCurrentEmit(Debug.checkDefined(bundleFileInfo)) :
 //            parseUnparsedSourceFile(bundleFileInfo, stripInternal, length);
-//        node.fileName = fileName;
-//        node.sourceMapPath = sourceMapPath;
-//        node.oldFileOfCurrentEmit = oldFileOfCurrentEmit;
+//        node->fileName = fileName;
+//        node->sourceMapPath = sourceMapPath;
+//        node->oldFileOfCurrentEmit = oldFileOfCurrentEmit;
 //        if (getText && getSourceMapText) {
 //            Object.defineProperty(node, "text", { get: getText });
 //            Object.defineProperty(node, "sourceMapText", { get: getSourceMapText });
 //        }
 //        else {
 //            Debug.assert(!oldFileOfCurrentEmit);
-//            node.text = text ?? "";
-//            node.sourceMapText = sourceMapText;
+//            node->text = text ?? "";
+//            node->sourceMapText = sourceMapText;
 //        }
 //
 //        return node;
@@ -6040,7 +6643,7 @@ namespace ts::factory {
 //        for (auto section of bundleFileInfo ? bundleFileInfo.sections : emptyArray) {
 //            switch (section.kind) {
 //                case BundleFileSectionKind.Prologue:
-//                    prologues = append(prologues, setTextRange(factory.createUnparsedPrologue(section.data), section));
+//                    prologues = append(prologues, setTextRange(factory::createUnparsedPrologue(section.data), section));
 //                    break;
 //                case BundleFileSectionKind.EmitHelpers:
 //                    helpers = append(helpers, getAllUnscopedEmitHelpers().get(section.data)!);
@@ -6067,11 +6670,11 @@ namespace ts::factory {
 //                    let prependTexts: UnparsedTextLike[] | undefined;
 //                    for (auto text of section.texts) {
 //                        if (!stripInternal || text.kind != BundleFileSectionKind.Internal) {
-//                            prependTexts = append(prependTexts, setTextRange(factory.createUnparsedTextLike(text.data, text.kind == BundleFileSectionKind.Internal), text));
+//                            prependTexts = append(prependTexts, setTextRange(factory::createUnparsedTextLike(text.data, text.kind == BundleFileSectionKind.Internal), text));
 //                        }
 //                    }
 //                    prependChildren = addRange(prependChildren, prependTexts);
-//                    texts = append(texts, factory.createUnparsedPrepend(section.data, prependTexts ?? emptyArray));
+//                    texts = append(texts, factory::createUnparsedPrepend(section.data, prependTexts ?? emptyArray));
 //                    break;
 //                case BundleFileSectionKind.Internal:
 //                    if (stripInternal) {
@@ -6081,7 +6684,7 @@ namespace ts::factory {
 //                    // falls through
 //
 //                case BundleFileSectionKind.Text:
-//                    texts = append(texts, setTextRange(factory.createUnparsedTextLike(section.data, section.kind == BundleFileSectionKind.Internal), section));
+//                    texts = append(texts, setTextRange(factory::createUnparsedTextLike(section.data, section.kind == BundleFileSectionKind.Internal), section));
 //                    break;
 //                default:
 //                    Debug.assertNever(section);
@@ -6089,20 +6692,20 @@ namespace ts::factory {
 //        }
 //
 //        if (!texts) {
-//            auto textNode = factory.createUnparsedTextLike(/*data*/ undefined, /*internal*/ false);
+//            auto textNode = factory::createUnparsedTextLike(/*data*/ undefined, /*internal*/ false);
 //            setTextRangePosWidth(textNode, 0, typeof length == "function" ? length() : length);
 //            texts = [textNode];
 //        }
 //
-//        auto node = parseNodeFactory.createUnparsedSource(prologues ?? emptyArray, /*syntheticReferences*/ undefined, texts);
+//        auto node = parseNodefactory::createUnparsedSource(prologues ?? emptyArray, /*syntheticReferences*/ undefined, texts);
 //        setEachParent(prologues, node);
 //        setEachParent(texts, node);
 //        setEachParent(prependChildren, node);
-//        node.hasNoDefaultLib = hasNoDefaultLib;
-//        node.helpers = helpers;
-//        node.referencedFiles = referencedFiles || emptyArray;
-//        node.typeReferenceDirectives = typeReferenceDirectives;
-//        node.libReferenceDirectives = libReferenceDirectives || emptyArray;
+//        node->hasNoDefaultLib = hasNoDefaultLib;
+//        node->helpers = helpers;
+//        node->referencedFiles = referencedFiles || emptyArray;
+//        node->typeReferenceDirectives = typeReferenceDirectives;
+//        node->libReferenceDirectives = libReferenceDirectives || emptyArray;
 //        return node;
 //    }
 //
@@ -6113,7 +6716,7 @@ namespace ts::factory {
 //            switch (section.kind) {
 //                case BundleFileSectionKind.Internal:
 //                case BundleFileSectionKind.Text:
-//                    texts = append(texts, setTextRange(factory.createUnparsedTextLike(section.data, section.kind == BundleFileSectionKind.Internal), section));
+//                    texts = append(texts, setTextRange(factory::createUnparsedTextLike(section.data, section.kind == BundleFileSectionKind.Internal), section));
 //                    break;
 //
 //                case BundleFileSectionKind.NoDefaultLib:
@@ -6122,7 +6725,7 @@ namespace ts::factory {
 //                case BundleFileSectionKind.TypeResolutionModeImport:
 //                case BundleFileSectionKind.TypeResolutionModeRequire:
 //                case BundleFileSectionKind.Lib:
-//                    syntheticReferences = append(syntheticReferences, setTextRange(factory.createUnparsedSyntheticReference(section), section));
+//                    syntheticReferences = append(syntheticReferences, setTextRange(factory::createUnparsedSyntheticReference(section), section));
 //                    break;
 //
 //                // Ignore
@@ -6136,10 +6739,10 @@ namespace ts::factory {
 //            }
 //        }
 //
-//        auto node = factory.createUnparsedSource(emptyArray, syntheticReferences, texts ?? emptyArray);
+//        auto node = factory::createUnparsedSource(emptyArray, syntheticReferences, texts ?? emptyArray);
 //        setEachParent(syntheticReferences, node);
 //        setEachParent(texts, node);
-//        node.helpers = map(bundleFileInfo.sources && bundleFileInfo.sources.helpers, name => getAllUnscopedEmitHelpers().get(name)!);
+//        node->helpers = map(bundleFileInfo.sources && bundleFileInfo.sources.helpers, name => getAllUnscopedEmitHelpers().get(name)!);
 //        return node;
 //    }
 //
@@ -6191,7 +6794,7 @@ namespace ts::factory {
 //        buildInfo?: BuildInfo,
 //        oldFileOfCurrentEmit?: boolean
 //    ): InputFiles {
-//        auto node = parseNodeFactory.createInputFiles();
+//        auto node = parseNodefactory::createInputFiles();
 //        if (!isString(javascriptTextOrReadFileText)) {
 //            auto cache = new Map<string, string | false>();
 //            auto textGetter = (path: string | undefined) => {
@@ -6215,11 +6818,11 @@ namespace ts::factory {
 //                }
 //                return buildInfo || undefined;
 //            };
-//            node.javascriptPath = declarationTextOrJavascriptPath;
-//            node.javascriptMapPath = javascriptMapPath;
-//            node.declarationPath = Debug.checkDefined(javascriptMapTextOrDeclarationPath);
-//            node.declarationMapPath = declarationMapPath;
-//            node.buildInfoPath = declarationMapTextOrBuildInfoPath;
+//            node->javascriptPath = declarationTextOrJavascriptPath;
+//            node->javascriptMapPath = javascriptMapPath;
+//            node->declarationPath = Debug.checkDefined(javascriptMapTextOrDeclarationPath);
+//            node->declarationMapPath = declarationMapPath;
+//            node->buildInfoPath = declarationMapTextOrBuildInfoPath;
 //            Object.defineProperties(node, {
 //                javascriptText: { get() { return definedTextGetter(declarationTextOrJavascriptPath); } },
 //                javascriptMapText: { get() { return textGetter(javascriptMapPath); } }, // TODO:: if there is inline sourceMap in jsFile, use that
@@ -6229,17 +6832,17 @@ namespace ts::factory {
 //            });
 //        }
 //        else {
-//            node.javascriptText = javascriptTextOrReadFileText;
-//            node.javascriptMapPath = javascriptMapPath;
-//            node.javascriptMapText = javascriptMapTextOrDeclarationPath;
-//            node.declarationText = declarationTextOrJavascriptPath;
-//            node.declarationMapPath = declarationMapPath;
-//            node.declarationMapText = declarationMapTextOrBuildInfoPath;
-//            node.javascriptPath = javascriptPath;
-//            node.declarationPath = declarationPath;
-//            node.buildInfoPath = buildInfoPath;
-//            node.buildInfo = buildInfo;
-//            node.oldFileOfCurrentEmit = oldFileOfCurrentEmit;
+//            node->javascriptText = javascriptTextOrReadFileText;
+//            node->javascriptMapPath = javascriptMapPath;
+//            node->javascriptMapText = javascriptMapTextOrDeclarationPath;
+//            node->declarationText = declarationTextOrJavascriptPath;
+//            node->declarationMapPath = declarationMapPath;
+//            node->declarationMapText = declarationMapTextOrBuildInfoPath;
+//            node->javascriptPath = javascriptPath;
+//            node->declarationPath = declarationPath;
+//            node->buildInfoPath = buildInfoPath;
+//            node->buildInfo = buildInfo;
+//            node->oldFileOfCurrentEmit = oldFileOfCurrentEmit;
 //        }
 //        return node;
 //    }
@@ -6257,7 +6860,7 @@ namespace ts::factory {
 //    // Utilities
 //
 //    export function setOriginalNode<T extends Node>(node: T, original: Node | undefined): T {
-//        node.original = original;
+//        node->original = original;
 //        if (original) {
 //            auto emitNode = original.emitNode;
 //            if (emitNode) node.emitNode = mergeEmitNode(emitNode, node.emitNode);

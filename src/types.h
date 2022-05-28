@@ -50,7 +50,7 @@ namespace ts::types {
         Deferred = 7
     };
 
-    enum CommentDirectiveType {
+    enum class CommentDirectiveType {
         ExpectError,
         Ignore,
     };
@@ -65,11 +65,11 @@ namespace ts::types {
         CommentDirectiveType type;
     };
 
-    enum LanguageVariant {
+    enum class LanguageVariant {
         Standard,
         JSX
     };
-    enum DiagnosticCategory {
+    enum class DiagnosticCategory {
         Warning,
         Error,
         Suggestion,
@@ -362,7 +362,7 @@ namespace ts::types {
         TemplateLiteralLikeFlags = ContainsInvalidEscape,
     };
 
-    enum SyntaxKind {
+    enum class SyntaxKind {
         Unknown,
         EndOfFileToken,
         SingleLineCommentTrivia,
@@ -981,12 +981,29 @@ namespace ts::types {
         // Masks
         // - Additional bitmasks
     };
+
+    enum class OuterExpressionKinds {
+        Parentheses = 1 << 0,
+        TypeAssertions = 1 << 1,
+        NonNullAssertions = 1 << 2,
+        PartiallyEmittedExpressions = 1 << 3,
+
+        Assertions = TypeAssertions | NonNullAssertions,
+        All = Parentheses | Assertions | PartiallyEmittedExpressions,
+
+        ExcludeJSDocTypeAssertion = 1 << 4,
+    };
 }
 
 namespace ts {
     using namespace std;
 
     using types::SyntaxKind;
+
+    struct PseudoBigInt {
+        bool negative;
+        string base10Value;
+    };
 
     template<typename T>
     void printElem(vector<SyntaxKind> &kinds, const T &x) {
@@ -1007,8 +1024,8 @@ namespace ts {
     }
 
     struct ReadonlyTextRange {
-        int pos = -1;
-        int end = -1;
+        int pos = - 1;
+        int end = - 1;
     };
 
     struct Decorator;
@@ -1110,10 +1127,16 @@ namespace ts {
         int pos;
         int end;
         bool hasTrailingComma = false;
+        bool isMissingList = false; //replaces `MissingList extends NodeArray {bool isMissingList;}`
         /* @internal */ int transformFlags = 0;   // Flags for transforms, possibly undefined
 
         int length() {
             return list.size();
+        }
+
+        vector<shared<Node>> slice(int start, int end = 0) {
+            if (!end) end = list.size();
+            return std::vector<shared<Node>>(list.begin() + start, list.begin() + end);
         }
     };
 
@@ -1153,7 +1176,7 @@ namespace ts {
 //        /* @internal */ nextContainer?: Node;                 // Next container in declaration order (initialized by binding)
 //        /* @internal */ localSymbol?: Symbol;                 // Local symbol declared by BaseNode (initialized by binding only for exported nodes)
 //        /* @internal */ flowNode?: FlowNode;                  // Associated FlowNode (initialized by binding)
-//        /* @internal */ emitNode?: EmitNode;                  // Associated EmitNode (initialized by transforms)
+//        /* @internal */ optional<EmitNode> emitNode; //?: ;                  // Associated EmitNode (initialized by transforms)
 //        /* @internal */ contextualType?: Type;                // Used to temporarily assign a contextual type during overload resolution
 //        /* @internal */ inferenceContext?: InferenceContext;  // Inference context for contextual type
 
@@ -1189,13 +1212,13 @@ namespace ts {
         //using dynamic_cast
         template<class T>
         T &cast() {
-            return dynamic_cast<T&>(*this);
+            return dynamic_cast<T &>(*this);
         }
 
         //using dynamic_cast
         template<class T>
         bool validCast() {
-            return dynamic_cast<T*>(this) != nullptr;
+            return dynamic_cast<T *>(this) != nullptr;
         }
 
         template<class T>
@@ -1404,7 +1427,9 @@ namespace ts {
 
     struct PrimaryExpression: MemberExpression {};
 
-    struct PrivateIdentifier: BrandKind<SyntaxKind::PrivateIdentifier, PrimaryExpression> {};
+    struct PrivateIdentifier: BrandKind<SyntaxKind::PrivateIdentifier, PrimaryExpression> {
+        string escapedText;
+    };
 
     template<SyntaxKind T>
     struct Token: BrandKind<T, Node> {};
@@ -1457,8 +1482,8 @@ namespace ts {
     using PostfixUnaryOperator = SyntaxKind; //SyntaxKind.PlusPlusToken | SyntaxKind.MinusMinusToken
 
     struct PrefixUnaryExpression: BrandKind<SyntaxKind::PrefixUnaryExpression, UpdateExpression> {
-        Property(operand, LeftHandSideExpression);
-        Property(operatorKind, PostfixUnaryOperator);
+        Property(operand, Node); //LeftHandSideExpression
+        PostfixUnaryOperator operatorKind = SyntaxKind::Unknown;
     };
 
     struct PartiallyEmittedExpression: BrandKind<SyntaxKind::PartiallyEmittedExpression, LeftHandSideExpression> {
@@ -1467,7 +1492,7 @@ namespace ts {
 
     struct PostfixUnaryExpression: BrandKind<SyntaxKind::PostfixUnaryExpression, UpdateExpression> {
         Property(operand, LeftHandSideExpression);
-        Property(operatorKind, PostfixUnaryOperator);
+        PostfixUnaryOperator operatorKind = SyntaxKind::Unknown;
     };
 
     struct DeleteExpression: BrandKind<SyntaxKind::DeleteExpression, UnaryExpression> {
@@ -1520,15 +1545,22 @@ namespace ts {
 
     struct ModifiersArray: NodeTypeArray(Modifier) {};
 
-    struct LiteralLikeNode {
+    struct LiteralLikeNode: Node {
         std::string text;
-        bool isUnterminated; //optional
-        bool hasExtendedUnicodeEscape; //optional
+        optional<bool> isUnterminated;
+        optional<bool> hasExtendedUnicodeEscape;
     };
 
-    struct LiteralExpression: LiteralLikeNode, PrimaryExpression {};
+    struct LiteralExpression: LiteralLikeNode {};
 
-    struct StringLiteral: BrandKind<SyntaxKind::StringLiteral, LiteralExpression> {};
+    struct Identifier;
+    struct NoSubstitutionTemplateLiteral;
+    struct NumericLiteral;
+
+    struct StringLiteral: BrandKind<SyntaxKind::StringLiteral, LiteralExpression> {
+        OptionalUnionProperty(textSourceNode, Identifier, StringLiteral, NoSubstitutionTemplateLiteral, NumericLiteral);
+        optional<bool> singleQuote;
+    };
 
     struct ImportSpecifier;
 
@@ -1556,7 +1588,7 @@ namespace ts {
         string escapedText;
         optional<SyntaxKind> originalKeywordKind;// Original syntaxKind which get set so that we can report an error later
 
-        /*@internal*/ optional<GeneratedIdentifierFlags> autoGenerateFlags; // Specifies whether to auto-generate the text for an identifier.
+        /*@internal*/ optional</*GeneratedIdentifierFlags*/int> autoGenerateFlags; // Specifies whether to auto-generate the text for an identifier.
         /*@internal*/ optional<int> autoGenerateId;           // Ensures unique generated identifiers get unique names, but clones get the same name.
         /*@internal*/ sharedOpt<ImportSpecifier> generatedImportReference; // Reference to the generated import specifier this identifier refers to
         /*@internal*/ optional<NodeArray> typeArguments; // Only defined on synthesized nodes. Though not syntactically valid, used in emitting diagnostics, quickinfo, and signature help.
@@ -1587,17 +1619,24 @@ namespace ts {
     };
 
     struct TemplateLiteralLikeNode: LiteralLikeNode {
-        OptionalProperty(rawText, string);
+        optional<string> rawText = {};
         /* @internal */
-        optional<types::TokenFlags> templateFlags;
+        optional<int> templateFlags; //types::TokenFlags
     };
 
-    struct NoSubstitutionTemplateLiteral: BrandKind<SyntaxKind::NoSubstitutionTemplateLiteral, LiteralExpression, TemplateLiteralLikeNode> {
-        optional<types::TokenFlags> templateFlags;
+    struct RegularExpressionLiteral: BrandKind<SyntaxKind::RegularExpressionLiteral, LiteralExpression> {
+    };
+
+    struct NoSubstitutionTemplateLiteral: BrandKind<SyntaxKind::NoSubstitutionTemplateLiteral, LiteralExpression> {
+        OptionalProperty(rawText, string);
+        optional<int> templateFlags; //types::TokenFlags
     };
 
     struct NumericLiteral: BrandKind<SyntaxKind::NumericLiteral, LiteralExpression> {
-        types::TokenFlags numericLiteralFlags;
+        int numericLiteralFlags = types::TokenFlags::None;
+    };
+
+    struct BigIntLiteral: BrandKind<SyntaxKind::BigIntLiteral, LiteralExpression> {
     };
 
     struct ComputedPropertyName: BrandKind<SyntaxKind::ComputedPropertyName, Node> {
@@ -1810,7 +1849,7 @@ namespace ts {
     struct PropertyAccessExpression: BrandKind<SyntaxKind::PropertyAccessExpression, MemberExpression, NamedDeclaration> {
         Property(expression, LeftHandSideExpression);
         OptionalProperty(questionDotToken, QuestionDotToken);
-        Property(name, MemberName);
+        UnionProperty(name, Identifier, PrivateIdentifier);
     };
 
     struct PropertyAccessEntityNameExpression;
@@ -2251,7 +2290,7 @@ namespace ts {
 
     struct ConstructorTypeNode: BrandKind<SyntaxKind::ConstructorType, FunctionOrConstructorTypeNodeBase> {};
 
-    struct FunctionDeclaration: BrandKind<types::FunctionDeclaration, FunctionLikeDeclarationBase, DeclarationStatement> {
+    struct FunctionDeclaration: BrandKind<SyntaxKind::FunctionDeclaration, FunctionLikeDeclarationBase, DeclarationStatement> {
         OptionalProperty(name, Identifier);
         OptionalProperty(body, FunctionBody);
     };
@@ -2274,7 +2313,7 @@ namespace ts {
         /* @internal*/ OptionalProperty(exclamationToken, ExclamationToken); // Present for use with reporting a grammar error
     };
 
-    struct ConstructorDeclaration: FunctionLikeDeclarationBase, ClassElement, BrandKind<types::Constructor> {
+    struct ConstructorDeclaration: FunctionLikeDeclarationBase, ClassElement, BrandKind<SyntaxKind::Constructor> {
         shared<NodeUnion(ClassLikeDeclaration)> parent;
         OptionalProperty(body, FunctionBody);
 
@@ -2314,7 +2353,7 @@ namespace ts {
         /* @internal */ bool multiLine;
     };
 
-    struct BinaryExpression: BrandKind<types::BinaryExpression, Expression>  {
+    struct BinaryExpression: BrandKind<SyntaxKind::BinaryExpression, Expression> {
         Property(left, Expression);
         UnionProperty(operatorToken, Node); //BinaryOperatorToken uses a lot of different NodeType<T>
         Property(right, Expression);
@@ -2389,7 +2428,7 @@ namespace ts {
 //
 //    export type BindingOrAssignmentPattern = ObjectBindingOrAssignmentPattern | ArrayBindingOrAssignmentPattern;
 
-    struct ConditionalExpression: Expression, BrandKind<types::ConditionalExpression> {
+    struct ConditionalExpression: Expression, BrandKind<SyntaxKind::ConditionalExpression> {
         Property(condition, Expression);
         Property(questionToken, QuestionToken);
         Property(whenTrue, Expression);
@@ -2397,7 +2436,7 @@ namespace ts {
         Property(whenFalse, Expression);
     };
 
-    struct FunctionExpression: BrandKind<types::FunctionExpression, PrimaryExpression, FunctionLikeDeclarationBase>  {
+    struct FunctionExpression: BrandKind<SyntaxKind::FunctionExpression, PrimaryExpression, FunctionLikeDeclarationBase> {
         OptionalProperty(name, Identifier);
         OptionalProperty(body, FunctionBody); // Required, whereas the member inherited from FunctionDeclaration is optional
     };
@@ -2450,19 +2489,19 @@ namespace ts {
     struct TemplateSpan;
     struct TemplateLiteralTypeSpan;
 
-    struct TemplateHead: BrandKind<SyntaxKind::TemplateHead, TemplateLiteralLikeNode, Node> {
+    struct TemplateHead: BrandKind<SyntaxKind::TemplateHead, TemplateLiteralLikeNode> {
         ParentProperty(TemplateExpression, TemplateLiteralTypeNode);
         /* @internal */
         optional<types::TokenFlags> templateFlags;
     };
 
-    struct TemplateMiddle: BrandKind<SyntaxKind::TemplateMiddle, TemplateLiteralLikeNode, Node> {
+    struct TemplateMiddle: BrandKind<SyntaxKind::TemplateMiddle, TemplateLiteralLikeNode> {
         shared<NodeUnion(TemplateSpan, TemplateLiteralTypeSpan)> parent;
         /* @internal */
         optional<types::TokenFlags> templateFlags;
     };
 
-    struct TemplateTail: BrandKind<SyntaxKind::TemplateTail, TemplateLiteralLikeNode, Node> {
+    struct TemplateTail: BrandKind<SyntaxKind::TemplateTail, TemplateLiteralLikeNode> {
         ParentProperty(TemplateSpan, TemplateLiteralTypeSpan);
         /* @internal */
         optional<types::TokenFlags> templateFlags;
@@ -2615,7 +2654,7 @@ namespace ts {
         OptionalProperty(expression, Expression);
     };
 
-    struct JsxAttribute: BrandKind<SyntaxKind::JsxAttribute, ObjectLiteralElement> {
+    struct JsxAttribute: BrandKind<SyntaxKind::JsxAttribute, ObjectLiteralElement, Node> {
         shared<JsxAttributes> parent;
         Property(name, Identifier);
         /// JSX attribute initializers are optional; <X y /> is sugar for <X y={true} />
@@ -2682,7 +2721,7 @@ namespace ts {
         Property(closingFragment, JsxClosingFragment);
     };
 
-    struct JsxSpreadAttribute: BrandKind<SyntaxKind::JsxSpreadAttribute, ObjectLiteralElement> {
+    struct JsxSpreadAttribute: BrandKind<SyntaxKind::JsxSpreadAttribute, ObjectLiteralElement, Node> {
         Property(parent, JsxAttributes);
         Property(expression, Expression);
     };

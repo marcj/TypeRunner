@@ -75,11 +75,11 @@ namespace ts {
     };
 
 
-////    let NodeConstructor: new (kind: SyntaxKind, pos?: number, end?: number) => Node;
-////    let TokenConstructor: new (kind: SyntaxKind, pos?: number, end?: number) => Node;
-////    let IdentifierConstructor: new (kind: SyntaxKind, pos?: number, end?: number) => Node;
-////    let PrivateIdentifierConstructor: new (kind: SyntaxKind, pos?: number, end?: number) => Node;
-////    let SourceFileConstructor: new (kind: SyntaxKind, pos?: number, end?: number) => Node;
+////    auto NodeConstructor: new (kind: SyntaxKind, pos?: number, end?: number) => Node;
+////    auto TokenConstructor: new (kind: SyntaxKind, pos?: number, end?: number) => Node;
+////    auto IdentifierConstructor: new (kind: SyntaxKind, pos?: number, end?: number) => Node;
+////    auto PrivateIdentifierConstructor: new (kind: SyntaxKind, pos?: number, end?: number) => Node;
+////    auto SourceFileConstructor: new (kind: SyntaxKind, pos?: number, end?: number) => Node;
 //
 //    /**
 //     * NOTE: You should not use this, it is only exported to support `createNode` in `~/src/deprecatedCompat/deprecations.ts`.
@@ -771,7 +771,7 @@ namespace ts {
         shared<SourceFile> parseSourceFile(string fileName, string sourceText, ScriptTarget languageVersion, bool setParentNodes = false, optional<ScriptKind> scriptKind = {}, optional<function<void(shared<SourceFile>)>> setExternalModuleIndicatorOverride = {});
     };
 
-    shared<SourceFile> createSourceFile(string fileName, string sourceText, variant<ScriptTarget, CreateSourceFileOptions> languageVersionOrOptions, bool setParentNodes = false, optional<ScriptKind> scriptKind = {}) {
+        shared<SourceFile> createSourceFile(string fileName, string sourceText, variant<ScriptTarget, CreateSourceFileOptions> languageVersionOrOptions, bool setParentNodes = false, optional<ScriptKind> scriptKind = {}) {
 //        tracing?.push(tracing.Phase.Parse, "createSourceFile", { path: fileName }, /*separateBeginAndEnd*/ true);
 //        performance.mark("beforeParse");
         shared_ptr<SourceFile> result = make_shared<SourceFile>();
@@ -870,22 +870,25 @@ namespace ts {
         // Share a single scanner across all calls to parse a source file.  This helps speed things
         // up by avoiding the cost of creating/compiling scanners over and over again.
         Scanner scanner{ScriptTarget::Latest, /*skipTrivia*/ true};
+        shared<TypeNode> parseType();
+
+        shared<Identifier> createIdentifier(bool isIdentifier, optional<DiagnosticMessage> diagnosticMessage = {}, optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {});
 
 //        auto disallowInAndDecoratorContext = NodeFlags::DisallowInContext | NodeFlags::DecoratorContext;
 //
 //        // capture constructors in 'initializeState' to avoid null checks
 //        // tslint:disable variable-name
-//        let NodeConstructor: new (kind: SyntaxKind, pos: number, end: number) => Node;
-//        let TokenConstructor: new (kind: SyntaxKind, pos: number, end: number) => Node;
-//        let IdentifierConstructor: new (kind: SyntaxKind, pos: number, end: number) => Node;
-//        let PrivateIdentifierConstructor: new (kind: SyntaxKind, pos: number, end: number) => Node;
-//        let SourceFileConstructor: new (kind: SyntaxKind, pos: number, end: number) => Node;
+//        auto NodeConstructor: new (kind: SyntaxKind, pos: number, end: number) => Node;
+//        auto TokenConstructor: new (kind: SyntaxKind, pos: number, end: number) => Node;
+//        auto IdentifierConstructor: new (kind: SyntaxKind, pos: number, end: number) => Node;
+//        auto PrivateIdentifierConstructor: new (kind: SyntaxKind, pos: number, end: number) => Node;
+//        auto SourceFileConstructor: new (kind: SyntaxKind, pos: number, end: number) => Node;
 //        // tslint:enable variable-name
 
         int nodeCount = 0;
 
         shared<Node> countNode(const shared<Node> &node) {
-            nodeCount++;
+            nodeCount ++;
             return node;
         }
 
@@ -909,16 +912,17 @@ namespace ts {
         LanguageVariant languageVariant;
         vector<DiagnosticWithDetachedLocation> parseDiagnostics;
         vector<DiagnosticWithDetachedLocation> jsDocDiagnostics;
-//        let syntaxCursor: IncrementalParser.SyntaxCursor | undefined;
+//        auto syntaxCursor: IncrementalParser.SyntaxCursor | undefined;
 
         SyntaxKind currentToken;
         unordered_map<string, string> identifiers;
-//        let privateIdentifiers: ESMap<string, string>;
+        unordered_map<string, string> privateIdentifiers;
+//        auto privateIdentifiers: ESMap<string, string>;
         int identifierCount = 0;
 
         /*ParsingContext*/ int parsingContext = 0;
 
-//        let notParenthesizedArrow: Set<number> | undefined;
+//        auto notParenthesizedArrow: Set<number> | undefined;
 
         // Flags that dictate what parsing context we're in.  For example:
         // Whether or not we are in strict parsing mode.  All that changes in strict parsing mode is
@@ -1019,22 +1023,22 @@ namespace ts {
             return currentToken = scanner.scan();
         }
 
-        optional<DiagnosticWithDetachedLocation> parseErrorAtPosition(int start, int length, const DiagnosticMessage &message) {
+        optional<DiagnosticWithDetachedLocation> parseErrorAtPosition(int start, int length, const DiagnosticMessage &message, optional<DiagnosticArg> arg = {}) {
             // Mark that we've encountered an error.  We'll set an appropriate bit on the next
             // node we finish so that it can't be reused incrementally.
             parseErrorBeforeNextFinishedNode = true;
 
             // Don't report another error if it would just be at the same position as the last error.
             if (! parseDiagnostics.empty() || start != parseDiagnostics.back().start) {
-                auto d = createDetachedDiagnostic(fileName, start, length, message);
+                auto d = createDetachedDiagnostic(fileName, start, length, message, arg);
                 parseDiagnostics.push_back(d);
                 return d;
             }
             return nullopt;
         }
 
-        optional<DiagnosticWithDetachedLocation> parseErrorAt(int start, int end, const DiagnosticMessage &message) {
-            return parseErrorAtPosition(start, end - start, message);
+        optional<DiagnosticWithDetachedLocation> parseErrorAt(int start, int end, const DiagnosticMessage &message, optional<DiagnosticArg> arg = {}) {
+            return parseErrorAtPosition(start, end - start, message, arg);
         }
 
         void scanError(const DiagnosticMessage &message, int length) {
@@ -1130,7 +1134,7 @@ namespace ts {
 //            return hasJSDoc ? addJSDocComment(node) : node;
 //        }
 //
-//        let hasDeprecatedTag = false;
+//        auto hasDeprecatedTag = false;
 //        function addJSDocComment<T extends HasJSDoc>(node: T): T {
 //            Debug.assert(!node.jsDoc); // Should only be called once per node
 //            auto jsDoc = mapDefined(getJSDocCommentRanges(node, sourceText), comment => JSDocParser.parseJSDocComment(node, comment.pos, comment.end - comment.pos));
@@ -1152,8 +1156,8 @@ namespace ts {
 //
 //            parseDiagnostics = [];
 //
-//            let pos = 0;
-//            let start = findNextStatementWithAwait(sourceFile.statements, 0);
+//            auto pos = 0;
+//            auto start = findNextStatementWithAwait(sourceFile.statements, 0);
 //            while (start != -1) {
 //                // append all statements between pos and start
 //                auto prevStatement = sourceFile.statements[pos];
@@ -1270,7 +1274,7 @@ namespace ts {
 //            setExternalModuleIndicator: (sourceFile: SourceFile) => void): SourceFile {
 //            // code from createNode is inlined here so createNode won't have to deal with special case of creating source files
 //            // this is quite rare comparing to other nodes and createNode should be as fast as possible
-//            let sourceFile = factory::createSourceFile(statements, endOfFileToken, flags);
+//            auto sourceFile = factory::createSourceFile(statements, endOfFileToken, flags);
 //            setTextRangePosWidth(sourceFile, 0, sourceText.length);
 //            setFields(sourceFile);
 //
@@ -1297,12 +1301,15 @@ namespace ts {
 //            }
 //        }
 
-        void setContextFlag(bool val, NodeFlags flag) {
+        void setContextFlag(bool val, int flag) {
             if (val) {
-                contextFlags |= (int) flag;
+                contextFlags |= flag;
             } else {
-                contextFlags &= ~ (int) flag;
+                contextFlags &= ~ flag;
             }
+        }
+        void setContextFlag(bool val, NodeFlags flag) {
+            return setContextFlag(val, (int)flag);
         }
 
         void setDisallowInContext(bool val) {
@@ -1320,121 +1327,15 @@ namespace ts {
         void setAwaitContext(bool val) {
             setContextFlag(val, NodeFlags::AwaitContext);
         }
-//
-//        function doOutsideOfContext<T>(context: NodeFlags, func: () => T): T {
-//            // contextFlagsToClear will contain only the context flags that are
-//            // currently set that we need to temporarily clear
-//            // We don't just blindly reset to the previous flags to ensure
-//            // that we do not mutate cached flags for the incremental
-//            // parser (ThisNodeHasError, ThisNodeOrAnySubNodesHasError, and
-//            // HasAggregatedChildData).
-//            auto contextFlagsToClear = context & contextFlags;
-//            if (contextFlagsToClear) {
-//                // clear the requested context flags
-//                setContextFlag(/*val*/ false, contextFlagsToClear);
-//                auto result = func();
-//                // restore the context flags we just cleared
-//                setContextFlag(/*val*/ true, contextFlagsToClear);
-//                return result;
-//            }
-//
-//            // no need to do anything special as we are not in any of the requested contexts
-//            return func();
-//        }
-//
-//        function doInsideOfContext<T>(context: NodeFlags, func: () => T): T {
-//            // contextFlagsToSet will contain only the context flags that
-//            // are not currently set that we need to temporarily enable.
-//            // We don't just blindly reset to the previous flags to ensure
-//            // that we do not mutate cached flags for the incremental
-//            // parser (ThisNodeHasError, ThisNodeOrAnySubNodesHasError, and
-//            // HasAggregatedChildData).
-//            auto contextFlagsToSet = context & ~contextFlags;
-//            if (contextFlagsToSet) {
-//                // set the requested context flags
-//                setContextFlag(/*val*/ true, contextFlagsToSet);
-//                auto result = func();
-//                // reset the context flags we just set
-//                setContextFlag(/*val*/ false, contextFlagsToSet);
-//                return result;
-//            }
-//
-//            // no need to do anything special as we are already in all of the requested contexts
-//            return func();
-//        }
-//
-//        function allowInAnd<T>(func: () => T): T {
-//            return doOutsideOfContext(NodeFlags::DisallowInContext, func);
-//        }
-//
-//        function disallowInAnd<T>(func: () => T): T {
-//            return doInsideOfContext(NodeFlags::DisallowInContext, func);
-//        }
-//
-//        function allowConditionalTypesAnd<T>(func: () => T): T {
-//            return doOutsideOfContext(NodeFlags::DisallowConditionalTypesContext, func);
-//        }
-//
-//        function disallowConditionalTypesAnd<T>(func: () => T): T {
-//            return doInsideOfContext(NodeFlags::DisallowConditionalTypesContext, func);
-//        }
-//
-//        function doInYieldContext<T>(func: () => T): T {
-//            return doInsideOfContext(NodeFlags::YieldContext, func);
-//        }
-//
-//        function doInDecoratorContext<T>(func: () => T): T {
-//            return doInsideOfContext(NodeFlags::DecoratorContext, func);
-//        }
-//
-//        function doInAwaitContext<T>(func: () => T): T {
-//            return doInsideOfContext(NodeFlags::AwaitContext, func);
-//        }
-//
-//        function doOutsideOfAwaitContext<T>(func: () => T): T {
-//            return doOutsideOfContext(NodeFlags::AwaitContext, func);
-//        }
-//
-//        function doInYieldAndAwaitContext<T>(func: () => T): T {
-//            return doInsideOfContext(NodeFlags::YieldContext | NodeFlags::AwaitContext, func);
-//        }
-//
-//        function doOutsideOfYieldAndAwaitContext<T>(func: () => T): T {
-//            return doOutsideOfContext(NodeFlags::YieldContext | NodeFlags::AwaitContext, func);
-//        }
-//
-        bool inContext(NodeFlags flags) {
-            return (contextFlags & (int) flags) != 0;
-        }
 
-        bool inYieldContext() {
-            return inContext(NodeFlags::YieldContext);
-        }
-
-        bool inDisallowInContext() {
-            return inContext(NodeFlags::DisallowInContext);
-        }
-
-        bool inDisallowConditionalTypesContext() {
-            return inContext(NodeFlags::DisallowConditionalTypesContext);
-        }
-
-        bool inDecoratorContext() {
-            return inContext(NodeFlags::DecoratorContext);
-        }
-
-        bool inAwaitContext() {
-            return inContext(NodeFlags::AwaitContext);
-        }
-
-        optional<DiagnosticWithDetachedLocation> parseErrorAtCurrentToken(DiagnosticMessage message){
-            return parseErrorAt(scanner.getTokenPos(), scanner.getTextPos(), message);
+        optional<DiagnosticWithDetachedLocation> parseErrorAtCurrentToken(DiagnosticMessage message, optional<DiagnosticArg> arg = {}) {
+            return parseErrorAt(scanner.getTokenPos(), scanner.getTextPos(), message, arg);
         }
 //
 //        function parseErrorAtPosition(start: number, length: number, message: DiagnosticMessage, arg0?: any): DiagnosticWithDetachedLocation | undefined {
 //            // Don't report another error if it would just be at the same position as the last error.
 //            auto lastError = lastOrUndefined(parseDiagnostics);
-//            let result: DiagnosticWithDetachedLocation | undefined;
+//            auto result: DiagnosticWithDetachedLocation | undefined;
 //            if (!lastError || start != lastError.start) {
 //                result = createDetachedDiagnostic(fileName, start, length, message, arg0);
 //                parseDiagnostics.push(result);
@@ -1445,18 +1346,14 @@ namespace ts {
 //            parseErrorBeforeNextFinishedNode = true;
 //            return result;
 //        }
-//
-//        function parseErrorAt(start: number, end: number, message: DiagnosticMessage, arg0?: any): DiagnosticWithDetachedLocation | undefined {
-//            return parseErrorAtPosition(start, end - start, message, arg0);
-//        }
-//
-//        function parseErrorAtRange(range: TextRange, message: DiagnosticMessage, arg0?: any): void {
-//            parseErrorAt(range.pos, range.end, message, arg0);
-//        }
 
-//        bool hasPrecedingJSDocComment() {
-//            return scanner.hasPrecedingJSDocComment();
-//        }
+        void parseErrorAtRange(shared<Node> range, DiagnosticMessage message, optional<DiagnosticArg> arg = {}) {
+            parseErrorAt(range->pos, range->end, message, arg);
+        }
+
+        bool hasPrecedingJSDocComment() {
+            return scanner.hasPrecedingJSDocComment();
+        }
 
 //        function nextTokenJSDoc(): JSDocSyntaxKind {
 //            return currentToken = scanner.scanJsDocToken();
@@ -1485,19 +1382,14 @@ namespace ts {
 //        function reScanHashToken(): SyntaxKind {
 //            return currentToken = scanner.reScanHashToken();
 //        }
-//
-//        function scanJsxIdentifier(): SyntaxKind {
-//            return currentToken = scanner.scanJsxIdentifier();
-//        }
-//
-//        function scanJsxText(): SyntaxKind {
-//            return currentToken = scanner.scanJsxToken();
-//        }
-//
-//        function scanJsxAttributeValue(): SyntaxKind {
-//            return currentToken = scanner.scanJsxAttributeValue();
-//        }
-//
+
+        SyntaxKind scanJsxIdentifier() {
+            return currentToken = scanner.scanJsxIdentifier();
+        }
+
+        SyntaxKind scanJsxText() {
+            return currentToken = scanner.scanJsxToken();
+        }
         template<typename T>
         T speculationHelper(const function<T()> &callback, SpeculationKind speculationKind) {
             // Keep track of the state we'll need to rollback to if lookahead fails (or if the
@@ -1515,15 +1407,15 @@ namespace ts {
             // If we're only looking ahead, then tell the scanner to only lookahead as well.
             // Otherwise, if we're actually speculatively parsing, then tell the scanner to do the
             // same.
-            auto result = speculationKind != SpeculationKind::TryParse
-                          ? scanner.lookAhead(callback)
-                          : scanner.tryScan(callback);
+            T result = speculationKind != SpeculationKind::TryParse
+                          ? scanner.lookAhead<T>(callback)
+                          : scanner.tryScan<T>(callback);
 
             assert(saveContextFlags == contextFlags);
 
             // If our callback returned something 'falsy' or we're just looking ahead,
             // then unconditionally restore us to where we were.
-            if (! result || speculationKind != SpeculationKind::TryParse) {
+            if (!result || (speculationKind != SpeculationKind::TryParse)) {
                 currentToken = saveToken;
                 if (speculationKind != SpeculationKind::Reparse) {
                     parseDiagnostics.resize(saveParseDiagnosticsLength);
@@ -1540,7 +1432,19 @@ namespace ts {
          */
         template<typename T>
         T lookAhead(const function<T()> &callback) {
-            return speculationHelper(callback, SpeculationKind::Lookahead);
+            return speculationHelper<T>(callback, SpeculationKind::Lookahead);
+        }
+
+        bool inContext(NodeFlags flags) {
+            return (contextFlags & (int) flags) != 0;
+        }
+
+        bool inYieldContext() {
+            return inContext(NodeFlags::YieldContext);
+        }
+
+        bool inAwaitContext() {
+            return inContext(NodeFlags::AwaitContext);
         }
 
         // Ignore strict mode flag because we will report an error in type checker instead.
@@ -1563,25 +1467,6 @@ namespace ts {
 
             return token() > SyntaxKind::LastReservedWord;
         }
-//
-//        function parseExpected(kind: SyntaxKind, diagnosticMessage?: DiagnosticMessage, shouldAdvance = true): boolean {
-//            if (token() == kind) {
-//                if (shouldAdvance) {
-//                    nextToken();
-//                }
-//                return true;
-//            }
-//
-//            // Report specific message if provided with one.  Otherwise, report generic fallback message.
-//            if (diagnosticMessage) {
-//                parseErrorAtCurrentToken(diagnosticMessage);
-//            }
-//            else {
-//                parseErrorAtCurrentToken(Diagnostics::_0_expected, tokenToString(kind));
-//            }
-//            return false;
-//        }
-//
 //        auto viableKeywordSuggestions = Object.keys(textToKeywordObj).filter(keyword => keyword.length > 2);
 //
 //        /**
@@ -1760,23 +1645,25 @@ namespace ts {
             // flag so that we don't mark any subsequent nodes.
             if (parseErrorBeforeNextFinishedNode) {
                 parseErrorBeforeNextFinishedNode = false;
-                node->flags |= (int)NodeFlags::ThisNodeHasError;
+                node->flags |= (int) NodeFlags::ThisNodeHasError;
             }
 
             return node;
         }
 
-        shared<Node> parseTokenNode() {
+        template<class T>
+        shared<T> parseTokenNode() {
             auto pos = getNodePos();
             auto kind = token();
             nextToken();
-            return finishNode(factory::createToken<Node>(kind), pos);
+            return finishNode(factory::createToken<T>(kind), pos);
         }
 
 //        function parseOptionalToken<TKind extends SyntaxKind>(t: TKind): Token<TKind>;
-        sharedOpt<Node> parseOptionalToken(SyntaxKind t){
+        template<class T>
+        sharedOpt<T> parseOptionalToken(SyntaxKind t) {
             if (token() == t) {
-                return parseTokenNode();
+                return parseTokenNode<T>();
             }
             return nullptr;
         }
@@ -1834,37 +1721,37 @@ namespace ts {
 //        function parseSemicolon(): boolean {
 //            return tryParseSemicolon() || parseExpected(SyntaxKind::SemicolonToken);
 //        }
-//
-//        function createNodeArray<T extends Node>(elements: T[], pos: number, end?: number, hasTrailingComma?: boolean): NodeArray<T> {
-//            auto array = factory::createNodeArray(elements, hasTrailingComma);
-//            setTextRangePosEnd(array, pos, end ?? scanner.getStartPos());
-//            return array;
-//        }
+
+        NodeArray createNodeArray(vector<shared<Node>> elements, int pos, optional<int> end = {}, optional<bool> hasTrailingComma = {}) {
+            auto array = factory::createNodeArray(elements, hasTrailingComma);
+            setTextRangePosEnd(array, pos, end ? *end : scanner.getStartPos());
+            return array;
+        }
 
 //        function createMissingNode<T extends Node>(kind: T["kind"], reportAtCurrentPosition: false, diagnosticMessage?: DiagnosticMessage, arg0?: any): T;
 //        function createMissingNode<T extends Node>(kind: T["kind"], reportAtCurrentPosition: boolean, diagnosticMessage: DiagnosticMessage, arg0?: any): T;
-        shared<Node> createMissingNode(SyntaxKind kind, bool reportAtCurrentPosition, DiagnosticMessage diagnosticMessage) {
-            if (reportAtCurrentPosition) {
-                parseErrorAtPosition(scanner.getStartPos(), 0, diagnosticMessage);
+        template<typename T>
+        shared<T> createMissingNode(SyntaxKind kind, bool reportAtCurrentPosition, optional<DiagnosticMessage> diagnosticMessage = {}) {
+            if (reportAtCurrentPosition && diagnosticMessage) {
+                parseErrorAtPosition(scanner.getStartPos(), 0, *diagnosticMessage);
+            } else if (diagnosticMessage) {
+                parseErrorAtCurrentToken(*diagnosticMessage);
             }
-//            else if (diagnosticMessage) {
-                parseErrorAtCurrentToken(diagnosticMessage);
-//            }
 
             auto pos = getNodePos();
             auto result =
-                kind == SyntaxKind::Identifier ? factory::createIdentifier("", /*typeArguments*/ {}, /*originalKeywordKind*/ {}) :
-                isTemplateLiteralKind(kind) ? factory::createTemplateLiteralLikeNode(kind, "", "", /*templateFlags*/ {}) :
-                kind == SyntaxKind::NumericLiteral ? factory::createNumericLiteral("", /*numericLiteralFlags*/ {}) :
-                kind == SyntaxKind::StringLiteral ? factory::createStringLiteral("", /*isSingleQuote*/ {}) :
-                kind == SyntaxKind::MissingDeclaration ? factory::createMissingDeclaration() :
-                factory::createToken(kind);
-            return finishNode(result, pos) as T;
+                    kind == SyntaxKind::Identifier ? factory::createIdentifier("", /*typeArguments*/ {}, /*originalKeywordKind*/ {}) :
+                    isTemplateLiteralKind(kind) ? factory::createTemplateLiteralLikeNode(kind, "", "", /*templateFlags*/ {}) :
+                    kind == SyntaxKind::NumericLiteral ? factory::createNumericLiteral("", /*numericLiteralFlags*/ {}) :
+                    kind == SyntaxKind::StringLiteral ? factory::createStringLiteral("", /*isSingleQuote*/ {}) :
+                    kind == SyntaxKind::MissingDeclaration ? factory::createMissingDeclaration() :
+                    factory::createToken<Node>(kind);
+            auto a = finishNode(result, pos);
         }
 
         string internIdentifier(string text) {
             auto identifier = get(identifiers, text);
-            if (!identifier) {
+            if (! identifier) {
                 identifier = text;
                 set(identifiers, text, *identifier);
             }
@@ -1879,67 +1766,18 @@ namespace ts {
             // `let await`/`let yield` in [Yield] or [Await] are allowed here and disallowed in the binder.
             return token() > SyntaxKind::LastReservedWord;
         }
-        
-//        function parseBindingIdentifier(privateIdentifierDiagnosticMessage?: DiagnosticMessage) {
-//            return createIdentifier(isBindingIdentifier(), /*diagnosticMessage*/ undefined, privateIdentifierDiagnosticMessage);
-//        }
-//        function parseIdentifierName(diagnosticMessage?: DiagnosticMessage): Identifier {
-//            return createIdentifier(tokenIsIdentifierOrKeyword(token()), diagnosticMessage);
-//        }
-//
-//        function isAssertionKey(): boolean {
-//            return tokenIsIdentifierOrKeyword(token()) ||
-//                token() == SyntaxKind::StringLiteral;
-//        }
-//
-//        function parsePropertyNameWorker(allowComputedPropertyNames: boolean): PropertyName {
-//            if (token() == SyntaxKind::StringLiteral || token() == SyntaxKind::NumericLiteral) {
-//                auto node = parseLiteralNode() as StringLiteral | NumericLiteral;
-//                node.text = internIdentifier(node.text);
-//                return node;
-//            }
-//            if (allowComputedPropertyNames && token() == SyntaxKind::OpenBracketToken) {
-//                return parseComputedPropertyName();
-//            }
-//            if (token() == SyntaxKind::PrivateIdentifier) {
-//                return parsePrivateIdentifier();
-//            }
-//            return parseIdentifierName();
-//        }
-//
-//        function parsePropertyName(): PropertyName {
-//            return parsePropertyNameWorker(/*allowComputedPropertyNames*/ true);
-//        }
-//
-//        function parseComputedPropertyName(): ComputedPropertyName {
-//            // PropertyName [Yield]:
-//            //      LiteralPropertyName
-//            //      ComputedPropertyName[?Yield]
-//            auto pos = getNodePos();
-//            parseExpected(SyntaxKind::OpenBracketToken);
-//            // We parse any expression (including a comma expression). But the grammar
-//            // says that only an assignment expression is allowed, so the grammar checker
-//            // will error if it sees a comma expression.
-//            auto expression = allowInAnd(parseExpression);
-//            parseExpected(SyntaxKind::CloseBracketToken);
-//            return finishNode(factory::createComputedPropertyName(expression), pos);
-//        }
-//
-//        function internPrivateIdentifier(text: string): string {
-//            let privateIdentifier = privateIdentifiers.get(text);
-//            if (privateIdentifier == undefined) {
-//                privateIdentifiers.set(text, privateIdentifier = text);
-//            }
-//            return privateIdentifier;
-//        }
-//
-//        function parsePrivateIdentifier(): PrivateIdentifier {
-//            auto pos = getNodePos();
-//            auto node = factory::createPrivateIdentifier(internPrivateIdentifier(scanner.getTokenText()));
-//            nextToken();
-//            return finishNode(node, pos);
-//        }
-//
+
+        shared<Identifier> parseBindingIdentifier(optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {}) {
+            return createIdentifier(isBindingIdentifier(), /*diagnosticMessage*/ {}, privateIdentifierDiagnosticMessage);
+        }
+
+        shared<Identifier> parseIdentifierName(optional<DiagnosticMessage> diagnosticMessage = {}) {
+            return createIdentifier(tokenIsIdentifierOrKeyword(token()), diagnosticMessage);
+        }
+
+        bool isAssertionKey() {
+            return tokenIsIdentifierOrKeyword(token()) || token() == SyntaxKind::StringLiteral;
+        }
 
         /** Invokes the provided callback.  If the callback returns something falsy, then it restores
          * the parser to the state it was in immediately prior to invoking the callback.  If the
@@ -1953,20 +1791,20 @@ namespace ts {
 
         bool nextTokenIsClassKeywordOnSameLine() {
             nextToken();
-            return token() == SyntaxKind::ClassKeyword && !scanner.hasPrecedingLineBreak();
+            return token() == SyntaxKind::ClassKeyword && ! scanner.hasPrecedingLineBreak();
         }
 
         bool nextTokenIsFunctionKeywordOnSameLine() {
             nextToken();
-            return token() == SyntaxKind::FunctionKeyword && !scanner.hasPrecedingLineBreak();
+            return token() == SyntaxKind::FunctionKeyword && ! scanner.hasPrecedingLineBreak();
         }
 
-        bool nextTokenCanFollowDefaultKeyword(){
+        bool nextTokenCanFollowDefaultKeyword() {
             nextToken();
             return token() == SyntaxKind::ClassKeyword || token() == SyntaxKind::FunctionKeyword ||
-                token() == SyntaxKind::InterfaceKeyword ||
-                (token() == SyntaxKind::AbstractKeyword && lookAhead<bool>(nextTokenIsClassKeywordOnSameLine)) ||
-                (token() == SyntaxKind::AsyncKeyword && lookAhead<bool>(nextTokenIsFunctionKeywordOnSameLine));
+                   token() == SyntaxKind::InterfaceKeyword ||
+                   (token() == SyntaxKind::AbstractKeyword && lookAhead<bool>(nextTokenIsClassKeywordOnSameLine)) ||
+                   (token() == SyntaxKind::AsyncKeyword && lookAhead<bool>(nextTokenIsFunctionKeywordOnSameLine));
         }
 
         bool isLiteralPropertyName() {
@@ -1985,9 +1823,9 @@ namespace ts {
 
         bool canFollowExportModifier() {
             return token() != SyntaxKind::AsteriskToken
-                && token() != SyntaxKind::AsKeyword
-                && token() != SyntaxKind::OpenBraceToken
-                && canFollowModifier();
+                   && token() != SyntaxKind::AsKeyword
+                   && token() != SyntaxKind::OpenBraceToken
+                   && canFollowModifier();
         }
 
         bool nextTokenCanFollowExportModifier() {
@@ -2033,7 +1871,6 @@ namespace ts {
             return token() == t && tryParse<bool>(nextTokenCanFollowModifier);
         }
 
-
         bool nextTokenIsOpenParenOrLessThanOrDot() {
             switch (nextToken()) {
                 case SyntaxKind::OpenParenToken:
@@ -2074,12 +1911,16 @@ namespace ts {
             }
         }
 
+        bool inDisallowInContext() {
+            return inContext(NodeFlags::DisallowInContext);
+        }
+
         bool isBinaryOperator() {
             if (inDisallowInContext() && token() == SyntaxKind::InKeyword) {
                 return false;
             }
 
-            return (int)getBinaryOperatorPrecedence(token()) > 0;
+            return getBinaryOperatorPrecedence(token()) > 0;
         }
 
         bool isStartOfExpression() {
@@ -2121,10 +1962,10 @@ namespace ts {
         bool isStartOfExpressionStatement() {
             // As per the grammar, none of '{' or 'function' or 'class' can start an expression statement.
             return token() != SyntaxKind::OpenBraceToken &&
-                token() != SyntaxKind::FunctionKeyword &&
-                token() != SyntaxKind::ClassKeyword &&
-                token() != SyntaxKind::AtToken &&
-                isStartOfExpression();
+                   token() != SyntaxKind::FunctionKeyword &&
+                   token() != SyntaxKind::ClassKeyword &&
+                   token() != SyntaxKind::AtToken &&
+                   isStartOfExpression();
         }
 
         bool nextTokenIsNumericOrBigIntLiteral() {
@@ -2134,21 +1975,21 @@ namespace ts {
 
         bool isBindingIdentifierOrPrivateIdentifierOrPattern() {
             return token() == SyntaxKind::OpenBraceToken
-                || token() == SyntaxKind::OpenBracketToken
-                || token() == SyntaxKind::PrivateIdentifier
-                || isBindingIdentifier();
+                   || token() == SyntaxKind::OpenBracketToken
+                   || token() == SyntaxKind::PrivateIdentifier
+                   || isBindingIdentifier();
         }
 
         bool isStartOfType(bool inStartOfParameter = false);
 
         bool isStartOfParameter(bool isJSDocParameter) {
             return token() == SyntaxKind::DotDotDotToken ||
-                isBindingIdentifierOrPrivateIdentifierOrPattern() ||
-                isModifierKind(token()) ||
-                token() == SyntaxKind::AtToken ||
-                isStartOfType(/*inStartOfParameter*/ !isJSDocParameter);
+                   isBindingIdentifierOrPrivateIdentifierOrPattern() ||
+                   isModifierKind(token()) ||
+                   token() == SyntaxKind::AtToken ||
+                   isStartOfType(/*inStartOfParameter*/ ! isJSDocParameter);
         }
-        
+
         bool isStartOfParenthesizedOrFunctionType() {
             nextToken();
             return token() == SyntaxKind::CloseParenToken || isStartOfParameter(/*isJSDocParameter*/ false) || isStartOfType();
@@ -2194,148 +2035,360 @@ namespace ts {
                 case SyntaxKind::TemplateHead:
                     return true;
                 case SyntaxKind::FunctionKeyword:
-                    return !inStartOfParameter;
+                    return ! inStartOfParameter;
                 case SyntaxKind::MinusToken:
-                    return !inStartOfParameter && lookAhead<bool>(nextTokenIsNumericOrBigIntLiteral);
+                    return ! inStartOfParameter && lookAhead<bool>(nextTokenIsNumericOrBigIntLiteral);
                 case SyntaxKind::OpenParenToken:
                     // Only consider '(' the start of a type if followed by ')', '...', an identifier, a modifier,
                     // or something that starts a type. We don't want to consider things like '(1)' a type.
-                    return !inStartOfParameter && lookAhead<bool>(isStartOfParenthesizedOrFunctionType);
+                    return ! inStartOfParameter && lookAhead<bool>(isStartOfParenthesizedOrFunctionType);
                 default:
                     return isIdentifier();
             }
         }
 
-//        // True if positioned at the start of a list element
-//        function isListElement(parsingContext: ParsingContext, inErrorRecovery: boolean): boolean {
-//            auto node = currentNode(parsingContext);
-//            if (node) {
-//                return true;
+        sharedOpt<Node> currentNode(ParsingContext parsingContext) {
+            // If we don't have a cursor or the parsing context isn't reusable, there's nothing to reuse.
+            //
+            // If there is an outstanding parse error that we've encountered, but not attached to
+            // some node, then we cannot get a node from the old source tree.  This is because we
+            // want to mark the next node we encounter as being unusable.
+            //
+            // Note: This may be too conservative.  Perhaps we could reuse the node and set the bit
+            // on it (or its leftmost child) as having the error.  For now though, being conservative
+            // is nice and likely won't ever affect perf.
+//            if (!syntaxCursor || !isReusableParsingContext(parsingContext) || parseErrorBeforeNextFinishedNode) {
+//                return undefined;
 //            }
-//
-//            switch (parsingContext) {
-//                case ParsingContext::SourceElements:
-//                case ParsingContext::BlockStatements:
-//                case ParsingContext::SwitchClauseStatements:
-//                    // If we're in error recovery, then we don't want to treat ';' as an empty statement.
-//                    // The problem is that ';' can show up in far too many contexts, and if we see one
-//                    // and assume it's a statement, then we may bail out inappropriately from whatever
-//                    // we're parsing.  For example, if we have a semicolon in the middle of a class, then
-//                    // we really don't want to assume the class is over and we're on a statement in the
-//                    // outer module.  We just want to consume and move on.
-//                    return !(token() == SyntaxKind::SemicolonToken && inErrorRecovery) && isStartOfStatement();
-//                case ParsingContext::SwitchClauses:
-//                    return token() == SyntaxKind::CaseKeyword || token() == SyntaxKind::DefaultKeyword;
-//                case ParsingContext::TypeMembers:
-//                    return lookAhead(isTypeMemberStart);
-//                case ParsingContext::ClassMembers:
-//                    // We allow semicolons as class elements (as specified by ES6) as long as we're
-//                    // not in error recovery.  If we're in error recovery, we don't want an errant
-//                    // semicolon to be treated as a class member (since they're almost always used
-//                    // for statements.
-//                    return lookAhead(isClassMemberStart) || (token() == SyntaxKind::SemicolonToken && !inErrorRecovery);
-//                case ParsingContext::EnumMembers:
-//                    // Include open bracket computed properties. This technically also lets in indexers,
-//                    // which would be a candidate for improved error reporting.
-//                    return token() == SyntaxKind::OpenBracketToken || isLiteralPropertyName();
-//                case ParsingContext::ObjectLiteralMembers:
-//                    switch (token()) {
-//                        case SyntaxKind::OpenBracketToken:
-//                        case SyntaxKind::AsteriskToken:
-//                        case SyntaxKind::DotDotDotToken:
-//                        case SyntaxKind::DotToken: // Not an object literal member, but don't want to close the object (see `tests/cases/fourslash/completionsDotInObjectLiteral.ts`)
-//                            return true;
-//                        default:
-//                            return isLiteralPropertyName();
-//                    }
-//                case ParsingContext::RestProperties:
-//                    return isLiteralPropertyName();
-//                case ParsingContext::ObjectBindingElements:
-//                    return token() == SyntaxKind::OpenBracketToken || token() == SyntaxKind::DotDotDotToken || isLiteralPropertyName();
-//                case ParsingContext::AssertEntries:
-//                    return isAssertionKey();
-//                case ParsingContext::HeritageClauseElement:
-//                    // If we see `{ ... }` then only consume it as an expression if it is followed by `,` or `{`
-//                    // That way we won't consume the body of a class in its heritage clause.
-//                    if (token() == SyntaxKind::OpenBraceToken) {
-//                        return lookAhead(isValidHeritageClauseObjectLiteral);
-//                    }
-//
-//                    if (!inErrorRecovery) {
-//                        return isStartOfLeftHandSideExpression() && !isHeritageClauseExtendsOrImplementsKeyword();
-//                    }
-//                    else {
-//                        // If we're in error recovery we tighten up what we're willing to match.
-//                        // That way we don't treat something like "this" as a valid heritage clause
-//                        // element during recovery.
-//                        return isIdentifier() && !isHeritageClauseExtendsOrImplementsKeyword();
-//                    }
-//                case ParsingContext::VariableDeclarations:
-//                    return isBindingIdentifierOrPrivateIdentifierOrPattern();
-//                case ParsingContext::ArrayBindingElements:
-//                    return token() == SyntaxKind::CommaToken || token() == SyntaxKind::DotDotDotToken || isBindingIdentifierOrPrivateIdentifierOrPattern();
-//                case ParsingContext::TypeParameters:
-//                    return token() == SyntaxKind::InKeyword || isIdentifier();
-//                case ParsingContext::ArrayLiteralMembers:
-//                    switch (token()) {
-//                        case SyntaxKind::CommaToken:
-//                        case SyntaxKind::DotToken: // Not an array literal member, but don't want to close the array (see `tests/cases/fourslash/completionsDotInArrayLiteralInObjectLiteral.ts`)
-//                            return true;
-//                    }
-//                    // falls through
-//                case ParsingContext::ArgumentExpressions:
-//                    return token() == SyntaxKind::DotDotDotToken || isStartOfExpression();
-//                case ParsingContext::Parameters:
-//                    return isStartOfParameter(/*isJSDocParameter*/ false);
-//                case ParsingContext::JSDocParameters:
-//                    return isStartOfParameter(/*isJSDocParameter*/ true);
-//                case ParsingContext::TypeArguments:
-//                case ParsingContext::TupleElementTypes:
-//                    return token() == SyntaxKind::CommaToken || isStartOfType();
-//                case ParsingContext::HeritageClauses:
-//                    return isHeritageClause();
-//                case ParsingContext::ImportOrExportSpecifiers:
-//                    return tokenIsIdentifierOrKeyword(token());
-//                case ParsingContext::JsxAttributes:
-//                    return tokenIsIdentifierOrKeyword(token()) || token() == SyntaxKind::OpenBraceToken;
-//                case ParsingContext::JsxChildren:
-//                    return true;
-//            }
-//
-//            return Debug.fail("Non-exhaustive case in 'isListElement'.");
-//        }
-//
-//        function isValidHeritageClauseObjectLiteral() {
-//            Debug.assert(token() == SyntaxKind::OpenBraceToken);
-//            if (nextToken() == SyntaxKind::CloseBraceToken) {
-//                // if we see "extends {}" then only treat the {} as what we're extending (and not
-//                // the class body) if we have:
-//                //
-//                //      extends {} {
-//                //      extends {},
-//                //      extends {} extends
-//                //      extends {} implements
-//
-//                auto next = nextToken();
-//                return next == SyntaxKind::CommaToken || next == SyntaxKind::OpenBraceToken || next == SyntaxKind::ExtendsKeyword || next == SyntaxKind::ImplementsKeyword;
-//            }
-//
-//            return true;
-//        }
 
-        bool nextTokenIsIdentifier() {
-            nextToken();
-            return isIdentifier();
+            //I hope we do not need to reimplement syntaxCursor too
+            return nullptr;
+
+//            auto node = syntaxCursor.currentNode(scanner.getStartPos());
+//
+//            // Can't reuse a missing node.
+//            // Can't reuse a node that intersected the change range.
+//            // Can't reuse a node that contains a parse error.  This is necessary so that we
+//            // produce the same set of errors again.
+//            if (nodeIsMissing(node) || node.intersectsChange || containsParseError(node)) {
+//                return undefined;
+//            }
+//
+//            // We can only reuse a node if it was parsed under the same strict mode that we're
+//            // currently in.  i.e. if we originally parsed a node in non-strict mode, but then
+//            // the user added 'using strict' at the top of the file, then we can't use that node
+//            // again as the presence of strict mode may cause us to parse the tokens in the file
+//            // differently.
+//            //
+//            // Note: we *can* reuse tokens when the strict mode changes.  That's because tokens
+//            // are unaffected by strict mode.  It's just the parser will decide what to do with it
+//            // differently depending on what mode it is in.
+//            //
+//            // This also applies to all our other context flags as well.
+//            auto nodeContextFlags = node.flags & NodeFlags::ContextFlags;
+//            if (nodeContextFlags != contextFlags) {
+//                return undefined;
+//            }
+//
+//            // Ok, we have a node that looks like it could be reused.  Now verify that it is valid
+//            // in the current list parsing context that we're currently at.
+//            if (!canReuseNode(node, parsingContext)) {
+//                return undefined;
+//            }
+//
+//            if (reinterpret_cast<JSDocContainer&>(node).jsDocCache) {
+//                // jsDocCache may include tags from parent nodes, which might have been modified.
+//                reinterpret_cast<JSDocContainer&>(node).jsDocCache = undefined;
+//            }
+//
+//            return node;
         }
 
-        bool nextTokenIsIdentifierOrKeyword() {
-            nextToken();
-            return tokenIsIdentifierOrKeyword(token());
+        bool isHeritageClause() {
+            return token() == SyntaxKind::ExtendsKeyword || token() == SyntaxKind::ImplementsKeyword;
         }
 
-        bool nextTokenIsIdentifierOrKeywordOrGreaterThan() {
+        bool isTypeMemberStart() {
+            // Return true if we have the start of a signature member
+            if (token() == SyntaxKind::OpenParenToken ||
+                token() == SyntaxKind::LessThanToken ||
+                token() == SyntaxKind::GetKeyword ||
+                token() == SyntaxKind::SetKeyword) {
+                return true;
+            }
+            auto idToken = false;
+            // Eat up all modifiers, but hold on to the last one in case it is actually an identifier
+            while (isModifierKind(token())) {
+                idToken = true;
+                nextToken();
+            }
+            // Index signatures and computed property names are type members
+            if (token() == SyntaxKind::OpenBracketToken) {
+                return true;
+            }
+            // Try to get the first property-like token following all modifiers
+            if (isLiteralPropertyName()) {
+                idToken = true;
+                nextToken();
+            }
+            // If we were able to get any potential identifier, check that it is
+            // the start of a member declaration
+            if (idToken) {
+                return token() == SyntaxKind::OpenParenToken ||
+                    token() == SyntaxKind::LessThanToken ||
+                    token() == SyntaxKind::QuestionToken ||
+                    token() == SyntaxKind::ColonToken ||
+                    token() == SyntaxKind::CommaToken ||
+                    canParseSemicolon();
+            }
+            return false;
+        }
+
+        bool nextTokenIsIdentifierOnSameLine() {
             nextToken();
-            return tokenIsIdentifierOrKeywordOrGreaterThan(token());
+            return ! scanner.hasPrecedingLineBreak() && isIdentifier();
+        }
+
+        bool nextTokenIsIdentifierOrStringLiteralOnSameLine() {
+            nextToken();
+            return !scanner.hasPrecedingLineBreak() && (isIdentifier() || token() == SyntaxKind::StringLiteral);
+        }
+
+        bool isDeclaration() {
+            while (true) {
+                switch (token()) {
+                    case SyntaxKind::VarKeyword:
+                    case SyntaxKind::LetKeyword:
+                    case SyntaxKind::ConstKeyword:
+                    case SyntaxKind::FunctionKeyword:
+                    case SyntaxKind::ClassKeyword:
+                    case SyntaxKind::EnumKeyword:
+                        return true;
+
+                        // 'declare', 'module', 'namespace', 'interface'* and 'type' are all legal JavaScript identifiers;
+                        // however, an identifier cannot be followed by another identifier on the same line. This is what we
+                        // count on to parse out the respective declarations. For instance, we exploit this to say that
+                        //
+                        //    namespace n
+                        //
+                        // can be none other than the beginning of a namespace declaration, but need to respect that JavaScript sees
+                        //
+                        //    namespace
+                        //    n
+                        //
+                        // as the identifier 'namespace' on one line followed by the identifier 'n' on another.
+                        // We need to look one token ahead to see if it permissible to try parsing a declaration.
+                        //
+                        // *Note*: 'interface' is actually a strict mode reserved word. So while
+                        //
+                        //   "use strict"
+                        //   interface
+                        //   I {}
+                        //
+                        // could be legal, it would add complexity for very little gain.
+                    case SyntaxKind::InterfaceKeyword:
+                    case SyntaxKind::TypeKeyword:
+                        return nextTokenIsIdentifierOnSameLine();
+                    case SyntaxKind::ModuleKeyword:
+                    case SyntaxKind::NamespaceKeyword:
+                        return nextTokenIsIdentifierOrStringLiteralOnSameLine();
+                    case SyntaxKind::AbstractKeyword:
+                    case SyntaxKind::AsyncKeyword:
+                    case SyntaxKind::DeclareKeyword:
+                    case SyntaxKind::PrivateKeyword:
+                    case SyntaxKind::ProtectedKeyword:
+                    case SyntaxKind::PublicKeyword:
+                    case SyntaxKind::ReadonlyKeyword:
+                        nextToken();
+                        // ASI takes effect for this modifier.
+                        if (scanner.hasPrecedingLineBreak()) {
+                            return false;
+                        }
+                        continue;
+
+                    case SyntaxKind::GlobalKeyword:
+                        nextToken();
+                        return token() == SyntaxKind::OpenBraceToken || token() == SyntaxKind::Identifier || token() == SyntaxKind::ExportKeyword;
+
+                    case SyntaxKind::ImportKeyword:
+                        nextToken();
+                        return token() == SyntaxKind::StringLiteral || token() == SyntaxKind::AsteriskToken ||
+                               token() == SyntaxKind::OpenBraceToken || tokenIsIdentifierOrKeyword(token());
+                    case SyntaxKind::ExportKeyword: {
+                        auto currentToken = nextToken();
+                        if (currentToken == SyntaxKind::TypeKeyword) {
+                            currentToken = lookAhead<SyntaxKind>(nextToken);
+                        }
+                        if (currentToken == SyntaxKind::EqualsToken || currentToken == SyntaxKind::AsteriskToken ||
+                            currentToken == SyntaxKind::OpenBraceToken || currentToken == SyntaxKind::DefaultKeyword ||
+                            currentToken == SyntaxKind::AsKeyword) {
+                            return true;
+                        }
+                        continue;
+                    }
+                    case SyntaxKind::StaticKeyword:
+                        nextToken();
+                        continue;
+                    default:
+                        return false;
+                }
+            }
+        }
+
+        bool isStartOfDeclaration() {
+            return lookAhead<bool>(isDeclaration);
+        }
+
+        bool nextTokenIsIdentifierOrKeywordOnSameLine() {
+            nextToken();
+            return tokenIsIdentifierOrKeyword(token()) && ! scanner.hasPrecedingLineBreak();
+        }
+
+        bool isStartOfStatement() {
+            switch (token()) {
+                case SyntaxKind::AtToken:
+                case SyntaxKind::SemicolonToken:
+                case SyntaxKind::OpenBraceToken:
+                case SyntaxKind::VarKeyword:
+                case SyntaxKind::LetKeyword:
+                case SyntaxKind::FunctionKeyword:
+                case SyntaxKind::ClassKeyword:
+                case SyntaxKind::EnumKeyword:
+                case SyntaxKind::IfKeyword:
+                case SyntaxKind::DoKeyword:
+                case SyntaxKind::WhileKeyword:
+                case SyntaxKind::ForKeyword:
+                case SyntaxKind::ContinueKeyword:
+                case SyntaxKind::BreakKeyword:
+                case SyntaxKind::ReturnKeyword:
+                case SyntaxKind::WithKeyword:
+                case SyntaxKind::SwitchKeyword:
+                case SyntaxKind::ThrowKeyword:
+                case SyntaxKind::TryKeyword:
+                case SyntaxKind::DebuggerKeyword:
+                    // 'catch' and 'finally' do not actually indicate that the code is part of a statement,
+                    // however, we say they are here so that we may gracefully parse them and error later.
+                    // falls through
+                case SyntaxKind::CatchKeyword:
+                case SyntaxKind::FinallyKeyword:
+                    return true;
+
+                case SyntaxKind::ImportKeyword:
+                    return isStartOfDeclaration() || lookAhead<bool>(nextTokenIsOpenParenOrLessThanOrDot);
+
+                case SyntaxKind::ConstKeyword:
+                case SyntaxKind::ExportKeyword:
+                    return isStartOfDeclaration();
+
+                case SyntaxKind::AsyncKeyword:
+                case SyntaxKind::DeclareKeyword:
+                case SyntaxKind::InterfaceKeyword:
+                case SyntaxKind::ModuleKeyword:
+                case SyntaxKind::NamespaceKeyword:
+                case SyntaxKind::TypeKeyword:
+                case SyntaxKind::GlobalKeyword:
+                    // When these don't start a declaration, they're an identifier in an expression statement
+                    return true;
+
+                case SyntaxKind::PublicKeyword:
+                case SyntaxKind::PrivateKeyword:
+                case SyntaxKind::ProtectedKeyword:
+                case SyntaxKind::StaticKeyword:
+                case SyntaxKind::ReadonlyKeyword:
+                    // When these don't start a declaration, they may be the start of a class member if an identifier
+                    // immediately follows. Otherwise they're an identifier in an expression statement.
+                    return isStartOfDeclaration() || !lookAhead<bool>(nextTokenIsIdentifierOrKeywordOnSameLine);
+
+                default:
+                    return isStartOfExpression();
+            }
+        }
+
+        bool isClassMemberStart() {
+            SyntaxKind idToken = SyntaxKind::Unknown;
+
+            if (token() == SyntaxKind::AtToken) {
+                return true;
+            }
+
+            // Eat up all modifiers, but hold on to the last one in case it is actually an identifier.
+            while (isModifierKind(token())) {
+                idToken = token();
+                // If the idToken is a class modifier (protected, private, public, and static), it is
+                // certain that we are starting to parse class member. This allows better error recovery
+                // Example:
+                //      public foo() ...     // true
+                //      public @dec blah ... // true; we will then report an error later
+                //      export public ...    // true; we will then report an error later
+                if (isClassMemberModifier(idToken)) {
+                    return true;
+                }
+
+                nextToken();
+            }
+
+            if (token() == SyntaxKind::AsteriskToken) {
+                return true;
+            }
+
+            // Try to get the first property-like token following all modifiers.
+            // This can either be an identifier or the 'get' or 'set' keywords.
+            if (isLiteralPropertyName()) {
+                idToken = token();
+                nextToken();
+            }
+
+            // Index signatures and computed properties are class members; we can parse.
+            if (token() == SyntaxKind::OpenBracketToken) {
+                return true;
+            }
+
+            // If we were able to get any potential identifier...
+            if (idToken != SyntaxKind::Unknown) {
+                // If we have a non-keyword identifier, or if we have an accessor, then it's safe to parse.
+                if (!isKeyword(idToken) || idToken == SyntaxKind::SetKeyword || idToken == SyntaxKind::GetKeyword) {
+                    return true;
+                }
+
+                // If it *is* a keyword, but not an accessor, check a little farther along
+                // to see if it should actually be parsed as a class member.
+                switch (token()) {
+                    case SyntaxKind::OpenParenToken:     // Method declaration
+                    case SyntaxKind::LessThanToken:      // Generic Method declaration
+                    case SyntaxKind::ExclamationToken:   // Non-null assertion on property name
+                    case SyntaxKind::ColonToken:         // Type Annotation for declaration
+                    case SyntaxKind::EqualsToken:        // Initializer for declaration
+                    case SyntaxKind::QuestionToken:      // Not valid, but permitted so that it gets caught later on.
+                        return true;
+                    default:
+                        // Covers
+                        //  - Semicolons     (declaration termination)
+                        //  - Closing braces (end-of-class, must be declaration)
+                        //  - End-of-files   (not valid, but permitted so that it gets caught later on)
+                        //  - Line-breaks    (enabling *automatic semicolon insertion*)
+                        return canParseSemicolon();
+                }
+            }
+
+            return false;
+        }
+
+        bool isValidHeritageClauseObjectLiteral() {
+            assert(token() == SyntaxKind::OpenBraceToken);
+            if (nextToken() == SyntaxKind::CloseBraceToken) {
+                // if we see "extends {}" then only treat the {} as what we're extending (and not
+                // the class body) if we have:
+                //
+                //      extends {} {
+                //      extends {},
+                //      extends {} extends
+                //      extends {} implements
+
+                auto next = nextToken();
+                return next == SyntaxKind::CommaToken || next == SyntaxKind::OpenBraceToken || next == SyntaxKind::ExtendsKeyword || next == SyntaxKind::ImplementsKeyword;
+            }
+
+            return true;
         }
 
         bool nextTokenIsStartOfExpression() {
@@ -2351,6 +2404,120 @@ namespace ts {
             }
 
             return false;
+        }
+
+        // True if positioned at the start of a list element
+        bool isListElement(ParsingContext parsingContext, bool inErrorRecovery) {
+            auto node = currentNode(parsingContext);
+            if (node) {
+                return true;
+            }
+
+            switch (parsingContext) {
+                case ParsingContext::SourceElements:
+                case ParsingContext::BlockStatements:
+                case ParsingContext::SwitchClauseStatements:
+                    // If we're in error recovery, then we don't want to treat ';' as an empty statement.
+                    // The problem is that ';' can show up in far too many contexts, and if we see one
+                    // and assume it's a statement, then we may bail out inappropriately from whatever
+                    // we're parsing.  For example, if we have a semicolon in the middle of a class, then
+                    // we really don't want to assume the class is over and we're on a statement in the
+                    // outer module.  We just want to consume and move on.
+                    return !(token() == SyntaxKind::SemicolonToken && inErrorRecovery) && isStartOfStatement();
+                case ParsingContext::SwitchClauses:
+                    return token() == SyntaxKind::CaseKeyword || token() == SyntaxKind::DefaultKeyword;
+                case ParsingContext::TypeMembers:
+                    return lookAhead<bool>(isTypeMemberStart);
+                case ParsingContext::ClassMembers:
+                    // We allow semicolons as class elements (as specified by ES6) as long as we're
+                    // not in error recovery.  If we're in error recovery, we don't want an errant
+                    // semicolon to be treated as a class member (since they're almost always used
+                    // for statements.
+                    return lookAhead<bool>(isClassMemberStart) || (token() == SyntaxKind::SemicolonToken && !inErrorRecovery);
+                case ParsingContext::EnumMembers:
+                    // Include open bracket computed properties. This technically also lets in indexers,
+                    // which would be a candidate for improved error reporting.
+                    return token() == SyntaxKind::OpenBracketToken || isLiteralPropertyName();
+                case ParsingContext::ObjectLiteralMembers:
+                    switch (token()) {
+                        case SyntaxKind::OpenBracketToken:
+                        case SyntaxKind::AsteriskToken:
+                        case SyntaxKind::DotDotDotToken:
+                        case SyntaxKind::DotToken: // Not an object literal member, but don't want to close the object (see `tests/cases/fourslash/completionsDotInObjectLiteral.ts`)
+                            return true;
+                        default:
+                            return isLiteralPropertyName();
+                    }
+                case ParsingContext::RestProperties:
+                    return isLiteralPropertyName();
+                case ParsingContext::ObjectBindingElements:
+                    return token() == SyntaxKind::OpenBracketToken || token() == SyntaxKind::DotDotDotToken || isLiteralPropertyName();
+                case ParsingContext::AssertEntries:
+                    return isAssertionKey();
+                case ParsingContext::HeritageClauseElement:
+                    // If we see `{ ... }` then only consume it as an expression if it is followed by `,` or `{`
+                    // That way we won't consume the body of a class in its heritage clause.
+                    if (token() == SyntaxKind::OpenBraceToken) {
+                        return lookAhead<bool>(isValidHeritageClauseObjectLiteral);
+                    }
+
+                    if (!inErrorRecovery) {
+                        return isStartOfLeftHandSideExpression() && !isHeritageClauseExtendsOrImplementsKeyword();
+                    }
+                    else {
+                        // If we're in error recovery we tighten up what we're willing to match.
+                        // That way we don't treat something like "this" as a valid heritage clause
+                        // element during recovery.
+                        return isIdentifier() && !isHeritageClauseExtendsOrImplementsKeyword();
+                    }
+                case ParsingContext::VariableDeclarations:
+                    return isBindingIdentifierOrPrivateIdentifierOrPattern();
+                case ParsingContext::ArrayBindingElements:
+                    return token() == SyntaxKind::CommaToken || token() == SyntaxKind::DotDotDotToken || isBindingIdentifierOrPrivateIdentifierOrPattern();
+                case ParsingContext::TypeParameters:
+                    return token() == SyntaxKind::InKeyword || isIdentifier();
+                case ParsingContext::ArrayLiteralMembers:
+                    switch (token()) {
+                        case SyntaxKind::CommaToken:
+                        case SyntaxKind::DotToken: // Not an array literal member, but don't want to close the array (see `tests/cases/fourslash/completionsDotInArrayLiteralInObjectLiteral.ts`)
+                            return true;
+                    }
+                    // falls through
+                case ParsingContext::ArgumentExpressions:
+                    return token() == SyntaxKind::DotDotDotToken || isStartOfExpression();
+                case ParsingContext::Parameters:
+                    return isStartOfParameter(/*isJSDocParameter*/ false);
+                case ParsingContext::JSDocParameters:
+                    return isStartOfParameter(/*isJSDocParameter*/ true);
+                case ParsingContext::TypeArguments:
+                case ParsingContext::TupleElementTypes:
+                    return token() == SyntaxKind::CommaToken || isStartOfType();
+                case ParsingContext::HeritageClauses:
+                    return isHeritageClause();
+                case ParsingContext::ImportOrExportSpecifiers:
+                    return tokenIsIdentifierOrKeyword(token());
+                case ParsingContext::JsxAttributes:
+                    return tokenIsIdentifierOrKeyword(token()) || token() == SyntaxKind::OpenBraceToken;
+                case ParsingContext::JsxChildren:
+                    return true;
+            }
+
+            throw runtime_error("Non-exhaustive case in 'isListElement'.");
+        }
+
+        bool nextTokenIsIdentifier() {
+            nextToken();
+            return isIdentifier();
+        }
+
+        bool nextTokenIsIdentifierOrKeyword() {
+            nextToken();
+            return tokenIsIdentifierOrKeyword(token());
+        }
+
+        bool nextTokenIsIdentifierOrKeywordOrGreaterThan() {
+            nextToken();
+            return tokenIsIdentifierOrKeywordOrGreaterThan(token());
         }
 
         bool nextTokenIsStartOfType() {
@@ -2456,89 +2623,13 @@ namespace ts {
             }
         }
 
-//        // True if positioned at element or terminator of the current list or any enclosing list
-//        function isInSomeParsingContext(): boolean {
-//            for (let kind = 0; kind < ParsingContext::Count; kind++) {
-//                if (parsingContext & (1 << kind)) {
-//                    if (isListElement(kind, /*inErrorRecovery*/ true) || isListTerminator(kind)) {
-//                        return true;
-//                    }
-//                }
-//            }
-//
-//            return false;
-//        }
-//
-//        function parseListElement<T extends Node | undefined>(parsingContext: ParsingContext, parseElement: () => T): T {
-//            auto node = currentNode(parsingContext);
-//            if (node) {
-//                return consumeNode(node) as T;
-//            }
-//
-//            return parseElement();
-//        }
-//
-//        function currentNode(parsingContext: ParsingContext): Node | undefined {
-//            // If we don't have a cursor or the parsing context isn't reusable, there's nothing to reuse.
-//            //
-//            // If there is an outstanding parse error that we've encountered, but not attached to
-//            // some node, then we cannot get a node from the old source tree.  This is because we
-//            // want to mark the next node we encounter as being unusable.
-//            //
-//            // Note: This may be too conservative.  Perhaps we could reuse the node and set the bit
-//            // on it (or its leftmost child) as having the error.  For now though, being conservative
-//            // is nice and likely won't ever affect perf.
-//            if (!syntaxCursor || !isReusableParsingContext(parsingContext) || parseErrorBeforeNextFinishedNode) {
-//                return undefined;
-//            }
-//
-//            auto node = syntaxCursor.currentNode(scanner.getStartPos());
-//
-//            // Can't reuse a missing node.
-//            // Can't reuse a node that intersected the change range.
-//            // Can't reuse a node that contains a parse error.  This is necessary so that we
-//            // produce the same set of errors again.
-//            if (nodeIsMissing(node) || node.intersectsChange || containsParseError(node)) {
-//                return undefined;
-//            }
-//
-//            // We can only reuse a node if it was parsed under the same strict mode that we're
-//            // currently in.  i.e. if we originally parsed a node in non-strict mode, but then
-//            // the user added 'using strict' at the top of the file, then we can't use that node
-//            // again as the presence of strict mode may cause us to parse the tokens in the file
-//            // differently.
-//            //
-//            // Note: we *can* reuse tokens when the strict mode changes.  That's because tokens
-//            // are unaffected by strict mode.  It's just the parser will decide what to do with it
-//            // differently depending on what mode it is in.
-//            //
-//            // This also applies to all our other context flags as well.
-//            auto nodeContextFlags = node.flags & NodeFlags::ContextFlags;
-//            if (nodeContextFlags != contextFlags) {
-//                return undefined;
-//            }
-//
-//            // Ok, we have a node that looks like it could be reused.  Now verify that it is valid
-//            // in the current list parsing context that we're currently at.
-//            if (!canReuseNode(node, parsingContext)) {
-//                return undefined;
-//            }
-//
-//            if (reinterpret_cast<JSDocContainer&>(node).jsDocCache) {
-//                // jsDocCache may include tags from parent nodes, which might have been modified.
-//                reinterpret_cast<JSDocContainer&>(node).jsDocCache = undefined;
-//            }
-//
-//            return node;
-//        }
-//
-//        function consumeNode(node: Node) {
-//            // Move the scanner so it is after the node we just consumed.
-//            scanner.setTextPos(node.end);
-//            nextToken();
-//            return node;
-//        }
-//
+        shared<Node> consumeNode(shared<Node> node) {
+            // Move the scanner so it is after the node we just consumed.
+            scanner.setTextPos(node->end);
+            nextToken();
+            return node;
+        }
+
 //        function isReusableParsingContext(parsingContext: ParsingContext): boolean {
 //            switch (parsingContext) {
 //                case ParsingContext::ClassMembers:
@@ -2737,12 +2828,12 @@ namespace ts {
 //
 //            // Very subtle incremental parsing bug.  Consider the following code:
 //            //
-//            //      let v = new List < A, B
+//            //      auto v = new List < A, B
 //            //
 //            // This is actually legal code.  It's a list of variable declarators "v = new List<A"
 //            // on one side and "B" on the other. If you then change that to:
 //            //
-//            //      let v = new List < A, B >()
+//            //      auto v = new List < A, B >()
 //            //
 //            // then we have a problem.  "v = new List<A" doesn't intersect the change range, so we
 //            // start reparsing at "B" and we completely fail to handle this properly.
@@ -2763,163 +2854,219 @@ namespace ts {
 //            return parameter.initializer == undefined;
 //        }
 //
-//        // Returns true if we should abort parsing.
-//        function abortParsingListOrMoveToNextToken(kind: ParsingContext) {
-//            parsingContextErrors(kind);
-//            if (isInSomeParsingContext()) {
-//                return true;
-//            }
-//
-//            nextToken();
-//            return false;
-//        }
-//
-//        function parsingContextErrors(context: ParsingContext) {
-//            switch (context) {
-//                case ParsingContext::SourceElements:
-//                    return token() == SyntaxKind::DefaultKeyword
-//                        ? parseErrorAtCurrentToken(Diagnostics::_0_expected, tokenToString(SyntaxKind::ExportKeyword))
-//                        : parseErrorAtCurrentToken(Diagnostics::Declaration_or_statement_expected);
-//                case ParsingContext::BlockStatements: return parseErrorAtCurrentToken(Diagnostics::Declaration_or_statement_expected);
-//                case ParsingContext::SwitchClauses: return parseErrorAtCurrentToken(Diagnostics::case_or_default_expected);
-//                case ParsingContext::SwitchClauseStatements: return parseErrorAtCurrentToken(Diagnostics::Statement_expected);
-//                case ParsingContext::RestProperties: // fallthrough
-//                case ParsingContext::TypeMembers: return parseErrorAtCurrentToken(Diagnostics::Property_or_signature_expected);
-//                case ParsingContext::ClassMembers: return parseErrorAtCurrentToken(Diagnostics::Unexpected_token_A_constructor_method_accessor_or_property_was_expected);
-//                case ParsingContext::EnumMembers: return parseErrorAtCurrentToken(Diagnostics::Enum_member_expected);
-//                case ParsingContext::HeritageClauseElement: return parseErrorAtCurrentToken(Diagnostics::Expression_expected);
-//                case ParsingContext::VariableDeclarations:
-//                    return isKeyword(token())
-//                        ? parseErrorAtCurrentToken(Diagnostics::_0_is_not_allowed_as_a_variable_declaration_name, tokenToString(token()))
-//                        : parseErrorAtCurrentToken(Diagnostics::Variable_declaration_expected);
-//                case ParsingContext::ObjectBindingElements: return parseErrorAtCurrentToken(Diagnostics::Property_destructuring_pattern_expected);
-//                case ParsingContext::ArrayBindingElements: return parseErrorAtCurrentToken(Diagnostics::Array_element_destructuring_pattern_expected);
-//                case ParsingContext::ArgumentExpressions: return parseErrorAtCurrentToken(Diagnostics::Argument_expression_expected);
-//                case ParsingContext::ObjectLiteralMembers: return parseErrorAtCurrentToken(Diagnostics::Property_assignment_expected);
-//                case ParsingContext::ArrayLiteralMembers: return parseErrorAtCurrentToken(Diagnostics::Expression_or_comma_expected);
-//                case ParsingContext::JSDocParameters: return parseErrorAtCurrentToken(Diagnostics::Parameter_declaration_expected);
-//                case ParsingContext::Parameters:
-//                    return isKeyword(token())
-//                        ? parseErrorAtCurrentToken(Diagnostics::_0_is_not_allowed_as_a_parameter_name, tokenToString(token()))
-//                        : parseErrorAtCurrentToken(Diagnostics::Parameter_declaration_expected);
-//                case ParsingContext::TypeParameters: return parseErrorAtCurrentToken(Diagnostics::Type_parameter_declaration_expected);
-//                case ParsingContext::TypeArguments: return parseErrorAtCurrentToken(Diagnostics::Type_argument_expected);
-//                case ParsingContext::TupleElementTypes: return parseErrorAtCurrentToken(Diagnostics::Type_expected);
-//                case ParsingContext::HeritageClauses: return parseErrorAtCurrentToken(Diagnostics::Unexpected_token_expected);
-//                case ParsingContext::ImportOrExportSpecifiers: return parseErrorAtCurrentToken(Diagnostics::Identifier_expected);
-//                case ParsingContext::JsxAttributes: return parseErrorAtCurrentToken(Diagnostics::Identifier_expected);
-//                case ParsingContext::JsxChildren: return parseErrorAtCurrentToken(Diagnostics::Identifier_expected);
-//                default: return [undefined!]; // TODO: GH#18217 `default: Debug.assertNever(context);`
-//            }
-//        }
-//
+        optional<DiagnosticMessage> getExpectedCommaDiagnostic(ParsingContext kind) {
+            if (kind == ParsingContext::EnumMembers) return Diagnostics::An_enum_member_name_must_be_followed_by_a_or;
+            return nullopt;
+        }
+
+        bool parseExpected(SyntaxKind kind, optional<DiagnosticMessage> diagnosticMessage = {}, bool shouldAdvance = true) {
+            if (token() == kind) {
+                if (shouldAdvance) {
+                    nextToken();
+                }
+                return true;
+            }
+
+            // Report specific message if provided with one.  Otherwise, report generic fallback message.
+            if (diagnosticMessage) {
+                parseErrorAtCurrentToken(*diagnosticMessage);
+            } else {
+                parseErrorAtCurrentToken(Diagnostics::_0_expected, tokenToString(kind));
+            }
+            return false;
+        }
+
+        optional<DiagnosticWithDetachedLocation> parsingContextErrors(ParsingContext context) {
+            switch (context) {
+                case ParsingContext::SourceElements:
+                    return token() == SyntaxKind::DefaultKeyword
+                        ? parseErrorAtCurrentToken(Diagnostics::_0_expected, tokenToString(SyntaxKind::ExportKeyword))
+                        : parseErrorAtCurrentToken(Diagnostics::Declaration_or_statement_expected);
+                case ParsingContext::BlockStatements: return parseErrorAtCurrentToken(Diagnostics::Declaration_or_statement_expected);
+                case ParsingContext::SwitchClauses: return parseErrorAtCurrentToken(Diagnostics::case_or_default_expected);
+                case ParsingContext::SwitchClauseStatements: return parseErrorAtCurrentToken(Diagnostics::Statement_expected);
+                case ParsingContext::RestProperties: // fallthrough
+                case ParsingContext::TypeMembers: return parseErrorAtCurrentToken(Diagnostics::Property_or_signature_expected);
+                case ParsingContext::ClassMembers: return parseErrorAtCurrentToken(Diagnostics::Unexpected_token_A_constructor_method_accessor_or_property_was_expected);
+                case ParsingContext::EnumMembers: return parseErrorAtCurrentToken(Diagnostics::Enum_member_expected);
+                case ParsingContext::HeritageClauseElement: return parseErrorAtCurrentToken(Diagnostics::Expression_expected);
+                case ParsingContext::VariableDeclarations:
+                    return isKeyword(token())
+                        ? parseErrorAtCurrentToken(Diagnostics::_0_is_not_allowed_as_a_variable_declaration_name, tokenToString(token()))
+                        : parseErrorAtCurrentToken(Diagnostics::Variable_declaration_expected);
+                case ParsingContext::ObjectBindingElements: return parseErrorAtCurrentToken(Diagnostics::Property_destructuring_pattern_expected);
+                case ParsingContext::ArrayBindingElements: return parseErrorAtCurrentToken(Diagnostics::Array_element_destructuring_pattern_expected);
+                case ParsingContext::ArgumentExpressions: return parseErrorAtCurrentToken(Diagnostics::Argument_expression_expected);
+                case ParsingContext::ObjectLiteralMembers: return parseErrorAtCurrentToken(Diagnostics::Property_assignment_expected);
+                case ParsingContext::ArrayLiteralMembers: return parseErrorAtCurrentToken(Diagnostics::Expression_or_comma_expected);
+                case ParsingContext::JSDocParameters: return parseErrorAtCurrentToken(Diagnostics::Parameter_declaration_expected);
+                case ParsingContext::Parameters:
+                    return isKeyword(token())
+                        ? parseErrorAtCurrentToken(Diagnostics::_0_is_not_allowed_as_a_parameter_name, tokenToString(token()))
+                        : parseErrorAtCurrentToken(Diagnostics::Parameter_declaration_expected);
+                case ParsingContext::TypeParameters: return parseErrorAtCurrentToken(Diagnostics::Type_parameter_declaration_expected);
+                case ParsingContext::TypeArguments: return parseErrorAtCurrentToken(Diagnostics::Type_argument_expected);
+                case ParsingContext::TupleElementTypes: return parseErrorAtCurrentToken(Diagnostics::Type_expected);
+                case ParsingContext::HeritageClauses: return parseErrorAtCurrentToken(Diagnostics::Unexpected_token_expected);
+                case ParsingContext::ImportOrExportSpecifiers: return parseErrorAtCurrentToken(Diagnostics::Identifier_expected);
+                case ParsingContext::JsxAttributes: return parseErrorAtCurrentToken(Diagnostics::Identifier_expected);
+                case ParsingContext::JsxChildren: return parseErrorAtCurrentToken(Diagnostics::Identifier_expected);
+                default: return nullopt; // TODO: GH#18217 `default: Debug.assertNever(context);`
+            }
+        }
+        bool isListElement(ParsingContext parsingContext, bool inErrorRecovery);
+        bool isListTerminator(ParsingContext kind);
+
+        // True if positioned at element or terminator of the current list or any enclosing list
+        bool isInSomeParsingContext() {
+            for (int kind = 0; kind < (int)ParsingContext::Count; kind++) {
+                if (parsingContext & (1 << kind)) {
+                    if (isListElement((ParsingContext)kind, /*inErrorRecovery*/ true) || isListTerminator((ParsingContext)kind)) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // Returns true if we should abort parsing.
+        bool abortParsingListOrMoveToNextToken(ParsingContext kind) {
+            parsingContextErrors(kind);
+            if (isInSomeParsingContext()) {
+                return true;
+            }
+
+            nextToken();
+            return false;
+        }
+
+        template<class T>
+        sharedOpt<T> parseListElement(ParsingContext parsingContext, function<shared<T>()> parseElement) {
+            auto node = currentNode(parsingContext);
+            if (node) {
+                return consumeNode(node);
+            }
+
+            return parseElement();
+        }
+
+        // Parses a list of elements
+        NodeArray parseList(ParsingContext kind, function<shared<Node>()> parseElement) {
+            auto saveParsingContext = parsingContext;
+            parsingContext |= 1 << (int) kind;
+            vector<shared<Node>> list;
+
+            auto listPos = getNodePos();
+
+            while (! isListTerminator(kind)) {
+                if (isListElement(kind, /*inErrorRecovery*/ false)) {
+                    list.push_back(parseListElement(kind, parseElement));
+
+                    continue;
+                }
+
+                if (abortParsingListOrMoveToNextToken(kind)) {
+                    break;
+                }
+            }
+
+            parsingContext = saveParsingContext;
+            return createNodeArray(list, listPos);
+        }
+
 //        // Parses a comma-delimited list of elements
 //        function parseDelimitedList<T extends Node>(kind: ParsingContext, parseElement: () => T, considerSemicolonAsDelimiter?: boolean): NodeArray<T>;
 //        function parseDelimitedList<T extends Node | undefined>(kind: ParsingContext, parseElement: () => T, considerSemicolonAsDelimiter?: boolean): NodeArray<NonNullable<T>> | undefined;
-//        function parseDelimitedList<T extends Node | undefined>(kind: ParsingContext, parseElement: () => T, considerSemicolonAsDelimiter?: boolean): NodeArray<NonNullable<T>> | undefined {
-//            auto saveParsingContext = parsingContext;
-//            parsingContext |= 1 << kind;
-//            auto list = [];
-//            auto listPos = getNodePos();
-//
-//            let commaStart = -1; // Meaning the previous token was not a comma
-//            while (true) {
-//                if (isListElement(kind, /*inErrorRecovery*/ false)) {
-//                    auto startPos = scanner.getStartPos();
-//                    auto result = parseListElement(kind, parseElement);
-//                    if (!result) {
-//                        parsingContext = saveParsingContext;
-//                        return undefined;
-//                    }
-//                    list.push(result as NonNullable<T>);
-//                    commaStart = scanner.getTokenPos();
-//
-//                    if (parseOptional(SyntaxKind::CommaToken)) {
-//                        // No need to check for a zero length node since we know we parsed a comma
-//                        continue;
-//                    }
-//
-//                    commaStart = -1; // Back to the state where the last token was not a comma
-//                    if (isListTerminator(kind)) {
-//                        break;
-//                    }
-//
-//                    // We didn't get a comma, and the list wasn't terminated, explicitly parse
-//                    // out a comma so we give a good error message.
-//                    parseExpected(SyntaxKind::CommaToken, getExpectedCommaDiagnostic(kind));
-//
-//                    // If the token was a semicolon, and the caller allows that, then skip it and
-//                    // continue.  This ensures we get back on track and don't result in tons of
-//                    // parse errors.  For example, this can happen when people do things like use
-//                    // a semicolon to delimit object literal members.   Note: we'll have already
-//                    // reported an error when we called parseExpected above.
-//                    if (considerSemicolonAsDelimiter && token() == SyntaxKind::SemicolonToken && !scanner.hasPrecedingLineBreak()) {
-//                        nextToken();
-//                    }
-//                    if (startPos == scanner.getStartPos()) {
-//                        // What we're parsing isn't actually remotely recognizable as a element and we've consumed no tokens whatsoever
-//                        // Consume a token to advance the parser in some way and avoid an infinite loop
-//                        // This can happen when we're speculatively parsing parenthesized expressions which we think may be arrow functions,
-//                        // or when a modifier keyword which is disallowed as a parameter name (ie, `static` in strict mode) is supplied
-//                        nextToken();
-//                    }
-//                    continue;
-//                }
-//
-//                if (isListTerminator(kind)) {
-//                    break;
-//                }
-//
-//                if (abortParsingListOrMoveToNextToken(kind)) {
-//                    break;
-//                }
-//            }
-//
-//            parsingContext = saveParsingContext;
-//            // Recording the trailing comma is deliberately done after the previous
-//            // loop, and not just if we see a list terminator. This is because the list
-//            // may have ended incorrectly, but it is still important to know if there
-//            // was a trailing comma.
-//            // Check if the last token was a comma.
-//            // Always preserve a trailing comma by marking it on the NodeArray
-//            return createNodeArray(list, listPos, /*end*/ undefined, commaStart >= 0);
-//        }
-//
-//        function getExpectedCommaDiagnostic(kind: ParsingContext) {
-//            return kind == ParsingContext::EnumMembers ? Diagnostics::An_enum_member_name_must_be_followed_by_a_or : undefined;
-//        }
-//
+        optional<NodeArray> parseDelimitedList(ParsingContext kind, function<sharedOpt<Node>()> parseElement, optional<bool> considerSemicolonAsDelimiter = {}) {
+            auto saveParsingContext = parsingContext;
+            parsingContext |= 1 << (int)kind;
+            vector<shared<Node>> list;
+            auto listPos = getNodePos();
+
+            int commaStart = -1; // Meaning the previous token was not a comma
+            while (true) {
+                if (isListElement(kind, /*inErrorRecovery*/ false)) {
+                    auto startPos = scanner.getStartPos();
+                    auto result = parseListElement(kind, parseElement);
+                    if (!result) {
+                        parsingContext = saveParsingContext;
+                        return nullopt;
+                    }
+                    list.push_back(result);
+                    commaStart = scanner.getTokenPos();
+
+                    if (parseOptional(SyntaxKind::CommaToken)) {
+                        // No need to check for a zero length node since we know we parsed a comma
+                        continue;
+                    }
+
+                    commaStart = -1; // Back to the state where the last token was not a comma
+                    if (isListTerminator(kind)) {
+                        break;
+                    }
+
+                    // We didn't get a comma, and the list wasn't terminated, explicitly parse
+                    // out a comma so we give a good error message.
+                    parseExpected(SyntaxKind::CommaToken, getExpectedCommaDiagnostic(kind));
+
+                    // If the token was a semicolon, and the caller allows that, then skip it and
+                    // continue.  This ensures we get back on track and don't result in tons of
+                    // parse errors.  For example, this can happen when people do things like use
+                    // a semicolon to delimit object literal members.   Note: we'll have already
+                    // reported an error when we called parseExpected above.
+                    if (considerSemicolonAsDelimiter && token() == SyntaxKind::SemicolonToken && !scanner.hasPrecedingLineBreak()) {
+                        nextToken();
+                    }
+                    if (startPos == scanner.getStartPos()) {
+                        // What we're parsing isn't actually remotely recognizable as a element and we've consumed no tokens whatsoever
+                        // Consume a token to advance the parser in some way and avoid an infinite loop
+                        // This can happen when we're speculatively parsing parenthesized expressions which we think may be arrow functions,
+                        // or when a modifier keyword which is disallowed as a parameter name (ie, `static` in strict mode) is supplied
+                        nextToken();
+                    }
+                    continue;
+                }
+
+                if (isListTerminator(kind)) {
+                    break;
+                }
+
+                if (abortParsingListOrMoveToNextToken(kind)) {
+                    break;
+                }
+            }
+
+            parsingContext = saveParsingContext;
+            // Recording the trailing comma is deliberately done after the previous
+            // loop, and not just if we see a list terminator. This is because the list
+            // may have ended incorrectly, but it is still important to know if there
+            // was a trailing comma.
+            // Check if the last token was a comma.
+            // Always preserve a trailing comma by marking it on the NodeArray
+            return createNodeArray(list, listPos, /*end*/ {}, commaStart >= 0);
+        }
+
 //        interface MissingList<T extends Node> extends NodeArray<T> {
 //            isMissingList: true;
 //        }
-//
-//        function createMissingList<T extends Node>(): MissingList<T> {
-//            auto list = createNodeArray<T>([], getNodePos()) as MissingList<T>;
-//            list.isMissingList = true;
-//            return list;
-//        }
-//
-//        function isMissingList(arr: NodeArray<Node>): boolean {
-//            return !!(arr as MissingList<Node>).isMissingList;
-//        }
-//
-//        function parseBracketedList<T extends Node>(kind: ParsingContext, parseElement: () => T, open: SyntaxKind, close: SyntaxKind): NodeArray<T> {
-//            if (parseExpected(open)) {
-//                auto result = parseDelimitedList(kind, parseElement);
-//                parseExpected(close);
-//                return result;
-//            }
-//
-//            return createMissingList<T>();
-//        }
 
+        NodeArray createMissingList() {
+            auto list = createNodeArray({}, getNodePos());
+            list.isMissingList = true;
+            return list;
+        }
+
+        bool isMissingList(NodeArray &arr) {
+            return arr.isMissingList;
+        }
 
         // An identifier that starts with two underscores has an extra underscore character prepended to it to avoid issues
         // with magic property names like '__proto__'. The 'identifiers' object is used to share a single string instance for
         // each identifier in order to reduce memory consumption.
-        shared<Identifier> createIdentifier(bool isIdentifier, optional<DiagnosticMessage> diagnosticMessage = {}, optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {}) {
+        shared<Identifier> createIdentifier(bool isIdentifier, optional<DiagnosticMessage> diagnosticMessage, optional<DiagnosticMessage> privateIdentifierDiagnosticMessage) {
             if (isIdentifier) {
-                identifierCount++;
+                identifierCount ++;
                 auto pos = getNodePos();
                 // Store original token kind if it is not just an Identifier so we can report appropriate error later in type checker
                 auto originalKeywordKind = token();
@@ -2933,12 +3080,12 @@ namespace ts {
                 return createIdentifier(/*isIdentifier*/ true);
             }
 
-            if (token() == SyntaxKind::Unknown && scanner.tryScan([](){ return scanner.reScanInvalidIdentifier() == SyntaxKind::Identifier; })) {
+            if (token() == SyntaxKind::Unknown && scanner.tryScan<bool>([]() { return scanner.reScanInvalidIdentifier() == SyntaxKind::Identifier; })) {
                 // Scanner has already recorded an 'Invalid character' error, so no need to add another from the parser.
                 return createIdentifier(/*isIdentifier*/ true);
             }
 
-            identifierCount++;
+            identifierCount ++;
             // Only for end of file because the error gets reported incorrectly on embedded script tags.
             auto reportAtCurrentPosition = token() == SyntaxKind::EndOfFileToken;
 
@@ -2946,10 +3093,10 @@ namespace ts {
             auto msgArg = scanner.getTokenText();
 
             auto defaultMessage = isReservedWord ?
-                Diagnostics::Identifier_expected_0_is_a_reserved_word_that_cannot_be_used_here :
-                Diagnostics::Identifier_expected;
+                                  Diagnostics::Identifier_expected_0_is_a_reserved_word_that_cannot_be_used_here :
+                                  Diagnostics::Identifier_expected;
 
-            return createMissingNode<Identifier>(SyntaxKind::Identifier, reportAtCurrentPosition, diagnosticMessage ? diagnosticMessage : defaultMessage, msgArg);
+            return createMissingNode<Identifier>(SyntaxKind::Identifier, reportAtCurrentPosition, diagnosticMessage ? *diagnosticMessage : defaultMessage);
         }
 
         shared<Identifier> parseIdentifier(optional<DiagnosticMessage> diagnosticMessage = {}, optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {}) {
@@ -2958,8 +3105,8 @@ namespace ts {
 
 //        function parseEntityName(allowReservedWords: boolean, diagnosticMessage?: DiagnosticMessage): EntityName {
 //            auto pos = getNodePos();
-//            let entity: EntityName = allowReservedWords ? parseIdentifierName(diagnosticMessage) : parseIdentifier(diagnosticMessage);
-//            let dotPos = getNodePos();
+//            auto entity: EntityName = allowReservedWords ? parseIdentifierName(diagnosticMessage) : parseIdentifier(diagnosticMessage);
+//            auto dotPos = getNodePos();
 //            while (parseOptional(SyntaxKind::DotToken)) {
 //                if (token() == SyntaxKind::LessThanToken) {
 //                    // the entity is part of a JSDoc-style generic, so record the trailing dot for later error reporting
@@ -2982,49 +3129,10 @@ namespace ts {
 //            return finishNode(factory::createQualifiedName(entity, name), entity.pos);
 //        }
 //
-//        function parseRightSideOfDot(allowIdentifierNames: boolean, allowPrivateIdentifiers: boolean): Identifier | PrivateIdentifier {
-//            // Technically a keyword is valid here as all identifiers and keywords are identifier names.
-//            // However, often we'll encounter this in error situations when the identifier or keyword
-//            // is actually starting another valid construct.
-//            //
-//            // So, we check for the following specific case:
-//            //
-//            //      name.
-//            //      identifierOrKeyword identifierNameOrKeyword
-//            //
-//            // Note: the newlines are important here.  For example, if that above code
-//            // were rewritten into:
-//            //
-//            //      name.identifierOrKeyword
-//            //      identifierNameOrKeyword
-//            //
-//            // Then we would consider it valid.  That's because ASI would take effect and
-//            // the code would be implicitly: "name.identifierOrKeyword; identifierNameOrKeyword".
-//            // In the first case though, ASI will not take effect because there is not a
-//            // line terminator after the identifier or keyword.
-//            if (scanner.hasPrecedingLineBreak() && tokenIsIdentifierOrKeyword(token())) {
-//                auto matchesPattern = lookAhead(nextTokenIsIdentifierOrKeywordOnSameLine);
-//
-//                if (matchesPattern) {
-//                    // Report that we need an identifier.  However, report it right after the dot,
-//                    // and not on the next token.  This is because the next token might actually
-//                    // be an identifier and the error would be quite confusing.
-//                    return createMissingNode<Identifier>(SyntaxKind::Identifier, /*reportAtCurrentPosition*/ true, Diagnostics::Identifier_expected);
-//                }
-//            }
-//
-//            if (token() == SyntaxKind::PrivateIdentifier) {
-//                auto node = parsePrivateIdentifier();
-//                return allowPrivateIdentifiers ? node : createMissingNode<Identifier>(SyntaxKind::Identifier, /*reportAtCurrentPosition*/ true, Diagnostics::Identifier_expected);
-//            }
-//
-//            return allowIdentifierNames ? parseIdentifierName() : parseIdentifier();
-//        }
-//
 //        function parseTemplateSpans(isTaggedTemplate: boolean) {
 //            auto pos = getNodePos();
 //            auto list = [];
-//            let node: TemplateSpan;
+//            auto node: TemplateSpan;
 //            do {
 //                node = parseTemplateSpan(isTaggedTemplate);
 //                list.push(node);
@@ -3058,7 +3166,7 @@ namespace ts {
 //        function parseTemplateTypeSpans() {
 //            auto pos = getNodePos();
 //            auto list = [];
-//            let node: TemplateLiteralTypeSpan;
+//            auto node: TemplateLiteralTypeSpan;
 //            do {
 //                node = parseTemplateTypeSpan();
 //                list.push(node);
@@ -3100,10 +3208,6 @@ namespace ts {
 //            );
 //        }
 //
-//        function parseLiteralNode(): LiteralExpression {
-//            return parseLiteralLikeNode(token()) as LiteralExpression;
-//        }
-//
 //        function parseTemplateHead(isTaggedTemplate: boolean): TemplateHead {
 //            if (isTaggedTemplate) {
 //                reScanTemplateHeadOrNoSubstitutionTemplate();
@@ -3117,39 +3221,6 @@ namespace ts {
 //            auto fragment = parseLiteralLikeNode(token());
 //            Debug.assert(fragment.kind == SyntaxKind::TemplateMiddle || fragment.kind == SyntaxKind::TemplateTail, "Template fragment has wrong token kind");
 //            return fragment as TemplateMiddle | TemplateTail;
-//        }
-//
-//        function getTemplateLiteralRawText(kind: TemplateLiteralToken["kind"]) {
-//            auto isLast = kind == SyntaxKind::NoSubstitutionTemplateLiteral || kind == SyntaxKind::TemplateTail;
-//            auto tokenText = scanner.getTokenText();
-//            return tokenText.substring(1, tokenText.length - (scanner.isUnterminated() ? 0 : isLast ? 1 : 2));
-//        }
-//
-//        function parseLiteralLikeNode(kind: SyntaxKind): LiteralLikeNode {
-//            auto pos = getNodePos();
-//            auto node =
-//                isTemplateLiteralKind(kind) ? factory::createTemplateLiteralLikeNode(kind, scanner.getTokenValue(), getTemplateLiteralRawText(kind), scanner.getTokenFlags() & TokenFlags.TemplateLiteralLikeFlags) :
-//                // Octal literals are not allowed in strict mode or ES5
-//                // Note that theoretically the following condition would hold true literals like 009,
-//                // which is not octal. But because of how the scanner separates the tokens, we would
-//                // never get a token like this. Instead, we would get 00 and 9 as two separate tokens.
-//                // We also do not need to check for negatives because any prefix operator would be part of a
-//                // parent unary expression.
-//                kind == SyntaxKind::NumericLiteral ? factory::createNumericLiteral(scanner.getTokenValue(), scanner.getNumericLiteralFlags()) :
-//                kind == SyntaxKind::StringLiteral ? factory::createStringLiteral(scanner.getTokenValue(), /*isSingleQuote*/ undefined, scanner.hasExtendedUnicodeEscape()) :
-//                isLiteralKind(kind) ? factory::createLiteralLikeNode(kind, scanner.getTokenValue()) :
-//                Debug.fail();
-//
-//            if (scanner.hasExtendedUnicodeEscape()) {
-//                node.hasExtendedUnicodeEscape = true;
-//            }
-//
-//            if (scanner.isUnterminated()) {
-//                node.isUnterminated = true;
-//            }
-//
-//            nextToken();
-//            return finishNode(node, pos);
 //        }
 //
 //        // TYPES
@@ -3257,7 +3328,7 @@ namespace ts {
 //
 //        function parseJSDocParameter(): ParameterDeclaration {
 //            auto pos = getNodePos();
-//            let name: Identifier | undefined;
+//            auto name: Identifier | undefined;
 //            if (token() == SyntaxKind::ThisKeyword || token() == SyntaxKind::NewKeyword) {
 //                name = parseIdentifierName();
 //                parseExpected(SyntaxKind::ColonToken);
@@ -3300,7 +3371,7 @@ namespace ts {
 //            }
 //
 //            auto hasDotDotDot = parseOptional(SyntaxKind::DotDotDotToken);
-//            let type = parseTypeOrTypePredicate();
+//            auto type = parseTypeOrTypePredicate();
 //            scanner.setInJSDocType(false);
 //            if (hasDotDotDot) {
 //                type = finishNode(factory::createJSDocVariadicType(type), pos);
@@ -3366,18 +3437,15 @@ namespace ts {
             if (token() == SyntaxKind::ConstKeyword && permitInvalidConstAsModifier) {
                 // We need to ensure that any subsequent modifiers appear on the same line
                 // so that when 'const' is a standalone declaration, we don't issue an error.
-                if (!tryParse<bool>(nextTokenIsOnSameLineAndCanFollowModifier)) {
+                if (! tryParse<bool>(nextTokenIsOnSameLineAndCanFollowModifier)) {
                     return nullptr;
                 }
-            }
-            else if (stopOnStartOfClassStaticBlock && token() == SyntaxKind::StaticKeyword && lookAhead<bool>(nextTokenIsOpenBrace)) {
+            } else if (stopOnStartOfClassStaticBlock && token() == SyntaxKind::StaticKeyword && lookAhead<bool>(nextTokenIsOpenBrace)) {
                 return nullptr;
-            }
-            else if (hasSeenStaticModifier && token() == SyntaxKind::StaticKeyword) {
+            } else if (hasSeenStaticModifier && token() == SyntaxKind::StaticKeyword) {
                 return nullptr;
-            }
-            else {
-                if (!parseAnyContextualModifier()) {
+            } else {
+                if (! parseAnyContextualModifier()) {
                     return nullptr;
                 }
             }
@@ -3401,7 +3469,7 @@ namespace ts {
                 if (modifier->kind == SyntaxKind::StaticKeyword) hasSeenStatic = true;
                 list = append(list, modifier);
             }
-            if (!list.empty()) return factory::createNodeArray(list, pos);
+            if (! list.empty()) return createNodeArray(list, pos);
             return nullopt;
         }
 
@@ -3555,18 +3623,915 @@ namespace ts {
 //            parseSemicolon();
 //        }
 
+        shared<UnionNode<Identifier, BindingPattern>> parseIdentifierOrPattern(optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {});
+        shared<Expression> parseAssignmentExpressionOrHigher();
+
+        sharedOpt<Expression> parseInitializer() {
+            return parseOptional(SyntaxKind::EqualsToken) ? parseAssignmentExpressionOrHigher() : nullptr;
+        }
+
+        shared<NodeUnion(ArrayBindingElement)> parseArrayBindingElement() {
+            auto pos = getNodePos();
+            if (token() == SyntaxKind::CommaToken) {
+                return finishNode(factory::createOmittedExpression(), pos);
+            }
+            auto dotDotDotToken = parseOptionalToken<DotDotDotToken>(SyntaxKind::DotDotDotToken);
+            auto name = parseIdentifierOrPattern();
+            auto initializer = parseInitializer();
+            return finishNode(factory::createBindingElement(dotDotDotToken, /*propertyName*/ {}, name, initializer), pos);
+        }
+
+        shared<ArrayBindingPattern> parseArrayBindingPattern() {
+            auto pos = getNodePos();
+            parseExpected(SyntaxKind::OpenBracketToken);
+            auto elements = parseDelimitedList(ParsingContext::ArrayBindingElements, parseArrayBindingElement);
+            parseExpected(SyntaxKind::CloseBracketToken);
+            return finishNode(factory::createArrayBindingPattern(*elements), pos);
+        }
+
+        string getTemplateLiteralRawText(SyntaxKind kind) {
+            auto isLast = kind == SyntaxKind::NoSubstitutionTemplateLiteral || kind == SyntaxKind::TemplateTail;
+            auto tokenText = scanner.getTokenText();
+            return tokenText.substr(1, tokenText.size() - (scanner.isUnterminated() ? 0 : isLast ? 1 : 2));
+        }
+
+        shared<LiteralLikeNode> parseLiteralLikeNode(SyntaxKind kind) {
+            auto pos = getNodePos();
+            shared<LiteralLikeNode> node =
+                isTemplateLiteralKind(kind) ? factory::createTemplateLiteralLikeNode(kind, scanner.getTokenValue(), getTemplateLiteralRawText(kind), scanner.getTokenFlags() & (int)TokenFlags::TemplateLiteralLikeFlags) :
+                // Octal literals are not allowed in strict mode or ES5
+                // Note that theoretically the following condition would hold true literals like 009,
+                // which is not octal. But because of how the scanner separates the tokens, we would
+                // never get a token like this. Instead, we would get 00 and 9 as two separate tokens.
+                // We also do not need to check for negatives because any prefix operator would be part of a
+                // parent unary expression.
+                kind == SyntaxKind::NumericLiteral ? factory::createNumericLiteral(scanner.getTokenValue(), scanner.getNumericLiteralFlags()) :
+                kind == SyntaxKind::StringLiteral ? factory::createStringLiteral(scanner.getTokenValue(), /*isSingleQuote*/ {}, scanner.hasExtendedUnicodeEscape()) :
+                isLiteralKind(kind) ? factory::createLiteralLikeNode(kind, scanner.getTokenValue()) :
+                throw runtime_error("Nope");
+
+            if (scanner.hasExtendedUnicodeEscape()) {
+                node->hasExtendedUnicodeEscape = true;
+            }
+
+            if (scanner.isUnterminated()) {
+                node->isUnterminated = true;
+            }
+
+            nextToken();
+            return finishNode<LiteralLikeNode>(node, pos);
+        }
+
+        shared<LiteralLikeNode> parseLiteralNode() {
+            return parseLiteralLikeNode(token());
+        }
+
+        shared<Expression> parseExpression();
+
+        template<typename T>
+        T doOutsideOfContext(int context, function<T()> func) {
+            // contextFlagsToClear will contain only the context flags that are
+            // currently set that we need to temporarily clear
+            // We don't just blindly reset to the previous flags to ensure
+            // that we do not mutate cached flags for the incremental
+            // parser (ThisNodeHasError, ThisNodeOrAnySubNodesHasError, and
+            // HasAggregatedChildData).
+            auto contextFlagsToClear = context & contextFlags;
+            if (contextFlagsToClear) {
+                // clear the requested context flags
+                setContextFlag(/*val*/ false, contextFlagsToClear);
+                auto result = func();
+                // restore the context flags we just cleared
+                setContextFlag(/*val*/ true, contextFlagsToClear);
+                return result;
+            }
+
+            // no need to do anything special as we are not in any of the requested contexts
+            return func();
+        }
+
+        template<typename T>
+        T doOutsideOfContext(NodeFlags context, function<T()> func) {
+            return doOutsideOfContext<T>((int)context, func);
+        }
+
+        template<typename T>
+        T doInsideOfContext(/*NodeFlags*/int context, function<T()> &func) {
+            // contextFlagsToSet will contain only the context flags that
+            // are not currently set that we need to temporarily enable.
+            // We don't just blindly reset to the previous flags to ensure
+            // that we do not mutate cached flags for the incremental
+            // parser (ThisNodeHasError, ThisNodeOrAnySubNodesHasError, and
+            // HasAggregatedChildData).
+            auto contextFlagsToSet = context & ~contextFlags;
+            if (contextFlagsToSet) {
+                // set the requested context flags
+                setContextFlag(/*val*/ true, contextFlagsToSet);
+                auto result = func();
+                // reset the context flags we just set
+                setContextFlag(/*val*/ false, contextFlagsToSet);
+                return result;
+            }
+
+            // no need to do anything special as we are already in all of the requested contexts
+            return func();
+        }
+
+        template<typename T>
+        T allowInAnd(const function<T()> &func) {
+            return doOutsideOfContext<T>(NodeFlags::DisallowInContext, func);
+        }
+
+        template<typename T>
+        T disallowInAnd(const function<T()> &func) {
+            return doInsideOfContext<T>(NodeFlags::DisallowInContext, func);
+        }
+
+        template<typename T>
+        T allowConditionalTypesAnd(const function<T()> &func) {
+            return doOutsideOfContext<T>(NodeFlags::DisallowConditionalTypesContext, func);
+        }
+        template<typename T>
+        T disallowConditionalTypesAnd(const function<T()> &func) {
+            return doInsideOfContext<T>(NodeFlags::DisallowConditionalTypesContext, func);
+        }
+        template<typename T>
+        T doInYieldContext(const function<T()> &func) {
+            return doInsideOfContext<T>(NodeFlags::YieldContext, func);
+        }
+        template<typename T>
+        T doInDecoratorContext(const function<T()> &func) {
+            return doInsideOfContext<T>(NodeFlags::DecoratorContext, func);
+        }
+        template<typename T>
+        T doInAwaitContext(const function<T()> &func) {
+            return doInsideOfContext<T>(NodeFlags::AwaitContext, func);
+        }
+        template<typename T>
+        T doOutsideOfAwaitContext(const function<T()> &func) {
+            return doOutsideOfContext<T>(NodeFlags::AwaitContext, func);
+        }
+        template<typename T>
+        T doInYieldAndAwaitContext(const function<T()> &func) {
+            return doInsideOfContext<T>((int)NodeFlags::YieldContext | (int)NodeFlags::AwaitContext, func);
+        }
+        template<typename T>
+        T doOutsideOfYieldAndAwaitContext(const function<T()> &func) {
+            return doOutsideOfContext<T>((int)NodeFlags::YieldContext | (int)NodeFlags::AwaitContext, func);
+        }
+
+        bool inDisallowConditionalTypesContext() {
+            return inContext(NodeFlags::DisallowConditionalTypesContext);
+        }
+
+        bool inDecoratorContext() {
+            return inContext(NodeFlags::DecoratorContext);
+        }
+
+        shared<ComputedPropertyName> parseComputedPropertyName() {
+            // PropertyName [Yield]:
+            //      LiteralPropertyName
+            //      ComputedPropertyName[?Yield]
+            auto pos = getNodePos();
+            parseExpected(SyntaxKind::OpenBracketToken);
+            // We parse any expression (including a comma expression). But the grammar
+            // says that only an assignment expression is allowed, so the grammar checker
+            // will error if it sees a comma expression.
+            auto expression = allowInAnd<shared<Expression>>(parseExpression);
+            parseExpected(SyntaxKind::CloseBracketToken);
+            return finishNode(factory::createComputedPropertyName(expression), pos);
+        }
+
+        string internPrivateIdentifier(string text) {
+            auto privateIdentifier = get(privateIdentifiers, text);
+            if (!privateIdentifier) {
+                privateIdentifier = text;
+                set(privateIdentifiers, text, *privateIdentifier);
+            }
+            return *privateIdentifier;
+        }
+
+        shared<PrivateIdentifier> parsePrivateIdentifier() {
+            auto pos = getNodePos();
+            auto node = factory::createPrivateIdentifier(internPrivateIdentifier(scanner.getTokenText()));
+            nextToken();
+            return finishNode(node, pos);
+        }
+
+        shared<Node> parsePropertyNameWorker(bool allowComputedPropertyNames) {
+            if (token() == SyntaxKind::StringLiteral || token() == SyntaxKind::NumericLiteral) {
+                auto node = parseLiteralNode();
+                node->text = internIdentifier(node->text);
+                return node;
+            }
+            if (allowComputedPropertyNames && token() == SyntaxKind::OpenBracketToken) {
+                return parseComputedPropertyName();
+            }
+            if (token() == SyntaxKind::PrivateIdentifier) {
+                return parsePrivateIdentifier();
+            }
+            return parseIdentifierName();
+        }
+
+        shared<Node> parsePropertyName() {
+            return parsePropertyNameWorker(/*allowComputedPropertyNames*/ true);
+        }
+
+        shared<BindingElement> parseObjectBindingElement() {
+            auto pos = getNodePos();
+            auto dotDotDotToken = parseOptionalToken<DotDotDotToken>(SyntaxKind::DotDotDotToken);
+            auto tokenIsIdentifier = isBindingIdentifier();
+            sharedOpt<Node> propertyName = parsePropertyName();
+            sharedOpt<Node> name;
+            if (tokenIsIdentifier && token() != SyntaxKind::ColonToken) {
+                name = propertyName;
+                propertyName = nullptr;
+            }
+            else {
+                parseExpected(SyntaxKind::ColonToken);
+                name = parseIdentifierOrPattern();
+            }
+            auto initializer = parseInitializer();
+            return finishNode(factory::createBindingElement(dotDotDotToken, propertyName, name, initializer), pos);
+        }
+
+        shared<ObjectBindingPattern> parseObjectBindingPattern() {
+            auto pos = getNodePos();
+            parseExpected(SyntaxKind::OpenBraceToken);
+            auto elements = parseDelimitedList(ParsingContext::ObjectBindingElements, parseObjectBindingElement);
+            parseExpected(SyntaxKind::CloseBraceToken);
+            return finishNode(factory::createObjectBindingPattern(*elements), pos);
+        }
+
+        shared<UnionNode<Identifier, BindingPattern>> parseIdentifierOrPattern(optional<DiagnosticMessage> privateIdentifierDiagnosticMessage) {
+            if (token() == SyntaxKind::OpenBracketToken) {
+                return parseArrayBindingPattern();
+            }
+            if (token() == SyntaxKind::OpenBraceToken) {
+                return parseObjectBindingPattern();
+            }
+            return parseBindingIdentifier(privateIdentifierDiagnosticMessage);
+        }
+
+
+        bool skipParameterStart() {
+            if (isModifierKind(token())) {
+                // Skip modifiers
+                parseModifiers();
+            }
+            if (isIdentifier() || token() == SyntaxKind::ThisKeyword) {
+                nextToken();
+                return true;
+            }
+            if (token() == SyntaxKind::OpenBracketToken || token() == SyntaxKind::OpenBraceToken) {
+                // Return true if we can parse an array or object binding pattern with no errors
+                auto previousErrorCount = parseDiagnostics.size();
+                parseIdentifierOrPattern();
+                return previousErrorCount == parseDiagnostics.size();
+            }
+            return false;
+        }
+
+        bool isUnambiguouslyStartOfFunctionType() {
+            nextToken();
+            if (token() == SyntaxKind::CloseParenToken || token() == SyntaxKind::DotDotDotToken) {
+                // ( )
+                // ( ...
+                return true;
+            }
+            if (skipParameterStart()) {
+                // We successfully skipped modifiers (if any) and an identifier or binding pattern,
+                // now see if we have something that indicates a parameter declaration
+                if (token() == SyntaxKind::ColonToken || token() == SyntaxKind::CommaToken ||
+                    token() == SyntaxKind::QuestionToken || token() == SyntaxKind::EqualsToken) {
+                    // ( xxx :
+                    // ( xxx ,
+                    // ( xxx ?
+                    // ( xxx =
+                    return true;
+                }
+                if (token() == SyntaxKind::CloseParenToken) {
+                    nextToken();
+                    if (token() == SyntaxKind::EqualsGreaterThanToken) {
+                        // ( xxx ) =>
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        bool nextTokenIsNewKeyword() {
+            nextToken();
+            return token() == SyntaxKind::NewKeyword;
+        }
+
+        bool isStartOfFunctionTypeOrConstructorType() {
+            if (token() == SyntaxKind::LessThanToken) {
+                return true;
+            }
+            if (token() == SyntaxKind::OpenParenToken && lookAhead<bool>(isUnambiguouslyStartOfFunctionType)) {
+                return true;
+            }
+            return token() == SyntaxKind::NewKeyword || (token() == SyntaxKind::AbstractKeyword && lookAhead<bool>(nextTokenIsNewKeyword));
+        }
+
+        optional<NodeArray> parseModifiersForConstructorType() {
+            optional<NodeArray> modifiers;
+            if (token() == SyntaxKind::AbstractKeyword) {
+                auto pos = getNodePos();
+                nextToken();
+                auto modifier = finishNode(factory::createToken<AbstractKeyword>(SyntaxKind::AbstractKeyword), pos);
+                modifiers = createNodeArray({modifier}, pos);
+            }
+            return modifiers;
+        }
+
+        /**
+         * Check if the current token can possibly be an ES7 increment expression.
+         *
+         * ES7 UpdateExpression:
+         *      LeftHandSideExpression[?Yield]
+         *      LeftHandSideExpression[?Yield][no LineTerminator here]++
+         *      LeftHandSideExpression[?Yield][no LineTerminator here]--
+         *      ++LeftHandSideExpression[?Yield]
+         *      --LeftHandSideExpression[?Yield]
+         */
+        bool isUpdateExpression() {
+            // This function is called inside parseUnaryExpression to decide
+            // whether to call parseSimpleUnaryExpression or call parseUpdateExpression directly
+            switch (token()) {
+                case SyntaxKind::PlusToken:
+                case SyntaxKind::MinusToken:
+                case SyntaxKind::TildeToken:
+                case SyntaxKind::ExclamationToken:
+                case SyntaxKind::DeleteKeyword:
+                case SyntaxKind::TypeOfKeyword:
+                case SyntaxKind::VoidKeyword:
+                case SyntaxKind::AwaitKeyword:
+                    return false;
+                case SyntaxKind::LessThanToken:
+                    // If we are not in JSX context, we are parsing TypeAssertion which is an UnaryExpression
+                    if (languageVariant != LanguageVariant::JSX) {
+                        return false;
+                    }
+                    // We are in JSX context and the token is part of JSXElement.
+                    // falls through
+                default:
+                    return true;
+            }
+        }
+
+        shared<Node> parseRightSideOfDot(bool allowIdentifierNames, bool allowPrivateIdentifiers) {
+            // Technically a keyword is valid here as all identifiers and keywords are identifier names.
+            // However, often we'll encounter this in error situations when the identifier or keyword
+            // is actually starting another valid construct.
+            //
+            // So, we check for the following specific case:
+            //
+            //      name.
+            //      identifierOrKeyword identifierNameOrKeyword
+            //
+            // Note: the newlines are important here.  For example, if that above code
+            // were rewritten into:
+            //
+            //      name.identifierOrKeyword
+            //      identifierNameOrKeyword
+            //
+            // Then we would consider it valid.  That's because ASI would take effect and
+            // the code would be implicitly: "name.identifierOrKeyword; identifierNameOrKeyword".
+            // In the first case though, ASI will not take effect because there is not a
+            // line terminator after the identifier or keyword.
+            if (scanner.hasPrecedingLineBreak() && tokenIsIdentifierOrKeyword(token())) {
+                auto matchesPattern = lookAhead<bool>(nextTokenIsIdentifierOrKeywordOnSameLine);
+
+                if (matchesPattern) {
+                    // Report that we need an identifier.  However, report it right after the dot,
+                    // and not on the next token.  This is because the next token might actually
+                    // be an identifier and the error would be quite confusing.
+                    return createMissingNode<Identifier>(SyntaxKind::Identifier, /*reportAtCurrentPosition*/ true, Diagnostics::Identifier_expected);
+                }
+            }
+
+            if (token() == SyntaxKind::PrivateIdentifier) {
+                auto node = parsePrivateIdentifier();
+                return allowPrivateIdentifiers ? (shared<Node>)node : createMissingNode<Identifier>(SyntaxKind::Identifier, /*reportAtCurrentPosition*/ true, Diagnostics::Identifier_expected);
+            }
+
+            return allowIdentifierNames ? parseIdentifierName() : parseIdentifier();
+        }
+
+
+        shared<NodeUnion(JsxTagNameExpression)> parseJsxElementName() {
+            auto pos = getNodePos();
+            scanJsxIdentifier();
+            // JsxElement can have name in the form of
+            //      propertyAccessExpression
+            //      primaryExpression in the form of an identifier and "this" keyword
+            // We can't just simply use parseLeftHandSideExpressionOrHigher because then we will start consider class,function etc as a keyword
+            // We only want to consider "this" as a primaryExpression
+            shared<Expression> expression = token() == SyntaxKind::ThisKeyword ? (shared<Expression>)parseTokenNode<ThisExpression>() : parseIdentifierName();
+            while (parseOptional(SyntaxKind::DotToken)) {
+                expression = finishNode(factory::createPropertyAccessExpression(expression, parseRightSideOfDot(/*allowIdentifierNames*/ true, /*allowPrivateIdentifiers*/ false)), pos);
+            }
+            return expression;
+        }
+
+        NodeArray parseBracketedList(ParsingContext kind, function<shared<Node>()> parseElement, SyntaxKind open, SyntaxKind close) {
+            if (parseExpected(open)) {
+                auto result = parseDelimitedList(kind, parseElement);
+                parseExpected(close);
+                return *result;
+            }
+
+            return createMissingList();
+        }
+
+        optional<NodeArray> tryParseTypeArguments() {
+            if (token() == SyntaxKind::LessThanToken) return parseBracketedList(ParsingContext::TypeArguments, parseType, SyntaxKind::LessThanToken, SyntaxKind::GreaterThanToken);
+            return nullopt;
+        }
+
+        SyntaxKind scanJsxAttributeValue() {
+            return currentToken = scanner.scanJsxAttributeValue();
+        }
+
+        sharedOpt<JsxExpression> parseJsxExpression(bool inExpressionContext) {
+            auto pos = getNodePos();
+            if (!parseExpected(SyntaxKind::OpenBraceToken)) {
+                return nullptr;
+            }
+
+            sharedOpt<DotDotDotToken> dotDotDotToken;
+            sharedOpt<Expression> expression;
+            if (token() != SyntaxKind::CloseBraceToken) {
+                dotDotDotToken = parseOptionalToken<DotDotDotToken>(SyntaxKind::DotDotDotToken);
+                // Only an AssignmentExpression is valid here per the JSX spec,
+                // but we can unambiguously parse a comma sequence and provide
+                // a better error message in grammar checking.
+                expression = parseExpression();
+            }
+            if (inExpressionContext) {
+                parseExpected(SyntaxKind::CloseBraceToken);
+            }
+            else {
+                if (parseExpected(SyntaxKind::CloseBraceToken, /*message*/ {}, /*shouldAdvance*/ false)) {
+                    scanJsxText();
+                }
+            }
+
+            return finishNode(factory::createJsxExpression(dotDotDotToken, expression), pos);
+        }
+
+        shared<Node> parseJsxOpeningOrSelfClosingElementOrOpeningFragment(bool inExpressionContext);
+
+        shared<JsxText> parseJsxText() {
+            auto pos = getNodePos();
+            auto node = factory::createJsxText(scanner.getTokenValue(), currentToken == SyntaxKind::JsxTextAllWhiteSpaces);
+            currentToken = scanner.scanJsxToken();
+            return finishNode(node, pos);
+        }
+
+        shared<NodeUnion(JsxElement, JsxSelfClosingElement, JsxFragment)>
+        parseJsxElementOrSelfClosingElementOrFragment(bool inExpressionContext, optional<int> topInvalidNodePosition = {}, sharedOpt<NodeUnion(JsxOpeningElement, JsxOpeningFragment)> openingTag = {});
+
+        sharedOpt<NodeUnion(JsxChild)> parseJsxChild(shared<NodeUnion(JsxOpeningElement, JsxOpeningFragment)> openingTag, SyntaxKind token) {
+            switch (token) {
+                case SyntaxKind::EndOfFileToken:
+                    // If we hit EOF, issue the error at the tag that lacks the closing element
+                    // rather than at the end of the file (which is useless)
+                    if (isJsxOpeningFragment(openingTag)) {
+                        parseErrorAtRange(openingTag, Diagnostics::JSX_fragment_has_no_corresponding_closing_tag);
+                    }
+                    else {
+                        // We want the error span to cover only 'Foo.Bar' in < Foo.Bar >
+                        // or to cover only 'Foo' in < Foo >
+                        auto tag = getTagName(openingTag);
+                        auto start = skipTrivia(sourceText, tag->pos);
+                        parseErrorAt(start, tag->end, Diagnostics::JSX_element_0_has_no_corresponding_closing_tag, getTextOfNodeFromSourceText(sourceText, tag));
+                    }
+                    return nullptr;
+                case SyntaxKind::LessThanSlashToken:
+                case SyntaxKind::ConflictMarkerTrivia:
+                    return nullptr;
+                case SyntaxKind::JsxText:
+                case SyntaxKind::JsxTextAllWhiteSpaces:
+                    return parseJsxText();
+                case SyntaxKind::OpenBraceToken:
+                    return parseJsxExpression(/*inExpressionContext*/ false);
+                case SyntaxKind::LessThanToken:
+                    return parseJsxElementOrSelfClosingElementOrFragment(/*inExpressionContext*/ false, /*topInvalidNodePosition*/ {}, openingTag);
+                default:
+                    throw runtime_error(format("Should not reach %d", token));
+//                    return Debug.assertNever(token);
+            }
+        }
+
+        /** @internal */
+        bool tagNamesAreEquivalent(shared<NodeUnion(JsxTagNameExpression)> lhs, shared<NodeUnion(JsxTagNameExpression)> rhs) {
+            if (lhs->kind != rhs->kind) {
+                return false;
+            }
+
+            if (lhs->kind == SyntaxKind::Identifier) {
+                if (rhs->kind == SyntaxKind::Identifier) return lhs->to<Identifier>().escapedText == rhs->to<Identifier>().escapedText;
+                return false;
+            }
+
+            if (lhs->kind == SyntaxKind::ThisKeyword) {
+                return true;
+            }
+
+            // If we are at this statement then we must have PropertyAccessExpression and because tag name in Jsx element can only
+            // take forms of JsxTagNameExpression which includes an identifier, "this" expression, or another propertyAccessExpression
+            // it is safe to case the expression property as such. See parseJsxElementName for how we parse tag name in Jsx element
+            if (lhs->kind == SyntaxKind::PropertyAccessExpression && rhs->kind == SyntaxKind::PropertyAccessExpression) {
+                auto l = lhs->to<PropertyAccessExpression>();
+                auto r = rhs->to<PropertyAccessExpression>();
+                return getEscapedName(l.name) == getEscapedName(r.name) && tagNamesAreEquivalent(l.expression, r.expression);
+            }
+            return false;
+        }
+
+        NodeArray parseJsxChildren(shared<NodeUnion(JsxOpeningElement, JsxOpeningFragment)> openingTag) {
+            vector<shared<Node>> list;
+            auto listPos = getNodePos();
+            auto saveParsingContext = parsingContext;
+            parsingContext |= 1 << (int)ParsingContext::JsxChildren;
+
+            while (true) {
+                auto child = parseJsxChild(openingTag, currentToken = scanner.reScanJsxToken());
+                if (!child) break;
+                list.push_back(child);
+                if (isJsxOpeningElement(openingTag)
+                    && (child && child->kind == SyntaxKind::JsxElement)
+                    && !tagNamesAreEquivalent(getTagName(child->to<JsxElement>().openingElement), getTagName(child->to<JsxElement>().closingElement))
+                    && tagNamesAreEquivalent(getTagName(openingTag), getTagName(child->to<JsxElement>().closingElement))) {
+                    // stop after parsing a mismatched child like <div>...(<span></div>) in order to reattach the </div> higher
+                    break;
+                }
+            }
+
+            parsingContext = saveParsingContext;
+            return createNodeArray(list, listPos);
+        }
+
+        shared<JsxClosingElement> parseJsxClosingElement(shared<JsxOpeningElement> open, bool inExpressionContext) {
+            auto pos = getNodePos();
+            parseExpected(SyntaxKind::LessThanSlashToken);
+            auto tagName = parseJsxElementName();
+            if (parseExpected(SyntaxKind::GreaterThanToken, /*diagnostic*/ {}, /*shouldAdvance*/ false)) {
+                // manually advance the scanner in order to look for jsx text inside jsx
+                if (inExpressionContext || !tagNamesAreEquivalent(open->tagName, tagName)) {
+                    nextToken();
+                }
+                else {
+                    scanJsxText();
+                }
+            }
+            return finishNode(factory::createJsxClosingElement(tagName), pos);
+        }
+
+        shared<JsxClosingFragment> parseJsxClosingFragment(bool inExpressionContext) {
+            auto pos = getNodePos();
+            parseExpected(SyntaxKind::LessThanSlashToken);
+            if (tokenIsIdentifierOrKeyword(token())) {
+                parseErrorAtRange(parseJsxElementName(), Diagnostics::Expected_corresponding_closing_tag_for_JSX_fragment);
+            }
+            if (parseExpected(SyntaxKind::GreaterThanToken, /*diagnostic*/ {}, /*shouldAdvance*/ false)) {
+                // manually advance the scanner in order to look for jsx text inside jsx
+                if (inExpressionContext) {
+                    nextToken();
+                }
+                else {
+                    scanJsxText();
+                }
+            }
+            return finishNode(factory::createJsxJsxClosingFragment(), pos);
+        }
+
+        shared<NodeUnion(JsxElement, JsxSelfClosingElement, JsxFragment)>
+        parseJsxElementOrSelfClosingElementOrFragment(bool inExpressionContext, optional<int> topInvalidNodePosition, sharedOpt<NodeUnion(JsxOpeningElement, JsxOpeningFragment)> openingTag) {
+            auto pos = getNodePos();
+            auto _opening = parseJsxOpeningOrSelfClosingElementOrOpeningFragment(inExpressionContext);
+            sharedOpt<Node> result; //JsxElement | JsxSelfClosingElement | JsxFragment
+            if (_opening->kind == SyntaxKind::JsxOpeningElement) {
+                auto opening = dynamic_pointer_cast<JsxOpeningElement>(_opening);
+                auto children = parseJsxChildren(opening);
+                sharedOpt<JsxClosingElement> closingElement; // JsxClosingElement;
+
+                auto lastChild = children.list[children.length() - 1];
+                if (lastChild && lastChild->kind == SyntaxKind::JsxElement
+                    && !tagNamesAreEquivalent(getTagName(lastChild->to<JsxElement>().openingElement), getTagName(lastChild->to<JsxElement>().closingElement))
+                    && tagNamesAreEquivalent(getTagName(opening), getTagName(lastChild->to<JsxElement>().closingElement))) {
+                    // when an unclosed JsxOpeningElement incorrectly parses its parent's JsxClosingElement,
+                    // restructure (<div>(...<span>...</div>)) --> (<div>(...<span>...</>)</div>)
+                    // (no need to error; the parent will error)
+                    auto jsxElement = lastChild->to<JsxElement>();
+                    auto end = jsxElement.children.end;
+                    auto newLast = finishNode(factory::createJsxElement(
+                                                      jsxElement.openingElement,
+                                                      jsxElement.children,
+                                                      finishNode(factory::createJsxClosingElement(finishNode(factory::createIdentifier(""), end, end)), end, end)),
+                                              jsxElement.openingElement->pos,
+                                              end);
+
+                    auto c = children.slice(0, children.length() - 1);
+                    c.push_back(newLast);
+                    children = createNodeArray(c, children.pos, end);
+                    closingElement = jsxElement.closingElement;
+                }
+                else {
+                    closingElement = parseJsxClosingElement(opening, inExpressionContext);
+                    if (!tagNamesAreEquivalent(getTagName(opening), getTagName(closingElement))) {
+                        if (openingTag && isJsxOpeningElement(openingTag) && tagNamesAreEquivalent(getTagName(closingElement), getTagName(openingTag))) {
+                            // opening incorrectly matched with its parent's closing -- put error on opening
+                            parseErrorAtRange(getTagName(opening), Diagnostics::JSX_element_0_has_no_corresponding_closing_tag, getTextOfNodeFromSourceText(sourceText, getTagName(opening)));
+                        }
+                        else {
+                            // other opening/closing mismatches -- put error on closing
+                            parseErrorAtRange(getTagName(closingElement), Diagnostics::Expected_corresponding_JSX_closing_tag_for_0, getTextOfNodeFromSourceText(sourceText, getTagName(opening)));
+                        }
+                    }
+                }
+                result = finishNode(factory::createJsxElement(opening, children, closingElement), pos);
+            }
+            else if (_opening->kind == SyntaxKind::JsxOpeningFragment) {
+                auto opening = dynamic_pointer_cast<JsxOpeningFragment>(_opening);
+                result = finishNode(factory::createJsxFragment(opening, parseJsxChildren(opening), parseJsxClosingFragment(inExpressionContext)), pos);
+            }
+            else {
+                assert(_opening->kind == SyntaxKind::JsxSelfClosingElement);
+                // Nothing else to do for self-closing elements
+                result = _opening;
+            }
+
+            // If the user writes the invalid code '<div></div><div></div>' in an expression context (i.e. not wrapped in
+            // an enclosing tag), we'll naively try to parse   ^ this as a 'less than' operator and the remainder of the tag
+            // as garbage, which will cause the formatter to badly mangle the JSX. Perform a speculative parse of a JSX
+            // element if we see a < token so that we can wrap it in a synthetic binary expression so the formatter
+            // does less damage and we can report a better error.
+            // Since JSX elements are invalid < operands anyway, this lookahead parse will only occur in error scenarios
+            // of one sort or another.
+            if (inExpressionContext && token() == SyntaxKind::LessThanToken) {
+//                auto topBadPos = typeof topInvalidNodePosition == "undefined" ? result.pos : topInvalidNodePosition;
+//                auto invalidElement = tryParse(() => parseJsxElementOrSelfClosingElementOrFragment(/*inExpressionContext*/ true, topBadPos));
+//                if (invalidElement) {
+//                    auto operatorToken = createMissingNode(SyntaxKind::CommaToken, /*reportAtCurrentPosition*/ false);
+//                    setTextRangePosWidth(operatorToken, invalidElement.pos, 0);
+//                    parseErrorAt(skipTrivia(sourceText, topBadPos), invalidElement.end, Diagnostics::JSX_expressions_must_have_one_parent_element);
+//                    return finishNode(factory::createBinaryExpression(result, operatorToken as Token<SyntaxKind::CommaToken>, invalidElement), pos) as Node as JsxElement;
+//                }
+            }
+
+            return result;
+        }
+
+        sharedOpt<NodeUnion(JsxAttributeValue)> parseJsxAttributeValue() {
+            if (token() == SyntaxKind::EqualsToken) {
+                if (scanJsxAttributeValue() == SyntaxKind::StringLiteral) {
+                    return parseLiteralNode();
+                }
+                if (token() == SyntaxKind::OpenBraceToken) {
+                    return parseJsxExpression(/*inExpressionContext*/ true);
+                }
+                if (token() == SyntaxKind::LessThanToken) {
+                    return parseJsxElementOrSelfClosingElementOrFragment(/*inExpressionContext*/ true);
+                }
+                parseErrorAtCurrentToken(Diagnostics::or_JSX_element_expected);
+            }
+            return nullptr;
+        }
+
+        shared<JsxSpreadAttribute> parseJsxSpreadAttribute() {
+            auto pos = getNodePos();
+            parseExpected(SyntaxKind::OpenBraceToken);
+            parseExpected(SyntaxKind::DotDotDotToken);
+            auto expression = parseExpression();
+            parseExpected(SyntaxKind::CloseBraceToken);
+            return finishNode(factory::createJsxSpreadAttribute(expression), pos);
+        }
+
+        shared<NodeUnion(JsxAttribute, JsxSpreadAttribute)> parseJsxAttribute() {
+            if (token() == SyntaxKind::OpenBraceToken) {
+                return parseJsxSpreadAttribute();
+            }
+
+            scanJsxIdentifier();
+            auto pos = getNodePos();
+            return finishNode(factory::createJsxAttribute(parseIdentifierName(), parseJsxAttributeValue()), pos);
+        }
+
+        shared<JsxAttributes> parseJsxAttributes() {
+            auto pos = getNodePos();
+            return finishNode(factory::createJsxAttributes(parseList(ParsingContext::JsxAttributes, parseJsxAttribute)), pos);
+        }
+
+        shared<Node> parseJsxOpeningOrSelfClosingElementOrOpeningFragment(bool inExpressionContext) {
+            auto pos = getNodePos();
+
+            parseExpected(SyntaxKind::LessThanToken);
+
+            if (token() == SyntaxKind::GreaterThanToken) {
+                // See below for explanation of scanJsxText
+                scanJsxText();
+                return finishNode(factory::createJsxOpeningFragment(), pos);
+            }
+            auto tagName = parseJsxElementName();
+            optional<NodeArray> typeArguments = (contextFlags & (int)NodeFlags::JavaScriptFile) == 0 ? tryParseTypeArguments() : nullopt;
+            auto attributes = parseJsxAttributes();
+
+            sharedOpt<NodeUnion(JsxOpeningLikeElement)> node;
+
+            if (token() == SyntaxKind::GreaterThanToken) {
+                // Closing tag, so scan the immediately-following text with the JSX scanning instead
+                // of regular scanning to avoid treating illegal characters (e.g. '#') as immediate
+                // scanning errors
+                scanJsxText();
+                node = factory::createJsxOpeningElement(tagName, typeArguments, attributes);
+            }
+            else {
+                parseExpected(SyntaxKind::SlashToken);
+                if (parseExpected(SyntaxKind::GreaterThanToken, /*diagnostic*/ {}, /*shouldAdvance*/ false)) {
+                    // manually advance the scanner in order to look for jsx text inside jsx
+                    if (inExpressionContext) {
+                        nextToken();
+                    }
+                    else {
+                        scanJsxText();
+                    }
+                }
+                node = factory::createJsxSelfClosingElement(tagName, typeArguments, attributes);
+            }
+
+            return finishNode(node, pos);
+        }
+
+        shared<LeftHandSideExpression> parseLeftHandSideExpressionOrHigher() {
+            // Original Ecma:
+            // LeftHandSideExpression: See 11.2
+            //      NewExpression
+            //      CallExpression
+            //
+            // Our simplification:
+            //
+            // LeftHandSideExpression: See 11.2
+            //      MemberExpression
+            //      CallExpression
+            //
+            // See comment in parseMemberExpressionOrHigher on how we replaced NewExpression with
+            // MemberExpression to make our lives easier.
+            //
+            // to best understand the below code, it's important to see how CallExpression expands
+            // out into its own productions:
+            //
+            // CallExpression:
+            //      MemberExpression Arguments
+            //      CallExpression Arguments
+            //      CallExpression[Expression]
+            //      CallExpression.IdentifierName
+            //      import (AssignmentExpression)
+            //      super Arguments
+            //      super.IdentifierName
+            //
+            // Because of the recursion in these calls, we need to bottom out first. There are three
+            // bottom out states we can run into: 1) We see 'super' which must start either of
+            // the last two CallExpression productions. 2) We see 'import' which must start import call.
+            // 3)we have a MemberExpression which either completes the LeftHandSideExpression,
+            // or starts the beginning of the first four CallExpression productions.
+            auto pos = getNodePos();
+            sharedOpt<MemberExpression> expression;
+            if (token() == SyntaxKind::ImportKeyword) {
+                if (lookAhead(nextTokenIsOpenParenOrLessThan)) {
+                    // We don't want to eagerly consume all import keyword as import call expression so we look ahead to find "("
+                    // For example:
+                    //      var foo3 = require("subfolder
+                    //      import * as foo1 from "module-from-node
+                    // We want this import to be a statement rather than import call expression
+                    sourceFlags |= (int)NodeFlags::PossiblyContainsDynamicImport;
+                    expression = parseTokenNode<PrimaryExpression>();
+                }
+                else if (lookAhead(nextTokenIsDot)) {
+                    // This is an 'import.*' metaproperty (i.e. 'import.meta')
+                    nextToken(); // advance past the 'import'
+                    nextToken(); // advance past the dot
+                    expression = finishNode(factory::createMetaProperty(SyntaxKind::ImportKeyword, parseIdentifierName()), pos);
+                    sourceFlags |= (int)NodeFlags::PossiblyContainsImportMeta;
+                }
+                else {
+                    expression = parseMemberExpressionOrHigher();
+                }
+            }
+            else {
+                expression = token() == SyntaxKind::SuperKeyword ? parseSuperExpression() : parseMemberExpressionOrHigher();
+            }
+
+            // Now, we *may* be complete.  However, we might have consumed the start of a
+            // CallExpression or OptionalExpression.  As such, we need to consume the rest
+            // of it here to be complete.
+            return parseCallExpressionRest(pos, expression);
+        }
+
+
+        /**
+         * Parse ES7 UpdateExpression. UpdateExpression is used instead of ES6's PostFixExpression.
+         *
+         * ES7 UpdateExpression[yield]:
+         *      1) LeftHandSideExpression[?yield]
+         *      2) LeftHandSideExpression[?yield] [[no LineTerminator here]]++
+         *      3) LeftHandSideExpression[?yield] [[no LineTerminator here]]--
+         *      4) ++LeftHandSideExpression[?yield]
+         *      5) --LeftHandSideExpression[?yield]
+         * In TypeScript (2), (3) are parsed as PostfixUnaryExpression. (4), (5) are parsed as PrefixUnaryExpression
+         */
+        shared<Node> parseUpdateExpression() {
+            if (token() == SyntaxKind::PlusPlusToken || token() == SyntaxKind::MinusMinusToken) {
+                auto pos = getNodePos();
+                return finishNode(factory::createPrefixUnaryExpression(token() as PrefixUnaryOperator, nextTokenAnd(parseLeftHandSideExpressionOrHigher)), pos);
+            }
+            else if (languageVariant == LanguageVariant::JSX && token() == SyntaxKind::LessThanToken && lookAhead<bool>(nextTokenIsIdentifierOrKeywordOrGreaterThan)) {
+                // JSXElement is part of primaryExpression
+                return parseJsxElementOrSelfClosingElementOrFragment(/*inExpressionContext*/ true);
+            }
+
+            auto expression = parseLeftHandSideExpressionOrHigher();
+
+            assert(isLeftHandSideExpression(expression));
+            if ((token() == SyntaxKind::PlusPlusToken || token() == SyntaxKind::MinusMinusToken) && !scanner.hasPrecedingLineBreak()) {
+                auto operatorToken = token();
+                nextToken();
+                return finishNode(factory::createPostfixUnaryExpression(expression, operatorToken), expression->pos);
+            }
+
+            return expression;
+        }
+
+
+        /**
+         * Parse ES7 exponential expression and await expression
+         *
+         * ES7 ExponentiationExpression:
+         *      1) UnaryExpression[?Yield]
+         *      2) UpdateExpression[?Yield] ** ExponentiationExpression[?Yield]
+         *
+         */
+        shared<NodeUnion(UnaryExpression, BinaryExpression)> parseUnaryExpressionOrHigher() {
+            /**
+             * ES7 UpdateExpression:
+             *      1) LeftHandSideExpression[?Yield]
+             *      2) LeftHandSideExpression[?Yield][no LineTerminator here]++
+             *      3) LeftHandSideExpression[?Yield][no LineTerminator here]--
+             *      4) ++UnaryExpression[?Yield]
+             *      5) --UnaryExpression[?Yield]
+             */
+            if (isUpdateExpression()) {
+                auto pos = getNodePos();
+                auto updateExpression = parseUpdateExpression();
+                return token() == SyntaxKind::AsteriskAsteriskToken ?
+                    parseBinaryExpressionRest(getBinaryOperatorPrecedence(token()), updateExpression, pos) as BinaryExpression :
+                    updateExpression;
+            }
+
+            /**
+             * ES7 UnaryExpression:
+             *      1) UpdateExpression[?yield]
+             *      2) delete UpdateExpression[?yield]
+             *      3) void UpdateExpression[?yield]
+             *      4) typeof UpdateExpression[?yield]
+             *      5) + UpdateExpression[?yield]
+             *      6) - UpdateExpression[?yield]
+             *      7) ~ UpdateExpression[?yield]
+             *      8) ! UpdateExpression[?yield]
+             */
+            auto unaryOperator = token();
+            auto simpleUnaryExpression = parseSimpleUnaryExpression();
+            if (token() == SyntaxKind::AsteriskAsteriskToken) {
+                auto pos = skipTrivia(sourceText, simpleUnaryExpression.pos);
+                auto { end } = simpleUnaryExpression;
+                if (simpleUnaryExpression.kind == SyntaxKind::TypeAssertionExpression) {
+                    parseErrorAt(pos, end, Diagnostics::A_type_assertion_expression_is_not_allowed_in_the_left_hand_side_of_an_exponentiation_expression_Consider_enclosing_the_expression_in_parentheses);
+                }
+                else {
+                    parseErrorAt(pos, end, Diagnostics::An_unary_expression_with_the_0_operator_is_not_allowed_in_the_left_hand_side_of_an_exponentiation_expression_Consider_enclosing_the_expression_in_parentheses, tokenToString(unaryOperator));
+                }
+            }
+            return simpleUnaryExpression;
+        }
+
         shared<TypeParameterDeclaration> parseTypeParameter() {
             auto pos = getNodePos();
             auto modifiers = parseModifiers();
             auto name = parseIdentifier();
-            let constraint: TypeNode | undefined;
-            let expression: Expression | undefined;
+
+            sharedOpt<TypeNode> constraint;
+            sharedOpt<Expression> expression;
+
             if (parseOptional(SyntaxKind::ExtendsKeyword)) {
                 // It's not uncommon for people to write improper constraints to a generic.  If the
                 // user writes a constraint that is an expression and not an actual type, then parse
                 // it out as an expression (so we can recover well), but report that a type is needed
                 // instead.
-                if (isStartOfType() || !isStartOfExpression()) {
+                if (isStartOfType() || ! isStartOfExpression()) {
                     constraint = parseType();
                 } else {
                     // It was not a type, and it looked like an expression.  Parse out an expression
@@ -3586,12 +4551,52 @@ namespace ts {
             return finishNode(node, pos);
         }
 
-
         optional<NodeArray> parseTypeParameters() {
             if (token() == SyntaxKind::LessThanToken) {
                 return parseBracketedList(ParsingContext::TypeParameters, parseTypeParameter, SyntaxKind::LessThanToken, SyntaxKind::GreaterThanToken);
             }
             return nullopt;
+        }
+
+        shared<TypeNode> parseFunctionOrConstructorType() {
+            auto pos = getNodePos();
+            auto hasJSDoc = hasPrecedingJSDocComment();
+            auto modifiers = parseModifiersForConstructorType();
+            auto isConstructorType = parseOptional(SyntaxKind::NewKeyword);
+            auto typeParameters = parseTypeParameters();
+            auto parameters = parseParameters(SignatureFlags::Type);
+            auto type = parseReturnType(SyntaxKind::EqualsGreaterThanToken, /*isType*/ false);
+            auto node = isConstructorType
+                ? factory::createConstructorTypeNode(modifiers, typeParameters, parameters, type)
+                : factory::createFunctionTypeNode(typeParameters, parameters, type);
+            if (!isConstructorType) reinterpret_cast<Mutable<Node>&>(node).modifiers = modifiers;
+            return withJSDoc(finishNode(node, pos), hasJSDoc);
+        }
+
+        shared<TypeNode> parseType() {
+            if (contextFlags & (int)NodeFlags::TypeExcludesFlags) {
+                return doOutsideOfContext<shared<TypeNode>>(NodeFlags::TypeExcludesFlags, parseType);
+            }
+
+            if (isStartOfFunctionTypeOrConstructorType()) {
+                return parseFunctionOrConstructorType();
+            }
+            auto pos = getNodePos();
+            auto type = parseUnionTypeOrHigher();
+            if (!inDisallowConditionalTypesContext() && !scanner.hasPrecedingLineBreak() && parseOptional(SyntaxKind::ExtendsKeyword)) {
+                // The type following 'extends' is not permitted to be another conditional type
+                auto extendsType = disallowConditionalTypesAnd(parseType);
+                parseExpected(SyntaxKind::QuestionToken);
+                auto trueType = allowConditionalTypesAnd(parseType);
+                parseExpected(SyntaxKind::ColonToken);
+                auto falseType = allowConditionalTypesAnd(parseType);
+                return finishNode(factory::createConditionalTypeNode(type, extendsType, trueType, falseType), pos);
+            }
+            return type;
+        }
+
+        sharedOpt<TypeNpde> parseTypeAnnotation() {
+            return parseOptional(SyntaxKind::ColonToken) ? parseType() : nullptr;
         }
 
 //        function parseSignatureMember(kind: SyntaxKind::CallSignature | SyntaxKind::ConstructSignature): CallSignatureDeclaration | ConstructSignatureDeclaration {
@@ -3681,7 +4686,7 @@ namespace ts {
 //        function parsePropertyOrMethodSignature(pos: number, hasJSDoc: boolean, modifiers: NodeArray<Modifier> | undefined): PropertySignature | MethodSignature {
 //            auto name = parsePropertyName();
 //            auto questionToken = parseOptionalToken(SyntaxKind::QuestionToken);
-//            let node: PropertySignature | MethodSignature;
+//            auto node: PropertySignature | MethodSignature;
 //            if (token() == SyntaxKind::OpenParenToken || token() == SyntaxKind::LessThanToken) {
 //                // Method signatures don't exist in expression contexts.  So they have neither
 //                // [Yield] nor [Await]
@@ -3700,42 +4705,6 @@ namespace ts {
 //            }
 //            parseTypeMemberSemicolon();
 //            return withJSDoc(finishNode(node, pos), hasJSDoc);
-//        }
-//
-//        function isTypeMemberStart(): boolean {
-//            // Return true if we have the start of a signature member
-//            if (token() == SyntaxKind::OpenParenToken ||
-//                token() == SyntaxKind::LessThanToken ||
-//                token() == SyntaxKind::GetKeyword ||
-//                token() == SyntaxKind::SetKeyword) {
-//                return true;
-//            }
-//            let idToken = false;
-//            // Eat up all modifiers, but hold on to the last one in case it is actually an identifier
-//            while (isModifierKind(token())) {
-//                idToken = true;
-//                nextToken();
-//            }
-//            // Index signatures and computed property names are type members
-//            if (token() == SyntaxKind::OpenBracketToken) {
-//                return true;
-//            }
-//            // Try to get the first property-like token following all modifiers
-//            if (isLiteralPropertyName()) {
-//                idToken = true;
-//                nextToken();
-//            }
-//            // If we were able to get any potential identifier, check that it is
-//            // the start of a member declaration
-//            if (idToken) {
-//                return token() == SyntaxKind::OpenParenToken ||
-//                    token() == SyntaxKind::LessThanToken ||
-//                    token() == SyntaxKind::QuestionToken ||
-//                    token() == SyntaxKind::ColonToken ||
-//                    token() == SyntaxKind::CommaToken ||
-//                    canParseSemicolon();
-//            }
-//            return false;
 //        }
 //
 //        function parseTypeMember(): TypeElement {
@@ -3777,7 +4746,7 @@ namespace ts {
 //        }
 //
 //        function parseObjectTypeMembers(): NodeArray<TypeElement> {
-//            let members: NodeArray<TypeElement>;
+//            auto members: NodeArray<TypeElement>;
 //            if (parseExpected(SyntaxKind::OpenBraceToken)) {
 //                members = parseList(ParsingContext::TypeMembers, parseTypeMember);
 //                parseExpected(SyntaxKind::CloseBraceToken);
@@ -3811,7 +4780,7 @@ namespace ts {
 //        function parseMappedType() {
 //            auto pos = getNodePos();
 //            parseExpected(SyntaxKind::OpenBraceToken);
-//            let readonlyToken: ReadonlyKeyword | PlusToken | MinusToken | undefined;
+//            auto readonlyToken: ReadonlyKeyword | PlusToken | MinusToken | undefined;
 //            if (token() == SyntaxKind::ReadonlyKeyword || token() == SyntaxKind::PlusToken || token() == SyntaxKind::MinusToken) {
 //                readonlyToken = parseTokenNode<ReadonlyKeyword | PlusToken | MinusToken>();
 //                if (readonlyToken.kind != SyntaxKind::ReadonlyKeyword) {
@@ -3822,7 +4791,7 @@ namespace ts {
 //            auto typeParameter = parseMappedTypeParameter();
 //            auto nameType = parseOptional(SyntaxKind::AsKeyword) ? parseType() : undefined;
 //            parseExpected(SyntaxKind::CloseBracketToken);
-//            let questionToken: QuestionToken | PlusToken | MinusToken | undefined;
+//            auto questionToken: QuestionToken | PlusToken | MinusToken | undefined;
 //            if (token() == SyntaxKind::QuestionToken || token() == SyntaxKind::PlusToken || token() == SyntaxKind::MinusToken) {
 //                questionToken = parseTokenNode<QuestionToken | PlusToken | MinusToken>();
 //                if (questionToken.kind != SyntaxKind::QuestionToken) {
@@ -3895,32 +4864,6 @@ namespace ts {
 //            return finishNode(factory::createParenthesizedType(type), pos);
 //        }
 //
-//        function parseModifiersForConstructorType(): NodeArray<Modifier> | undefined {
-//            let modifiers: NodeArray<Modifier> | undefined;
-//            if (token() == SyntaxKind::AbstractKeyword) {
-//                auto pos = getNodePos();
-//                nextToken();
-//                auto modifier = finishNode(factory::createToken(SyntaxKind::AbstractKeyword), pos);
-//                modifiers = createNodeArray<Modifier>([modifier], pos);
-//            }
-//            return modifiers;
-//        }
-//
-//        function parseFunctionOrConstructorType(): TypeNode {
-//            auto pos = getNodePos();
-//            auto hasJSDoc = hasPrecedingJSDocComment();
-//            auto modifiers = parseModifiersForConstructorType();
-//            auto isConstructorType = parseOptional(SyntaxKind::NewKeyword);
-//            auto typeParameters = parseTypeParameters();
-//            auto parameters = parseParameters(SignatureFlags::Type);
-//            auto type = parseReturnType(SyntaxKind::EqualsGreaterThanToken, /*isType*/ false);
-//            auto node = isConstructorType
-//                ? factory::createConstructorTypeNode(modifiers, typeParameters, parameters, type)
-//                : factory::createFunctionTypeNode(typeParameters, parameters, type);
-//            if (!isConstructorType) reinterpret_cast<Mutable<Node>&>(node).modifiers = modifiers;
-//            return withJSDoc(finishNode(node, pos), hasJSDoc);
-//        }
-//
 //        function parseKeywordAndNoDot(): TypeNode | undefined {
 //            auto node = parseTokenNode<TypeNode>();
 //            return token() == SyntaxKind::DotToken ? undefined : node;
@@ -3931,7 +4874,7 @@ namespace ts {
 //            if (negative) {
 //                nextToken();
 //            }
-//            let expression: BooleanLiteral | NullLiteral | LiteralExpression | PrefixUnaryExpression =
+//            auto expression: BooleanLiteral | NullLiteral | LiteralExpression | PrefixUnaryExpression =
 //                token() == SyntaxKind::TrueKeyword || token() == SyntaxKind::FalseKeyword || token() == SyntaxKind::NullKeyword ?
 //                    parseTokenNode<BooleanLiteral | NullLiteral>() :
 //                    parseLiteralLikeNode(token()) as LiteralExpression;
@@ -3973,7 +4916,7 @@ namespace ts {
 //            parseExpected(SyntaxKind::ImportKeyword);
 //            parseExpected(SyntaxKind::OpenParenToken);
 //            auto type = parseType();
-//            let assertions: ImportTypeAssertionContainer | undefined;
+//            auto assertions: ImportTypeAssertionContainer | undefined;
 //            if (parseOptional(SyntaxKind::CommaToken)) {
 //                assertions = parseImportTypeAssertions();
 //            }
@@ -4107,7 +5050,7 @@ namespace ts {
 //
 //        function parsePostfixTypeOrHigher(): TypeNode {
 //            auto pos = getNodePos();
-//            let type = parseNonArrayType();
+//            auto type = parseNonArrayType();
 //            while (!scanner.hasPrecedingLineBreak()) {
 //                switch (token()) {
 //                    case SyntaxKind::ExclamationToken:
@@ -4191,7 +5134,7 @@ namespace ts {
 //            // try to parse them gracefully and issue a helpful message.
 //            if (isStartOfFunctionTypeOrConstructorType()) {
 //                auto type = parseFunctionOrConstructorType();
-//                let diagnostic: DiagnosticMessage;
+//                auto diagnostic: DiagnosticMessage;
 //                if (isFunctionTypeNode(type)) {
 //                    diagnostic = isInUnionType
 //                        ? Diagnostics::Function_type_notation_must_be_parenthesized_when_used_in_a_union_type
@@ -4217,7 +5160,7 @@ namespace ts {
 //            auto pos = getNodePos();
 //            auto isUnionType = operator == SyntaxKind::BarToken;
 //            auto hasLeadingOperator = parseOptional(operator);
-//            let type = hasLeadingOperator && parseFunctionOrConstructorTypeToError(isUnionType)
+//            auto type = hasLeadingOperator && parseFunctionOrConstructorTypeToError(isUnionType)
 //                || parseConstituentType();
 //            if (token() == operator || hasLeadingOperator) {
 //                auto types = [type];
@@ -4235,69 +5178,6 @@ namespace ts {
 //
 //        function parseUnionTypeOrHigher(): TypeNode {
 //            return parseUnionOrIntersectionType(SyntaxKind::BarToken, parseIntersectionTypeOrHigher, factory::createUnionTypeNode);
-//        }
-//
-//        function nextTokenIsNewKeyword(): boolean {
-//            nextToken();
-//            return token() == SyntaxKind::NewKeyword;
-//        }
-//
-//        function isStartOfFunctionTypeOrConstructorType(): boolean {
-//            if (token() == SyntaxKind::LessThanToken) {
-//                return true;
-//            }
-//            if (token() == SyntaxKind::OpenParenToken && lookAhead(isUnambiguouslyStartOfFunctionType)) {
-//                return true;
-//            }
-//            return token() == SyntaxKind::NewKeyword ||
-//                token() == SyntaxKind::AbstractKeyword && lookAhead(nextTokenIsNewKeyword);
-//        }
-//
-//        function skipParameterStart(): boolean {
-//            if (isModifierKind(token())) {
-//                // Skip modifiers
-//                parseModifiers();
-//            }
-//            if (isIdentifier() || token() == SyntaxKind::ThisKeyword) {
-//                nextToken();
-//                return true;
-//            }
-//            if (token() == SyntaxKind::OpenBracketToken || token() == SyntaxKind::OpenBraceToken) {
-//                // Return true if we can parse an array or object binding pattern with no errors
-//                auto previousErrorCount = parseDiagnostics.length;
-//                parseIdentifierOrPattern();
-//                return previousErrorCount == parseDiagnostics.length;
-//            }
-//            return false;
-//        }
-//
-//        function isUnambiguouslyStartOfFunctionType() {
-//            nextToken();
-//            if (token() == SyntaxKind::CloseParenToken || token() == SyntaxKind::DotDotDotToken) {
-//                // ( )
-//                // ( ...
-//                return true;
-//            }
-//            if (skipParameterStart()) {
-//                // We successfully skipped modifiers (if any) and an identifier or binding pattern,
-//                // now see if we have something that indicates a parameter declaration
-//                if (token() == SyntaxKind::ColonToken || token() == SyntaxKind::CommaToken ||
-//                    token() == SyntaxKind::QuestionToken || token() == SyntaxKind::EqualsToken) {
-//                    // ( xxx :
-//                    // ( xxx ,
-//                    // ( xxx ?
-//                    // ( xxx =
-//                    return true;
-//                }
-//                if (token() == SyntaxKind::CloseParenToken) {
-//                    nextToken();
-//                    if (token() == SyntaxKind::EqualsGreaterThanToken) {
-//                        // ( xxx ) =>
-//                        return true;
-//                    }
-//                }
-//            }
-//            return false;
 //        }
 //
 //        function parseTypeOrTypePredicate(): TypeNode {
@@ -4327,36 +5207,8 @@ namespace ts {
 //            auto type = parseOptional(SyntaxKind::IsKeyword) ? parseType() : undefined;
 //            return finishNode(factory::createTypePredicateNode(assertsModifier, parameterName, type), pos);
 //        }
-//
-//        function parseType(): TypeNode {
-//            if (contextFlags & NodeFlags::TypeExcludesFlags) {
-//                return doOutsideOfContext(NodeFlags::TypeExcludesFlags, parseType);
-//            }
-//
-//            if (isStartOfFunctionTypeOrConstructorType()) {
-//                return parseFunctionOrConstructorType();
-//            }
-//            auto pos = getNodePos();
-//            auto type = parseUnionTypeOrHigher();
-//            if (!inDisallowConditionalTypesContext() && !scanner.hasPrecedingLineBreak() && parseOptional(SyntaxKind::ExtendsKeyword)) {
-//                // The type following 'extends' is not permitted to be another conditional type
-//                auto extendsType = disallowConditionalTypesAnd(parseType);
-//                parseExpected(SyntaxKind::QuestionToken);
-//                auto trueType = allowConditionalTypesAnd(parseType);
-//                parseExpected(SyntaxKind::ColonToken);
-//                auto falseType = allowConditionalTypesAnd(parseType);
-//                return finishNode(factory::createConditionalTypeNode(type, extendsType, trueType, falseType), pos);
-//            }
-//            return type;
-//        }
-//
-//        function parseTypeAnnotation(): TypeNode | undefined {
-//            return parseOptional(SyntaxKind::ColonToken) ? parseType() : undefined;
-//        }
-//
 
         shared<Expression> parseAssignmentExpressionOrHigher();
-
 
         shared<BinaryExpression> makeBinaryExpression(shared<Expression> left, shared<Node> operatorNode, shared<Expression> right, int pos) {
             auto n = factory::createBinaryExpression(left, operatorNode, right);
@@ -4387,15 +5239,9 @@ namespace ts {
             return expr;
         }
 
-        shared<Expression> parseAssignmentExpressionOrHigher();
-
-        sharedOpt<Expression> parseInitializer() {
-            return parseOptional(SyntaxKind::EqualsToken) ? parseAssignmentExpressionOrHigher() : nullptr;
-        }
-
         bool nextTokenIsIdentifierOrKeywordOrLiteralOnSameLine() {
             nextToken();
-            return (tokenIsIdentifierOrKeyword(token()) || token() == SyntaxKind::NumericLiteral || token() == SyntaxKind::BigIntLiteral || token() == SyntaxKind::StringLiteral) && !scanner.hasPrecedingLineBreak();
+            return (tokenIsIdentifierOrKeyword(token()) || token() == SyntaxKind::NumericLiteral || token() == SyntaxKind::BigIntLiteral || token() == SyntaxKind::StringLiteral) && ! scanner.hasPrecedingLineBreak();
         }
 
         bool isYieldExpression() {
@@ -4435,7 +5281,7 @@ namespace ts {
             //      yield [no LineTerminator here] * [Lexical goal InputElementRegExp]AssignmentExpression[?In, Yield]
             nextToken();
 
-            if (!scanner.hasPrecedingLineBreak() &&
+            if (! scanner.hasPrecedingLineBreak() &&
                 (token() == SyntaxKind::AsteriskToken || isStartOfExpression())) {
                 return finishNode(
                         factory::createYieldExpression(
@@ -4512,7 +5358,7 @@ namespace ts {
                 // If we had "(" followed by something that's not an identifier,
                 // then this definitely doesn't look like a lambda.  "this" is not
                 // valid, but we want to parse it and then give a semantic error.
-                if (!isIdentifier() && second != SyntaxKind::ThisKeyword) {
+                if (! isIdentifier() && second != SyntaxKind::ThisKeyword) {
                     return Tristate::False;
                 }
 
@@ -4537,13 +5383,12 @@ namespace ts {
                 }
                 // It is definitely not an arrow function
                 return Tristate::False;
-            }
-            else {
+            } else {
                 assert(first == SyntaxKind::LessThanToken);
 
                 // If we have "<" not followed by an identifier,
                 // then this definitely is not an arrow function.
-                if (!isIdentifier()) {
+                if (! isIdentifier()) {
                     return Tristate::False;
                 }
 
@@ -4560,8 +5405,7 @@ namespace ts {
                                 default:
                                     return true;
                             }
-                        }
-                        else if (third == SyntaxKind::CommaToken || third == SyntaxKind::EqualsToken) {
+                        } else if (third == SyntaxKind::CommaToken || third == SyntaxKind::EqualsToken) {
                             return true;
                         }
                         return false;
@@ -4578,7 +5422,6 @@ namespace ts {
                 return Tristate::Unknown;
             }
         }
-
 
         //  True        -> We definitely expect a parenthesized arrow function here.
         //  False       -> There *cannot* be a parenthesized arrow function here.
@@ -4603,7 +5446,7 @@ namespace ts {
             if (token() == SyntaxKind::AsyncKeyword) {
                 auto pos = getNodePos();
                 nextToken();
-                auto modifier = finishNode(factory::createToken(SyntaxKind::AsyncKeyword), pos);
+                auto modifier = finishNode(factory::createToken<AsyncKeyword>(SyntaxKind::AsyncKeyword), pos);
                 return factory::createNodeArray({modifier}, pos);
             }
             return nullopt;
@@ -4624,30 +5467,28 @@ namespace ts {
             auto typeParameters = parseTypeParameters();
 
             NodeArray parameters;
-            if (!parseExpected(SyntaxKind::OpenParenToken)) {
-                if (!allowAmbiguity) {
+            if (! parseExpected(SyntaxKind::OpenParenToken)) {
+                if (! allowAmbiguity) {
                     return undefined;
                 }
                 parameters = createMissingList<ParameterDeclaration>();
-            }
-            else {
-                if (!allowAmbiguity) {
+            } else {
+                if (! allowAmbiguity) {
                     auto maybeParameters = parseParametersWorker(isAsync, allowAmbiguity);
-                    if (!maybeParameters) {
+                    if (! maybeParameters) {
                         return undefined;
                     }
                     parameters = maybeParameters;
-                }
-                else {
+                } else {
                     parameters = parseParametersWorker(isAsync, allowAmbiguity);
                 }
-                if (!parseExpected(SyntaxKind::CloseParenToken) && !allowAmbiguity) {
+                if (! parseExpected(SyntaxKind::CloseParenToken) && ! allowAmbiguity) {
                     return undefined;
                 }
             }
 
             auto type = parseReturnType(SyntaxKind::ColonToken, /*isType*/ false);
-            if (type && !allowAmbiguity && typeHasArrowFunctionBlockingParseError(type)) {
+            if (type && ! allowAmbiguity && typeHasArrowFunctionBlockingParseError(type)) {
                 return undefined;
             }
 
@@ -4662,15 +5503,17 @@ namespace ts {
             //
             // So we need just a bit of lookahead to ensure that it can only be a signature.
 
-            let unwrappedType = type;
-            while (unwrappedType?.kind == SyntaxKind::ParenthesizedType) {
-                unwrappedType = (unwrappedType as ParenthesizedTypeNode).type;  // Skip parens if need be
+            auto unwrappedType = type;
+            while (unwrappedType ?.kind == SyntaxKind::ParenthesizedType) {
+                unwrappedType = (unwrappedType
+                as
+                ParenthesizedTypeNode).type;  // Skip parens if need be
             }
 
             auto hasJSDocFunctionType = unwrappedType && isJSDocFunctionType(unwrappedType);
-            if (!allowAmbiguity && token() != SyntaxKind::EqualsGreaterThanToken && (hasJSDocFunctionType || token() != SyntaxKind::OpenBraceToken)) {
+            if (! allowAmbiguity && token() != SyntaxKind::EqualsGreaterThanToken && (hasJSDocFunctionType || token() != SyntaxKind::OpenBraceToken)) {
                 // Returning undefined here will cause our caller to rewind to where we started from.
-                    return undefined;
+                return undefined;
             }
 
             // If we have an arrow, then try to parse the body. Even if not, try to parse if we
@@ -4678,14 +5521,13 @@ namespace ts {
             auto lastToken = token();
             auto equalsGreaterThanToken = parseExpectedToken(SyntaxKind::EqualsGreaterThanToken);
             auto body = (lastToken == SyntaxKind::EqualsGreaterThanToken || lastToken == SyntaxKind::OpenBraceToken)
-                ? parseArrowFunctionExpressionBody(some(modifiers, isAsyncModifier))
-                : parseIdentifier();
+                        ? parseArrowFunctionExpressionBody(some(modifiers, isAsyncModifier))
+                        : parseIdentifier();
 
             auto node = factory::createArrowFunction(modifiers, typeParameters, parameters, type, equalsGreaterThanToken, body);
             return withJSDoc(finishNode(node, pos), hasJSDoc);
         }
 
-        
         sharedOpt<Expression> tryParseParenthesizedArrowFunctionExpression() {
             auto triState = isParenthesizedArrowFunctionExpression();
             if (triState == Tristate::False) {
@@ -4698,10 +5540,9 @@ namespace ts {
             // it out, but don't allow any ambiguity, and return 'undefined' if this could be an
             // expression instead.
             return triState == Tristate::True ?
-                parseParenthesizedArrowFunctionExpression(/*allowAmbiguity*/ true) :
-                tryParse(parsePossibleParenthesizedArrowFunctionExpression);
+                   parseParenthesizedArrowFunctionExpression(/*allowAmbiguity*/ true) :
+                   tryParse(parsePossibleParenthesizedArrowFunctionExpression);
         }
-
 
         shared<Expression> parseAssignmentExpressionOrHigher() {
             //  AssignmentExpression[in,yield]:
@@ -4752,7 +5593,9 @@ namespace ts {
             // parameter ('x => ...') above. We handle it here by checking if the parsed expression was a single
             // identifier and the current token is an arrow.
             if (expr.kind == SyntaxKind::Identifier && token() == SyntaxKind::EqualsGreaterThanToken) {
-                return parseSimpleArrowFunctionExpression(pos, expr as Identifier, /*asyncModifier*/ {});
+                return parseSimpleArrowFunctionExpression(pos, expr
+                as
+                Identifier, /*asyncModifier*/ {});
             }
 
             // Now see if we might be in cases '2' or '3'.
@@ -4767,11 +5610,6 @@ namespace ts {
 
             // It wasn't an assignment or a lambda.  This is a conditional expression:
             return parseConditionalExpressionRest(expr, pos);
-        }
-
-        bool nextTokenIsIdentifierOnSameLine() {
-            nextToken();
-            return !scanner.hasPrecedingLineBreak() && isIdentifier();
         }
 
 //        function parseSimpleArrowFunctionExpression(pos: number, identifier: Identifier, asyncModifier?: NodeArray<Modifier> | undefined): ArrowFunction {
@@ -4859,7 +5697,7 @@ namespace ts {
 //                // user meant to supply a block. For example, if the user wrote:
 //                //
 //                //  a =>
-//                //      let v = 0;
+//                //      auto v = 0;
 //                //  }
 //                //
 //                // they may be missing an open brace.  Check to see if that's the case so we can
@@ -4888,7 +5726,7 @@ namespace ts {
 //
 //            // Note: we explicitly 'allowIn' in the whenTrue part of the condition expression, and
 //            // we do not that for the 'whenFalse' part.
-//            let colonToken;
+//            auto colonToken;
 //            return finishNode(
 //                factory::createConditionalExpression(
 //                    leftOperand,
@@ -5015,57 +5853,6 @@ namespace ts {
 //        }
 //
 //        /**
-//         * Parse ES7 exponential expression and await expression
-//         *
-//         * ES7 ExponentiationExpression:
-//         *      1) UnaryExpression[?Yield]
-//         *      2) UpdateExpression[?Yield] ** ExponentiationExpression[?Yield]
-//         *
-//         */
-//        function parseUnaryExpressionOrHigher(): UnaryExpression | BinaryExpression {
-//            /**
-//             * ES7 UpdateExpression:
-//             *      1) LeftHandSideExpression[?Yield]
-//             *      2) LeftHandSideExpression[?Yield][no LineTerminator here]++
-//             *      3) LeftHandSideExpression[?Yield][no LineTerminator here]--
-//             *      4) ++UnaryExpression[?Yield]
-//             *      5) --UnaryExpression[?Yield]
-//             */
-//            if (isUpdateExpression()) {
-//                auto pos = getNodePos();
-//                auto updateExpression = parseUpdateExpression();
-//                return token() == SyntaxKind::AsteriskAsteriskToken ?
-//                    parseBinaryExpressionRest(getBinaryOperatorPrecedence(token()), updateExpression, pos) as BinaryExpression :
-//                    updateExpression;
-//            }
-//
-//            /**
-//             * ES7 UnaryExpression:
-//             *      1) UpdateExpression[?yield]
-//             *      2) delete UpdateExpression[?yield]
-//             *      3) void UpdateExpression[?yield]
-//             *      4) typeof UpdateExpression[?yield]
-//             *      5) + UpdateExpression[?yield]
-//             *      6) - UpdateExpression[?yield]
-//             *      7) ~ UpdateExpression[?yield]
-//             *      8) ! UpdateExpression[?yield]
-//             */
-//            auto unaryOperator = token();
-//            auto simpleUnaryExpression = parseSimpleUnaryExpression();
-//            if (token() == SyntaxKind::AsteriskAsteriskToken) {
-//                auto pos = skipTrivia(sourceText, simpleUnaryExpression.pos);
-//                auto { end } = simpleUnaryExpression;
-//                if (simpleUnaryExpression.kind == SyntaxKind::TypeAssertionExpression) {
-//                    parseErrorAt(pos, end, Diagnostics::A_type_assertion_expression_is_not_allowed_in_the_left_hand_side_of_an_exponentiation_expression_Consider_enclosing_the_expression_in_parentheses);
-//                }
-//                else {
-//                    parseErrorAt(pos, end, Diagnostics::An_unary_expression_with_the_0_operator_is_not_allowed_in_the_left_hand_side_of_an_exponentiation_expression_Consider_enclosing_the_expression_in_parentheses, tokenToString(unaryOperator));
-//                }
-//            }
-//            return simpleUnaryExpression;
-//        }
-//
-//        /**
 //         * Parse ES7 simple-unary expression or higher:
 //         *
 //         * ES7 UnaryExpression:
@@ -5105,139 +5892,6 @@ namespace ts {
 //                default:
 //                    return parseUpdateExpression();
 //            }
-//        }
-//
-//        /**
-//         * Check if the current token can possibly be an ES7 increment expression.
-//         *
-//         * ES7 UpdateExpression:
-//         *      LeftHandSideExpression[?Yield]
-//         *      LeftHandSideExpression[?Yield][no LineTerminator here]++
-//         *      LeftHandSideExpression[?Yield][no LineTerminator here]--
-//         *      ++LeftHandSideExpression[?Yield]
-//         *      --LeftHandSideExpression[?Yield]
-//         */
-//        function isUpdateExpression(): boolean {
-//            // This function is called inside parseUnaryExpression to decide
-//            // whether to call parseSimpleUnaryExpression or call parseUpdateExpression directly
-//            switch (token()) {
-//                case SyntaxKind::PlusToken:
-//                case SyntaxKind::MinusToken:
-//                case SyntaxKind::TildeToken:
-//                case SyntaxKind::ExclamationToken:
-//                case SyntaxKind::DeleteKeyword:
-//                case SyntaxKind::TypeOfKeyword:
-//                case SyntaxKind::VoidKeyword:
-//                case SyntaxKind::AwaitKeyword:
-//                    return false;
-//                case SyntaxKind::LessThanToken:
-//                    // If we are not in JSX context, we are parsing TypeAssertion which is an UnaryExpression
-//                    if (languageVariant != LanguageVariant::JSX) {
-//                        return false;
-//                    }
-//                    // We are in JSX context and the token is part of JSXElement.
-//                    // falls through
-//                default:
-//                    return true;
-//            }
-//        }
-//
-//        /**
-//         * Parse ES7 UpdateExpression. UpdateExpression is used instead of ES6's PostFixExpression.
-//         *
-//         * ES7 UpdateExpression[yield]:
-//         *      1) LeftHandSideExpression[?yield]
-//         *      2) LeftHandSideExpression[?yield] [[no LineTerminator here]]++
-//         *      3) LeftHandSideExpression[?yield] [[no LineTerminator here]]--
-//         *      4) ++LeftHandSideExpression[?yield]
-//         *      5) --LeftHandSideExpression[?yield]
-//         * In TypeScript (2), (3) are parsed as PostfixUnaryExpression. (4), (5) are parsed as PrefixUnaryExpression
-//         */
-//        function parseUpdateExpression(): UpdateExpression {
-//            if (token() == SyntaxKind::PlusPlusToken || token() == SyntaxKind::MinusMinusToken) {
-//                auto pos = getNodePos();
-//                return finishNode(factory::createPrefixUnaryExpression(token() as PrefixUnaryOperator, nextTokenAnd(parseLeftHandSideExpressionOrHigher)), pos);
-//            }
-//            else if (languageVariant == LanguageVariant::JSX && token() == SyntaxKind::LessThanToken && lookAhead(nextTokenIsIdentifierOrKeywordOrGreaterThan)) {
-//                // JSXElement is part of primaryExpression
-//                return parseJsxElementOrSelfClosingElementOrFragment(/*inExpressionContext*/ true);
-//            }
-//
-//            auto expression = parseLeftHandSideExpressionOrHigher();
-//
-//            Debug.assert(isLeftHandSideExpression(expression));
-//            if ((token() == SyntaxKind::PlusPlusToken || token() == SyntaxKind::MinusMinusToken) && !scanner.hasPrecedingLineBreak()) {
-//                auto operator = token() as PostfixUnaryOperator;
-//                nextToken();
-//                return finishNode(factory::createPostfixUnaryExpression(expression, operator), expression.pos);
-//            }
-//
-//            return expression;
-//        }
-//
-//        function parseLeftHandSideExpressionOrHigher(): LeftHandSideExpression {
-//            // Original Ecma:
-//            // LeftHandSideExpression: See 11.2
-//            //      NewExpression
-//            //      CallExpression
-//            //
-//            // Our simplification:
-//            //
-//            // LeftHandSideExpression: See 11.2
-//            //      MemberExpression
-//            //      CallExpression
-//            //
-//            // See comment in parseMemberExpressionOrHigher on how we replaced NewExpression with
-//            // MemberExpression to make our lives easier.
-//            //
-//            // to best understand the below code, it's important to see how CallExpression expands
-//            // out into its own productions:
-//            //
-//            // CallExpression:
-//            //      MemberExpression Arguments
-//            //      CallExpression Arguments
-//            //      CallExpression[Expression]
-//            //      CallExpression.IdentifierName
-//            //      import (AssignmentExpression)
-//            //      super Arguments
-//            //      super.IdentifierName
-//            //
-//            // Because of the recursion in these calls, we need to bottom out first. There are three
-//            // bottom out states we can run into: 1) We see 'super' which must start either of
-//            // the last two CallExpression productions. 2) We see 'import' which must start import call.
-//            // 3)we have a MemberExpression which either completes the LeftHandSideExpression,
-//            // or starts the beginning of the first four CallExpression productions.
-//            auto pos = getNodePos();
-//            let expression: MemberExpression;
-//            if (token() == SyntaxKind::ImportKeyword) {
-//                if (lookAhead(nextTokenIsOpenParenOrLessThan)) {
-//                    // We don't want to eagerly consume all import keyword as import call expression so we look ahead to find "("
-//                    // For example:
-//                    //      var foo3 = require("subfolder
-//                    //      import * as foo1 from "module-from-node
-//                    // We want this import to be a statement rather than import call expression
-//                    sourceFlags |= NodeFlags::PossiblyContainsDynamicImport;
-//                    expression = parseTokenNode<PrimaryExpression>();
-//                }
-//                else if (lookAhead(nextTokenIsDot)) {
-//                    // This is an 'import.*' metaproperty (i.e. 'import.meta')
-//                    nextToken(); // advance past the 'import'
-//                    nextToken(); // advance past the dot
-//                    expression = finishNode(factory::createMetaProperty(SyntaxKind::ImportKeyword, parseIdentifierName()), pos);
-//                    sourceFlags |= NodeFlags::PossiblyContainsImportMeta;
-//                }
-//                else {
-//                    expression = parseMemberExpressionOrHigher();
-//                }
-//            }
-//            else {
-//                expression = token() == SyntaxKind::SuperKeyword ? parseSuperExpression() : parseMemberExpressionOrHigher();
-//            }
-//
-//            // Now, we *may* be complete.  However, we might have consumed the start of a
-//            // CallExpression or OptionalExpression.  As such, we need to consume the rest
-//            // of it here to be complete.
-//            return parseCallExpressionRest(pos, expression);
 //        }
 //
 //        function parseMemberExpressionOrHigher(): MemberExpression {
@@ -5315,295 +5969,6 @@ namespace ts {
 //            return finishNode(factory::createPropertyAccessExpression(expression, parseRightSideOfDot(/*allowIdentifierNames*/ true, /*allowPrivateIdentifiers*/ true)), pos);
 //        }
 //
-//        function parseJsxElementOrSelfClosingElementOrFragment(inExpressionContext: boolean, topInvalidNodePosition?: number, openingTag?: JsxOpeningElement | JsxOpeningFragment): JsxElement | JsxSelfClosingElement | JsxFragment {
-//            auto pos = getNodePos();
-//            auto opening = parseJsxOpeningOrSelfClosingElementOrOpeningFragment(inExpressionContext);
-//            let result: JsxElement | JsxSelfClosingElement | JsxFragment;
-//            if (opening.kind == SyntaxKind::JsxOpeningElement) {
-//                let children = parseJsxChildren(opening);
-//                let closingElement: JsxClosingElement;
-//
-//                auto lastChild: JsxChild | undefined = children[children.length - 1];
-//                if (lastChild?.kind == SyntaxKind::JsxElement
-//                    && !tagNamesAreEquivalent(lastChild.openingElement.tagName, lastChild.closingElement.tagName)
-//                    && tagNamesAreEquivalent(opening.tagName, lastChild.closingElement.tagName)) {
-//                    // when an unclosed JsxOpeningElement incorrectly parses its parent's JsxClosingElement,
-//                    // restructure (<div>(...<span>...</div>)) --> (<div>(...<span>...</>)</div>)
-//                    // (no need to error; the parent will error)
-//                    auto end = lastChild.children.end;
-//                    auto newLast = finishNode(factory::createJsxElement(
-//                        lastChild.openingElement,
-//                        lastChild.children,
-//                        finishNode(factory::createJsxClosingElement(finishNode(factory::createIdentifier(""), end, end)), end, end)),
-//                    lastChild.openingElement.pos,
-//                    end);
-//
-//                    children = createNodeArray([...children.slice(0, children.length - 1), newLast], children.pos, end);
-//                    closingElement = lastChild.closingElement;
-//                }
-//                else {
-//                    closingElement = parseJsxClosingElement(opening, inExpressionContext);
-//                    if (!tagNamesAreEquivalent(opening.tagName, closingElement.tagName)) {
-//                        if (openingTag && isJsxOpeningElement(openingTag) && tagNamesAreEquivalent(closingElement.tagName, openingTag.tagName)) {
-//                            // opening incorrectly matched with its parent's closing -- put error on opening
-//                            parseErrorAtRange(opening.tagName, Diagnostics::JSX_element_0_has_no_corresponding_closing_tag, getTextOfNodeFromSourceText(sourceText, opening.tagName));
-//                        }
-//                        else {
-//                            // other opening/closing mismatches -- put error on closing
-//                            parseErrorAtRange(closingElement.tagName, Diagnostics::Expected_corresponding_JSX_closing_tag_for_0, getTextOfNodeFromSourceText(sourceText, opening.tagName));
-//                        }
-//                    }
-//                }
-//                result = finishNode(factory::createJsxElement(opening, children, closingElement), pos);
-//            }
-//            else if (opening.kind == SyntaxKind::JsxOpeningFragment) {
-//                result = finishNode(factory::createJsxFragment(opening, parseJsxChildren(opening), parseJsxClosingFragment(inExpressionContext)), pos);
-//            }
-//            else {
-//                Debug.assert(opening.kind == SyntaxKind::JsxSelfClosingElement);
-//                // Nothing else to do for self-closing elements
-//                result = opening;
-//            }
-//
-//            // If the user writes the invalid code '<div></div><div></div>' in an expression context (i.e. not wrapped in
-//            // an enclosing tag), we'll naively try to parse   ^ this as a 'less than' operator and the remainder of the tag
-//            // as garbage, which will cause the formatter to badly mangle the JSX. Perform a speculative parse of a JSX
-//            // element if we see a < token so that we can wrap it in a synthetic binary expression so the formatter
-//            // does less damage and we can report a better error.
-//            // Since JSX elements are invalid < operands anyway, this lookahead parse will only occur in error scenarios
-//            // of one sort or another.
-//            if (inExpressionContext && token() == SyntaxKind::LessThanToken) {
-//                auto topBadPos = typeof topInvalidNodePosition == "undefined" ? result.pos : topInvalidNodePosition;
-//                auto invalidElement = tryParse(() => parseJsxElementOrSelfClosingElementOrFragment(/*inExpressionContext*/ true, topBadPos));
-//                if (invalidElement) {
-//                    auto operatorToken = createMissingNode(SyntaxKind::CommaToken, /*reportAtCurrentPosition*/ false);
-//                    setTextRangePosWidth(operatorToken, invalidElement.pos, 0);
-//                    parseErrorAt(skipTrivia(sourceText, topBadPos), invalidElement.end, Diagnostics::JSX_expressions_must_have_one_parent_element);
-//                    return finishNode(factory::createBinaryExpression(result, operatorToken as Token<SyntaxKind::CommaToken>, invalidElement), pos) as Node as JsxElement;
-//                }
-//            }
-//
-//            return result;
-//        }
-//
-//        function parseJsxText(): JsxText {
-//            auto pos = getNodePos();
-//            auto node = factory::createJsxText(scanner.getTokenValue(), currentToken == SyntaxKind::JsxTextAllWhiteSpaces);
-//            currentToken = scanner.scanJsxToken();
-//            return finishNode(node, pos);
-//        }
-//
-//        function parseJsxChild(openingTag: JsxOpeningElement | JsxOpeningFragment, token: JsxTokenSyntaxKind): JsxChild | undefined {
-//            switch (token) {
-//                case SyntaxKind::EndOfFileToken:
-//                    // If we hit EOF, issue the error at the tag that lacks the closing element
-//                    // rather than at the end of the file (which is useless)
-//                    if (isJsxOpeningFragment(openingTag)) {
-//                        parseErrorAtRange(openingTag, Diagnostics::JSX_fragment_has_no_corresponding_closing_tag);
-//                    }
-//                    else {
-//                        // We want the error span to cover only 'Foo.Bar' in < Foo.Bar >
-//                        // or to cover only 'Foo' in < Foo >
-//                        auto tag = openingTag.tagName;
-//                        auto start = skipTrivia(sourceText, tag.pos);
-//                        parseErrorAt(start, tag.end, Diagnostics::JSX_element_0_has_no_corresponding_closing_tag, getTextOfNodeFromSourceText(sourceText, openingTag.tagName));
-//                    }
-//                    return undefined;
-//                case SyntaxKind::LessThanSlashToken:
-//                case SyntaxKind::ConflictMarkerTrivia:
-//                    return undefined;
-//                case SyntaxKind::JsxText:
-//                case SyntaxKind::JsxTextAllWhiteSpaces:
-//                    return parseJsxText();
-//                case SyntaxKind::OpenBraceToken:
-//                    return parseJsxExpression(/*inExpressionContext*/ false);
-//                case SyntaxKind::LessThanToken:
-//                    return parseJsxElementOrSelfClosingElementOrFragment(/*inExpressionContext*/ false, /*topInvalidNodePosition*/ undefined, openingTag);
-//                default:
-//                    return Debug.assertNever(token);
-//            }
-//        }
-//
-//        function parseJsxChildren(openingTag: JsxOpeningElement | JsxOpeningFragment): NodeArray<JsxChild> {
-//            auto list = [];
-//            auto listPos = getNodePos();
-//            auto saveParsingContext = parsingContext;
-//            parsingContext |= 1 << ParsingContext::JsxChildren;
-//
-//            while (true) {
-//                auto child = parseJsxChild(openingTag, currentToken = scanner.reScanJsxToken());
-//                if (!child) break;
-//                list.push(child);
-//                if (isJsxOpeningElement(openingTag)
-//                    && child?.kind == SyntaxKind::JsxElement
-//                    && !tagNamesAreEquivalent(child.openingElement.tagName, child.closingElement.tagName)
-//                    && tagNamesAreEquivalent(openingTag.tagName, child.closingElement.tagName)) {
-//                    // stop after parsing a mismatched child like <div>...(<span></div>) in order to reattach the </div> higher
-//                    break;
-//                }
-//            }
-//
-//            parsingContext = saveParsingContext;
-//            return createNodeArray(list, listPos);
-//        }
-//
-//        function parseJsxAttributes(): JsxAttributes {
-//            auto pos = getNodePos();
-//            return finishNode(factory::createJsxAttributes(parseList(ParsingContext::JsxAttributes, parseJsxAttribute)), pos);
-//        }
-//
-//        function parseJsxOpeningOrSelfClosingElementOrOpeningFragment(inExpressionContext: boolean): JsxOpeningElement | JsxSelfClosingElement | JsxOpeningFragment {
-//            auto pos = getNodePos();
-//
-//            parseExpected(SyntaxKind::LessThanToken);
-//
-//            if (token() == SyntaxKind::GreaterThanToken) {
-//                // See below for explanation of scanJsxText
-//                scanJsxText();
-//                return finishNode(factory::createJsxOpeningFragment(), pos);
-//            }
-//            auto tagName = parseJsxElementName();
-//            auto typeArguments = (contextFlags & NodeFlags::JavaScriptFile) == 0 ? tryParseTypeArguments() : undefined;
-//            auto attributes = parseJsxAttributes();
-//
-//            let node: JsxOpeningLikeElement;
-//
-//            if (token() == SyntaxKind::GreaterThanToken) {
-//                // Closing tag, so scan the immediately-following text with the JSX scanning instead
-//                // of regular scanning to avoid treating illegal characters (e.g. '#') as immediate
-//                // scanning errors
-//                scanJsxText();
-//                node = factory::createJsxOpeningElement(tagName, typeArguments, attributes);
-//            }
-//            else {
-//                parseExpected(SyntaxKind::SlashToken);
-//                if (parseExpected(SyntaxKind::GreaterThanToken, /*diagnostic*/ undefined, /*shouldAdvance*/ false)) {
-//                    // manually advance the scanner in order to look for jsx text inside jsx
-//                    if (inExpressionContext) {
-//                        nextToken();
-//                    }
-//                    else {
-//                        scanJsxText();
-//                    }
-//                }
-//                node = factory::createJsxSelfClosingElement(tagName, typeArguments, attributes);
-//            }
-//
-//            return finishNode(node, pos);
-//        }
-//
-//        function parseJsxElementName(): JsxTagNameExpression {
-//            auto pos = getNodePos();
-//            scanJsxIdentifier();
-//            // JsxElement can have name in the form of
-//            //      propertyAccessExpression
-//            //      primaryExpression in the form of an identifier and "this" keyword
-//            // We can't just simply use parseLeftHandSideExpressionOrHigher because then we will start consider class,function etc as a keyword
-//            // We only want to consider "this" as a primaryExpression
-//            let expression: JsxTagNameExpression = token() == SyntaxKind::ThisKeyword ?
-//                parseTokenNode<ThisExpression>() : parseIdentifierName();
-//            while (parseOptional(SyntaxKind::DotToken)) {
-//                expression = finishNode(factory::createPropertyAccessExpression(expression, parseRightSideOfDot(/*allowIdentifierNames*/ true, /*allowPrivateIdentifiers*/ false)), pos) as JsxTagNamePropertyAccess;
-//            }
-//            return expression;
-//        }
-//
-//        function parseJsxExpression(inExpressionContext: boolean): JsxExpression | undefined {
-//            auto pos = getNodePos();
-//            if (!parseExpected(SyntaxKind::OpenBraceToken)) {
-//                return undefined;
-//            }
-//
-//            let dotDotDotToken: DotDotDotToken | undefined;
-//            let expression: Expression | undefined;
-//            if (token() != SyntaxKind::CloseBraceToken) {
-//                dotDotDotToken = parseOptionalToken(SyntaxKind::DotDotDotToken);
-//                // Only an AssignmentExpression is valid here per the JSX spec,
-//                // but we can unambiguously parse a comma sequence and provide
-//                // a better error message in grammar checking.
-//                expression = parseExpression();
-//            }
-//            if (inExpressionContext) {
-//                parseExpected(SyntaxKind::CloseBraceToken);
-//            }
-//            else {
-//                if (parseExpected(SyntaxKind::CloseBraceToken, /*message*/ undefined, /*shouldAdvance*/ false)) {
-//                    scanJsxText();
-//                }
-//            }
-//
-//            return finishNode(factory::createJsxExpression(dotDotDotToken, expression), pos);
-//        }
-//
-//        function parseJsxAttribute(): JsxAttribute | JsxSpreadAttribute {
-//            if (token() == SyntaxKind::OpenBraceToken) {
-//                return parseJsxSpreadAttribute();
-//            }
-//
-//            scanJsxIdentifier();
-//            auto pos = getNodePos();
-//            return finishNode(factory::createJsxAttribute(parseIdentifierName(), parseJsxAttributeValue()), pos);
-//        }
-//
-//        function parseJsxAttributeValue(): JsxAttributeValue | undefined {
-//            if (token() == SyntaxKind::EqualsToken) {
-//                if (scanJsxAttributeValue() == SyntaxKind::StringLiteral) {
-//                    return parseLiteralNode() as StringLiteral;
-//                }
-//                if (token() == SyntaxKind::OpenBraceToken) {
-//                    return parseJsxExpression(/*inExpressionContext*/ true);
-//                }
-//                if (token() == SyntaxKind::LessThanToken) {
-//                    return parseJsxElementOrSelfClosingElementOrFragment(/*inExpressionContext*/ true);
-//                }
-//                parseErrorAtCurrentToken(Diagnostics::or_JSX_element_expected);
-//            }
-//            return undefined;
-//        }
-//
-//        function parseJsxSpreadAttribute(): JsxSpreadAttribute {
-//            auto pos = getNodePos();
-//            parseExpected(SyntaxKind::OpenBraceToken);
-//            parseExpected(SyntaxKind::DotDotDotToken);
-//            auto expression = parseExpression();
-//            parseExpected(SyntaxKind::CloseBraceToken);
-//            return finishNode(factory::createJsxSpreadAttribute(expression), pos);
-//        }
-//
-//        function parseJsxClosingElement(open: JsxOpeningElement, inExpressionContext: boolean): JsxClosingElement {
-//            auto pos = getNodePos();
-//            parseExpected(SyntaxKind::LessThanSlashToken);
-//            auto tagName = parseJsxElementName();
-//            if (parseExpected(SyntaxKind::GreaterThanToken, /*diagnostic*/ undefined, /*shouldAdvance*/ false)) {
-//                // manually advance the scanner in order to look for jsx text inside jsx
-//                if (inExpressionContext || !tagNamesAreEquivalent(open.tagName, tagName)) {
-//                    nextToken();
-//                }
-//                else {
-//                    scanJsxText();
-//                }
-//            }
-//            return finishNode(factory::createJsxClosingElement(tagName), pos);
-//        }
-//
-//        function parseJsxClosingFragment(inExpressionContext: boolean): JsxClosingFragment {
-//            auto pos = getNodePos();
-//            parseExpected(SyntaxKind::LessThanSlashToken);
-//            if (tokenIsIdentifierOrKeyword(token())) {
-//                parseErrorAtRange(parseJsxElementName(), Diagnostics::Expected_corresponding_closing_tag_for_JSX_fragment);
-//            }
-//            if (parseExpected(SyntaxKind::GreaterThanToken, /*diagnostic*/ undefined, /*shouldAdvance*/ false)) {
-//                // manually advance the scanner in order to look for jsx text inside jsx
-//                if (inExpressionContext) {
-//                    nextToken();
-//                }
-//                else {
-//                    scanJsxText();
-//                }
-//            }
-//            return finishNode(factory::createJsxJsxClosingFragment(), pos);
-//        }
-//
 //        function parseTypeAssertion(): TypeAssertion {
 //            auto pos = getNodePos();
 //            parseExpected(SyntaxKind::LessThanToken);
@@ -5631,7 +5996,7 @@ namespace ts {
 //            }
 //            // check for an optional chain in a non-null expression
 //            if (isNonNullExpression(node)) {
-//                let expr = node.expression;
+//                auto expr = node.expression;
 //                while (isNonNullExpression(expr) && !(expr.flags & NodeFlags::OptionalChain)) {
 //                    expr = expr.expression;
 //                }
@@ -5660,7 +6025,7 @@ namespace ts {
 //        }
 //
 //        function parseElementAccessExpressionRest(pos: number, expression: LeftHandSideExpression, questionDotToken: QuestionDotToken | undefined) {
-//            let argumentExpression: Expression;
+//            auto argumentExpression: Expression;
 //            if (token() == SyntaxKind::CloseBracketToken) {
 //                argumentExpression = createMissingNode(SyntaxKind::Identifier, /*reportAtCurrentPosition*/ true, Diagnostics::An_element_access_expression_should_take_an_argument);
 //            }
@@ -5682,8 +6047,8 @@ namespace ts {
 //
 //        function parseMemberExpressionRest(pos: number, expression: LeftHandSideExpression, allowOptionalChain: boolean): MemberExpression {
 //            while (true) {
-//                let questionDotToken: QuestionDotToken | undefined;
-//                let isPropertyAccess = false;
+//                auto questionDotToken: QuestionDotToken | undefined;
+//                auto isPropertyAccess = false;
 //                if (allowOptionalChain && isStartOfOptionalPropertyOrElementAccessChain()) {
 //                    questionDotToken = parseExpectedToken(SyntaxKind::QuestionDotToken);
 //                    isPropertyAccess = tokenIsIdentifierOrKeyword(token());
@@ -5750,7 +6115,7 @@ namespace ts {
 //        function parseCallExpressionRest(pos: number, expression: LeftHandSideExpression): LeftHandSideExpression {
 //            while (true) {
 //                expression = parseMemberExpressionRest(pos, expression, /*allowOptionalChain*/ true);
-//                let typeArguments: NodeArray<TypeNode> | undefined;
+//                auto typeArguments: NodeArray<TypeNode> | undefined;
 //                auto questionDotToken = parseOptionalToken(SyntaxKind::QuestionDotToken);
 //                if (questionDotToken) {
 //                    typeArguments = tryParse(parseTypeArgumentsInExpression);
@@ -5946,7 +6311,7 @@ namespace ts {
 //            // CoverInitializedName[Yield] :
 //            //     IdentifierReference[?Yield] Initializer[In, ?Yield]
 //            // this is necessary because ObjectLiteral productions are also used to cover grammar for ObjectAssignmentPattern
-//            let node: Mutable<ShorthandPropertyAssignment | PropertyAssignment>;
+//            auto node: Mutable<ShorthandPropertyAssignment | PropertyAssignment>;
 //            auto isShorthandPropertyAssignment = tokenIsIdentifier && (token() != SyntaxKind::ColonToken);
 //            if (isShorthandPropertyAssignment) {
 //                auto equalsToken = parseOptionalToken(SyntaxKind::EqualsToken);
@@ -6023,8 +6388,8 @@ namespace ts {
 //                return finishNode(factory::createMetaProperty(SyntaxKind::NewKeyword, name), pos);
 //            }
 //            auto expressionPos = getNodePos();
-//            let expression: LeftHandSideExpression = parseMemberExpressionRest(expressionPos, parsePrimaryExpression(), /*allowOptionalChain*/ false);
-//            let typeArguments: NodeArray<TypeNode> | undefined;
+//            auto expression: LeftHandSideExpression = parseMemberExpressionRest(expressionPos, parsePrimaryExpression(), /*allowOptionalChain*/ false);
+//            auto typeArguments: NodeArray<TypeNode> | undefined;
 //            // Absorb type arguments into NewExpression when preceding expression is ExpressionWithTypeArguments
 //            if (expression.kind == SyntaxKind::ExpressionWithTypeArguments) {
 //                typeArguments = (expression as ExpressionWithTypeArguments).typeArguments;
@@ -6087,14 +6452,14 @@ namespace ts {
 //
 //            return block;
 //        }
-//
-//        function parseEmptyStatement(): Statement {
-//            auto pos = getNodePos();
-//            auto hasJSDoc = hasPrecedingJSDocComment();
-//            parseExpected(SyntaxKind::SemicolonToken);
-//            return withJSDoc(finishNode(factory::createEmptyStatement(), pos), hasJSDoc);
-//        }
-//
+
+        shared<Statement> parseEmptyStatement() {
+            auto pos = getNodePos();
+            auto hasJSDoc = hasPrecedingJSDocComment();
+            parseExpected(SyntaxKind::SemicolonToken);
+            return withJSDoc(finishNode(factory::createEmptyStatement(), pos), hasJSDoc);
+        }
+
 //        function parseIfStatement(): IfStatement {
 //            auto pos = getNodePos();
 //            auto hasJSDoc = hasPrecedingJSDocComment();
@@ -6146,7 +6511,7 @@ namespace ts {
 //            auto awaitToken = parseOptionalToken(SyntaxKind::AwaitKeyword);
 //            parseExpected(SyntaxKind::OpenParenToken);
 //
-//            let initializer!: VariableDeclarationList | Expression;
+//            auto initializer!: VariableDeclarationList | Expression;
 //            if (token() != SyntaxKind::SemicolonToken) {
 //                if (token() == SyntaxKind::VarKeyword || token() == SyntaxKind::LetKeyword || token() == SyntaxKind::ConstKeyword) {
 //                    initializer = parseVariableDeclarationList(/*inForStatementInitializer*/ true);
@@ -6156,7 +6521,7 @@ namespace ts {
 //                }
 //            }
 //
-//            let node: IterationStatement;
+//            auto node: IterationStatement;
 //            if (awaitToken ? parseExpected(SyntaxKind::OfKeyword) : parseOptional(SyntaxKind::OfKeyword)) {
 //                auto expression = allowInAnd(parseAssignmentExpressionOrHigher);
 //                parseExpected(SyntaxKind::CloseParenToken);
@@ -6272,7 +6637,7 @@ namespace ts {
 //            // directly as that might consume an expression on the following line.
 //            // Instead, we create a "missing" identifier, but don't report an error. The actual error
 //            // will be reported in the grammar walker.
-//            let expression = scanner.hasPrecedingLineBreak() ? undefined : allowInAnd(parseExpression);
+//            auto expression = scanner.hasPrecedingLineBreak() ? undefined : allowInAnd(parseExpression);
 //            if (expression == undefined) {
 //                identifierCount++;
 //                expression = finishNode(factory::createIdentifier(""), getNodePos());
@@ -6294,7 +6659,7 @@ namespace ts {
 //
 //            // If we don't have a catch clause, then we must have a finally clause.  Try to parse
 //            // one out no matter what.
-//            let finallyBlock: Block | undefined;
+//            auto finallyBlock: Block | undefined;
 //            if (!catchClause || token() == SyntaxKind::FinallyKeyword) {
 //                parseExpected(SyntaxKind::FinallyKeyword, Diagnostics::catch_or_finally_expected);
 //                finallyBlock = parseBlock(/*ignoreMissingOpenBrace*/ false);
@@ -6307,7 +6672,7 @@ namespace ts {
 //            auto pos = getNodePos();
 //            parseExpected(SyntaxKind::CatchKeyword);
 //
-//            let variableDeclaration;
+//            auto variableDeclaration;
 //            if (parseOptional(SyntaxKind::OpenParenToken)) {
 //                variableDeclaration = parseVariableDeclaration();
 //                parseExpected(SyntaxKind::CloseParenToken);
@@ -6337,7 +6702,7 @@ namespace ts {
 //            auto hasJSDoc = hasPrecedingJSDocComment();
             shared<NodeUnion(ExpressionStatement, LabeledStatement)> node;
             auto hasParen = token() == SyntaxKind::OpenParenToken;
-            auto expression = allowInAnd(parseExpression);
+            auto expression = allowInAnd<shared<Expression>>(parseExpression);
             if (isIdentifier(expression) && parseOptional(SyntaxKind::ColonToken)) {
                 parseStatement();
                 node = make_shared<LabeledStatement>({
@@ -6358,157 +6723,6 @@ namespace ts {
 //            return withJSDoc(finishNode(node, pos), hasJSDoc);
         }
 
-        bool nextTokenIsIdentifierOrKeywordOnSameLine() {
-            nextToken();
-            return tokenIsIdentifierOrKeyword(token()) && !scanner.hasPrecedingLineBreak();
-        }
-
-//
-//        function isDeclaration(): boolean {
-//            while (true) {
-//                switch (token()) {
-//                    case SyntaxKind::VarKeyword:
-//                    case SyntaxKind::LetKeyword:
-//                    case SyntaxKind::ConstKeyword:
-//                    case SyntaxKind::FunctionKeyword:
-//                    case SyntaxKind::ClassKeyword:
-//                    case SyntaxKind::EnumKeyword:
-//                        return true;
-//
-//                    // 'declare', 'module', 'namespace', 'interface'* and 'type' are all legal JavaScript identifiers;
-//                    // however, an identifier cannot be followed by another identifier on the same line. This is what we
-//                    // count on to parse out the respective declarations. For instance, we exploit this to say that
-//                    //
-//                    //    namespace n
-//                    //
-//                    // can be none other than the beginning of a namespace declaration, but need to respect that JavaScript sees
-//                    //
-//                    //    namespace
-//                    //    n
-//                    //
-//                    // as the identifier 'namespace' on one line followed by the identifier 'n' on another.
-//                    // We need to look one token ahead to see if it permissible to try parsing a declaration.
-//                    //
-//                    // *Note*: 'interface' is actually a strict mode reserved word. So while
-//                    //
-//                    //   "use strict"
-//                    //   interface
-//                    //   I {}
-//                    //
-//                    // could be legal, it would add complexity for very little gain.
-//                    case SyntaxKind::InterfaceKeyword:
-//                    case SyntaxKind::TypeKeyword:
-//                        return nextTokenIsIdentifierOnSameLine();
-//                    case SyntaxKind::ModuleKeyword:
-//                    case SyntaxKind::NamespaceKeyword:
-//                        return nextTokenIsIdentifierOrStringLiteralOnSameLine();
-//                    case SyntaxKind::AbstractKeyword:
-//                    case SyntaxKind::AsyncKeyword:
-//                    case SyntaxKind::DeclareKeyword:
-//                    case SyntaxKind::PrivateKeyword:
-//                    case SyntaxKind::ProtectedKeyword:
-//                    case SyntaxKind::PublicKeyword:
-//                    case SyntaxKind::ReadonlyKeyword:
-//                        nextToken();
-//                        // ASI takes effect for this modifier.
-//                        if (scanner.hasPrecedingLineBreak()) {
-//                            return false;
-//                        }
-//                        continue;
-//
-//                    case SyntaxKind::GlobalKeyword:
-//                        nextToken();
-//                        return token() == SyntaxKind::OpenBraceToken || token() == SyntaxKind::Identifier || token() == SyntaxKind::ExportKeyword;
-//
-//                    case SyntaxKind::ImportKeyword:
-//                        nextToken();
-//                        return token() == SyntaxKind::StringLiteral || token() == SyntaxKind::AsteriskToken ||
-//                            token() == SyntaxKind::OpenBraceToken || tokenIsIdentifierOrKeyword(token());
-//                    case SyntaxKind::ExportKeyword:
-//                        let currentToken = nextToken();
-//                        if (currentToken == SyntaxKind::TypeKeyword) {
-//                            currentToken = lookAhead(nextToken);
-//                        }
-//                        if (currentToken == SyntaxKind::EqualsToken || currentToken == SyntaxKind::AsteriskToken ||
-//                            currentToken == SyntaxKind::OpenBraceToken || currentToken == SyntaxKind::DefaultKeyword ||
-//                            currentToken == SyntaxKind::AsKeyword) {
-//                            return true;
-//                        }
-//                        continue;
-//
-//                    case SyntaxKind::StaticKeyword:
-//                        nextToken();
-//                        continue;
-//                    default:
-//                        return false;
-//                }
-//            }
-//        }
-//
-//        function isStartOfDeclaration(): boolean {
-//            return lookAhead(isDeclaration);
-//        }
-//
-//        function isStartOfStatement(): boolean {
-//            switch (token()) {
-//                case SyntaxKind::AtToken:
-//                case SyntaxKind::SemicolonToken:
-//                case SyntaxKind::OpenBraceToken:
-//                case SyntaxKind::VarKeyword:
-//                case SyntaxKind::LetKeyword:
-//                case SyntaxKind::FunctionKeyword:
-//                case SyntaxKind::ClassKeyword:
-//                case SyntaxKind::EnumKeyword:
-//                case SyntaxKind::IfKeyword:
-//                case SyntaxKind::DoKeyword:
-//                case SyntaxKind::WhileKeyword:
-//                case SyntaxKind::ForKeyword:
-//                case SyntaxKind::ContinueKeyword:
-//                case SyntaxKind::BreakKeyword:
-//                case SyntaxKind::ReturnKeyword:
-//                case SyntaxKind::WithKeyword:
-//                case SyntaxKind::SwitchKeyword:
-//                case SyntaxKind::ThrowKeyword:
-//                case SyntaxKind::TryKeyword:
-//                case SyntaxKind::DebuggerKeyword:
-//                // 'catch' and 'finally' do not actually indicate that the code is part of a statement,
-//                // however, we say they are here so that we may gracefully parse them and error later.
-//                // falls through
-//                case SyntaxKind::CatchKeyword:
-//                case SyntaxKind::FinallyKeyword:
-//                    return true;
-//
-//                case SyntaxKind::ImportKeyword:
-//                    return isStartOfDeclaration() || lookAhead(nextTokenIsOpenParenOrLessThanOrDot);
-//
-//                case SyntaxKind::ConstKeyword:
-//                case SyntaxKind::ExportKeyword:
-//                    return isStartOfDeclaration();
-//
-//                case SyntaxKind::AsyncKeyword:
-//                case SyntaxKind::DeclareKeyword:
-//                case SyntaxKind::InterfaceKeyword:
-//                case SyntaxKind::ModuleKeyword:
-//                case SyntaxKind::NamespaceKeyword:
-//                case SyntaxKind::TypeKeyword:
-//                case SyntaxKind::GlobalKeyword:
-//                    // When these don't start a declaration, they're an identifier in an expression statement
-//                    return true;
-//
-//                case SyntaxKind::PublicKeyword:
-//                case SyntaxKind::PrivateKeyword:
-//                case SyntaxKind::ProtectedKeyword:
-//                case SyntaxKind::StaticKeyword:
-//                case SyntaxKind::ReadonlyKeyword:
-//                    // When these don't start a declaration, they may be the start of a class member if an identifier
-//                    // immediately follows. Otherwise they're an identifier in an expression statement.
-//                    return isStartOfDeclaration() || !lookAhead(nextTokenIsIdentifierOrKeywordOnSameLine);
-//
-//                default:
-//                    return isStartOfExpression();
-//            }
-//        }
-//
 //        function nextTokenIsBindingIdentifierOrStartOfDestructuring() {
 //            nextToken();
 //            return isBindingIdentifier() || token() == SyntaxKind::OpenBraceToken || token() == SyntaxKind::OpenBracketToken;
@@ -6590,31 +6804,6 @@ namespace ts {
 //                    break;
             }
             return parseExpressionOrLabeledStatement();
-        }
-
-        // Parses a list of elements
-//        template<Node T>
-        NodeArray parseList(ParsingContext kind, function<Node()> parseElement) {
-            auto auto saveParsingContext = parsingContext;
-            parsingContext |= 1 << (int) kind;
-            vector<shared<Node>> list;
-
-            auto auto listPos = getNodePos();
-
-            while (! isListTerminator(kind)) {
-                if (isListElement(kind, /*inErrorRecovery*/ false)) {
-                    list.push(parseListElement(kind, parseElement));
-
-                    continue;
-                }
-
-                if (abortParsingListOrMoveToNextToken(kind)) {
-                    break;
-                }
-            }
-
-            parsingContext = saveParsingContext;
-            return createNodeArray(list, listPos);
         }
 
         shared<SourceFile> parseSourceFileWorker(ScriptTarget languageVersion, bool setParentNodes, ScriptKind scriptKind, function<void(shared<SourceFile>)> setExternalModuleIndicator) {
@@ -6748,12 +6937,6 @@ namespace ts {
 //                    return undefined!; // TODO: GH#18217
 //            }
 //        }
-//
-//        function nextTokenIsIdentifierOrStringLiteralOnSameLine() {
-//            nextToken();
-//            return !scanner.hasPrecedingLineBreak() && (isIdentifier() || token() == SyntaxKind::StringLiteral);
-//        }
-//
 //        function parseFunctionBlockOrSemicolon(flags: SignatureFlags, diagnosticMessage?: DiagnosticMessage): Block | undefined {
 //            if (token() != SyntaxKind::OpenBraceToken && canParseSemicolon()) {
 //                parseSemicolon();
@@ -6765,61 +6948,6 @@ namespace ts {
 //
 //        // DECLARATIONS
 //
-//        function parseArrayBindingElement(): ArrayBindingElement {
-//            auto pos = getNodePos();
-//            if (token() == SyntaxKind::CommaToken) {
-//                return finishNode(factory::createOmittedExpression(), pos);
-//            }
-//            auto dotDotDotToken = parseOptionalToken(SyntaxKind::DotDotDotToken);
-//            auto name = parseIdentifierOrPattern();
-//            auto initializer = parseInitializer();
-//            return finishNode(factory::createBindingElement(dotDotDotToken, /*propertyName*/ undefined, name, initializer), pos);
-//        }
-//
-//        function parseObjectBindingElement(): BindingElement {
-//            auto pos = getNodePos();
-//            auto dotDotDotToken = parseOptionalToken(SyntaxKind::DotDotDotToken);
-//            auto tokenIsIdentifier = isBindingIdentifier();
-//            let propertyName: PropertyName | undefined = parsePropertyName();
-//            let name: BindingName;
-//            if (tokenIsIdentifier && token() != SyntaxKind::ColonToken) {
-//                name = propertyName as Identifier;
-//                propertyName = undefined;
-//            }
-//            else {
-//                parseExpected(SyntaxKind::ColonToken);
-//                name = parseIdentifierOrPattern();
-//            }
-//            auto initializer = parseInitializer();
-//            return finishNode(factory::createBindingElement(dotDotDotToken, propertyName, name, initializer), pos);
-//        }
-//
-//        function parseObjectBindingPattern(): ObjectBindingPattern {
-//            auto pos = getNodePos();
-//            parseExpected(SyntaxKind::OpenBraceToken);
-//            auto elements = parseDelimitedList(ParsingContext::ObjectBindingElements, parseObjectBindingElement);
-//            parseExpected(SyntaxKind::CloseBraceToken);
-//            return finishNode(factory::createObjectBindingPattern(elements), pos);
-//        }
-//
-//        function parseArrayBindingPattern(): ArrayBindingPattern {
-//            auto pos = getNodePos();
-//            parseExpected(SyntaxKind::OpenBracketToken);
-//            auto elements = parseDelimitedList(ParsingContext::ArrayBindingElements, parseArrayBindingElement);
-//            parseExpected(SyntaxKind::CloseBracketToken);
-//            return finishNode(factory::createArrayBindingPattern(elements), pos);
-//        }
-//
-//        function parseIdentifierOrPattern(privateIdentifierDiagnosticMessage?: DiagnosticMessage): Identifier | BindingPattern {
-//            if (token() == SyntaxKind::OpenBracketToken) {
-//                return parseArrayBindingPattern();
-//            }
-//            if (token() == SyntaxKind::OpenBraceToken) {
-//                return parseObjectBindingPattern();
-//            }
-//            return parseBindingIdentifier(privateIdentifierDiagnosticMessage);
-//        }
-//
 //        function parseVariableDeclarationAllowExclamation() {
 //            return parseVariableDeclaration(/*allowExclamation*/ true);
 //        }
@@ -6828,7 +6956,7 @@ namespace ts {
 //            auto pos = getNodePos();
 //            auto hasJSDoc = hasPrecedingJSDocComment();
 //            auto name = parseIdentifierOrPattern(Diagnostics::Private_identifiers_are_not_allowed_in_variable_declarations);
-//            let exclamationToken: ExclamationToken | undefined;
+//            auto exclamationToken: ExclamationToken | undefined;
 //            if (allowExclamation && name.kind == SyntaxKind::Identifier &&
 //                token() == SyntaxKind::ExclamationToken && !scanner.hasPrecedingLineBreak()) {
 //                exclamationToken = parseTokenNode<Token<SyntaxKind::ExclamationToken>>();
@@ -6842,7 +6970,7 @@ namespace ts {
 //        function parseVariableDeclarationList(inForStatementInitializer: boolean): VariableDeclarationList {
 //            auto pos = getNodePos();
 //
-//            let flags: NodeFlags = 0;
+//            auto flags: NodeFlags = 0;
 //            switch (token()) {
 //                case SyntaxKind::VarKeyword:
 //                    break;
@@ -6867,7 +6995,7 @@ namespace ts {
 //            // So we need to look ahead to determine if 'of' should be treated as a keyword in
 //            // this context.
 //            // The checker will then give an error that there is an empty declaration list.
-//            let declarations: readonly VariableDeclaration[];
+//            auto declarations: readonly VariableDeclaration[];
 //            if (token() == SyntaxKind::OfKeyword && lookAhead(canFollowContextualOfKeyword)) {
 //                declarations = createMissingList<VariableDeclaration>();
 //            }
@@ -7026,75 +7154,6 @@ namespace ts {
 //            return withJSDoc(finishNode(node, pos), hasJSDoc);
 //        }
 //
-//        function isClassMemberStart(): boolean {
-//            let idToken: SyntaxKind | undefined;
-//
-//            if (token() == SyntaxKind::AtToken) {
-//                return true;
-//            }
-//
-//            // Eat up all modifiers, but hold on to the last one in case it is actually an identifier.
-//            while (isModifierKind(token())) {
-//                idToken = token();
-//                // If the idToken is a class modifier (protected, private, public, and static), it is
-//                // certain that we are starting to parse class member. This allows better error recovery
-//                // Example:
-//                //      public foo() ...     // true
-//                //      public @dec blah ... // true; we will then report an error later
-//                //      export public ...    // true; we will then report an error later
-//                if (isClassMemberModifier(idToken)) {
-//                    return true;
-//                }
-//
-//                nextToken();
-//            }
-//
-//            if (token() == SyntaxKind::AsteriskToken) {
-//                return true;
-//            }
-//
-//            // Try to get the first property-like token following all modifiers.
-//            // This can either be an identifier or the 'get' or 'set' keywords.
-//            if (isLiteralPropertyName()) {
-//                idToken = token();
-//                nextToken();
-//            }
-//
-//            // Index signatures and computed properties are class members; we can parse.
-//            if (token() == SyntaxKind::OpenBracketToken) {
-//                return true;
-//            }
-//
-//            // If we were able to get any potential identifier...
-//            if (idToken != undefined) {
-//                // If we have a non-keyword identifier, or if we have an accessor, then it's safe to parse.
-//                if (!isKeyword(idToken) || idToken == SyntaxKind::SetKeyword || idToken == SyntaxKind::GetKeyword) {
-//                    return true;
-//                }
-//
-//                // If it *is* a keyword, but not an accessor, check a little farther along
-//                // to see if it should actually be parsed as a class member.
-//                switch (token()) {
-//                    case SyntaxKind::OpenParenToken:     // Method declaration
-//                    case SyntaxKind::LessThanToken:      // Generic Method declaration
-//                    case SyntaxKind::ExclamationToken:   // Non-null assertion on property name
-//                    case SyntaxKind::ColonToken:         // Type Annotation for declaration
-//                    case SyntaxKind::EqualsToken:        // Initializer for declaration
-//                    case SyntaxKind::QuestionToken:      // Not valid, but permitted so that it gets caught later on.
-//                        return true;
-//                    default:
-//                        // Covers
-//                        //  - Semicolons     (declaration termination)
-//                        //  - Closing braces (end-of-class, must be declaration)
-//                        //  - End-of-files   (not valid, but permitted so that it gets caught later on)
-//                        //  - Line-breaks    (enabling *automatic semicolon insertion*)
-//                        return canParseSemicolon();
-//                }
-//            }
-//
-//            return false;
-//        }
-//
 //        function parseClassStaticBlockDeclaration(pos: number, hasJSDoc: boolean, decorators: NodeArray<Decorator> | undefined, modifiers: ModifiersArray | undefined): ClassStaticBlockDeclaration {
 //            parseExpectedToken(SyntaxKind::StaticKeyword);
 //            auto body = parseClassStaticBlockBody();
@@ -7140,7 +7199,7 @@ namespace ts {
 //
 //        function parseDecorators(): NodeArray<Decorator> | undefined {
 //            auto pos = getNodePos();
-//            let list, decorator;
+//            auto list, decorator;
 //            while (decorator = tryParseDecorator()) {
 //                list = append(list, decorator);
 //            }
@@ -7227,7 +7286,7 @@ namespace ts {
 //            if (some(modifiers, isExportModifier)) setAwaitContext(/*value*/ true);
 //            auto heritageClauses = parseHeritageClauses();
 //
-//            let members;
+//            auto members;
 //            if (parseExpected(SyntaxKind::OpenBraceToken)) {
 //                // ClassTail[Yield,Await] : (Modified) See 14.5
 //                //      ClassHeritage[?Yield,?Await]opt { ClassBody[?Yield,?Await]opt }
@@ -7289,15 +7348,6 @@ namespace ts {
 //            return finishNode(factory::createExpressionWithTypeArguments(expression, typeArguments), pos);
 //        }
 //
-//        function tryParseTypeArguments(): NodeArray<TypeNode> | undefined {
-//            return token() == SyntaxKind::LessThanToken ?
-//                parseBracketedList(ParsingContext::TypeArguments, parseType, SyntaxKind::LessThanToken, SyntaxKind::GreaterThanToken) : undefined;
-//        }
-//
-//        function isHeritageClause(): boolean {
-//            return token() == SyntaxKind::ExtendsKeyword || token() == SyntaxKind::ImplementsKeyword;
-//        }
-//
 //        function parseClassMembers(): NodeArray<ClassElement> {
 //            return parseList(ParsingContext::ClassMembers, parseClassElement);
 //        }
@@ -7338,7 +7388,7 @@ namespace ts {
 //        function parseEnumDeclaration(pos: number, hasJSDoc: boolean, decorators: NodeArray<Decorator> | undefined, modifiers: NodeArray<Modifier> | undefined): EnumDeclaration {
 //            parseExpected(SyntaxKind::EnumKeyword);
 //            auto name = parseIdentifier();
-//            let members;
+//            auto members;
 //            if (parseExpected(SyntaxKind::OpenBraceToken)) {
 //                members = doOutsideOfYieldAndAwaitContext(() => parseDelimitedList(ParsingContext::EnumMembers, parseEnumMember));
 //                parseExpected(SyntaxKind::CloseBraceToken);
@@ -7352,7 +7402,7 @@ namespace ts {
 //
 //        function parseModuleBlock(): ModuleBlock {
 //            auto pos = getNodePos();
-//            let statements;
+//            auto statements;
 //            if (parseExpected(SyntaxKind::OpenBraceToken)) {
 //                statements = parseList(ParsingContext::BlockStatements, parseStatement);
 //                parseExpected(SyntaxKind::CloseBraceToken);
@@ -7376,8 +7426,8 @@ namespace ts {
 //        }
 //
 //        function parseAmbientExternalModuleDeclaration(pos: number, hasJSDoc: boolean, decorators: NodeArray<Decorator> | undefined, modifiers: NodeArray<Modifier> | undefined): ModuleDeclaration {
-//            let flags: NodeFlags = 0;
-//            let name;
+//            auto flags: NodeFlags = 0;
+//            auto name;
 //            if (token() == SyntaxKind::GlobalKeyword) {
 //                // parse 'global' as name of global scope augmentation
 //                name = parseIdentifier();
@@ -7387,7 +7437,7 @@ namespace ts {
 //                name = parseLiteralNode() as StringLiteral;
 //                name.text = internIdentifier(name.text);
 //            }
-//            let body: ModuleBlock | undefined;
+//            auto body: ModuleBlock | undefined;
 //            if (token() == SyntaxKind::OpenBraceToken) {
 //                body = parseModuleBlock();
 //            }
@@ -7399,7 +7449,7 @@ namespace ts {
 //        }
 //
 //        function parseModuleDeclaration(pos: number, hasJSDoc: boolean, decorators: NodeArray<Decorator> | undefined, modifiers: NodeArray<Modifier> | undefined): ModuleDeclaration {
-//            let flags: NodeFlags = 0;
+//            auto flags: NodeFlags = 0;
 //            if (token() == SyntaxKind::GlobalKeyword) {
 //                // global augmentation
 //                return parseAmbientExternalModuleDeclaration(pos, hasJSDoc, decorators, modifiers);
@@ -7434,12 +7484,12 @@ namespace ts {
 //            auto afterImportPos = scanner.getStartPos();
 //
 //            // We don't parse the identifier here in await context, instead we will report a grammar error in the checker.
-//            let identifier: Identifier | undefined;
+//            auto identifier: Identifier | undefined;
 //            if (isIdentifier()) {
 //                identifier = parseIdentifier();
 //            }
 //
-//            let isTypeOnly = false;
+//            auto isTypeOnly = false;
 //            if (token() != SyntaxKind::FromKeyword &&
 //                identifier?.escapedText == "type" &&
 //                (isIdentifier() || tokenAfterImportDefinitelyProducesImportDeclaration())
@@ -7455,7 +7505,7 @@ namespace ts {
 //            // ImportDeclaration:
 //            //  import ImportClause from ModuleSpecifier ;
 //            //  import ModuleSpecifier;
-//            let importClause: ImportClause | undefined;
+//            auto importClause: ImportClause | undefined;
 //            if (identifier || // import id
 //                token() == SyntaxKind::AsteriskToken || // import *
 //                token() == SyntaxKind::OpenBraceToken    // import {
@@ -7465,7 +7515,7 @@ namespace ts {
 //            }
 //            auto moduleSpecifier = parseModuleSpecifier();
 //
-//            let assertClause: AssertClause | undefined;
+//            auto assertClause: AssertClause | undefined;
 //            if (token() == SyntaxKind::AssertKeyword && !scanner.hasPrecedingLineBreak()) {
 //                assertClause = parseAssertClause();
 //            }
@@ -7538,7 +7588,7 @@ namespace ts {
 //
 //            // If there was no default import or if there is comma token after default import
 //            // parse namespace or named imports
-//            let namedBindings: NamespaceImport | NamedImports | undefined;
+//            auto namedBindings: NamespaceImport | NamedImports | undefined;
 //            if (!identifier ||
 //                parseOptional(SyntaxKind::CommaToken)) {
 //                namedBindings = token() == SyntaxKind::AsteriskToken ? parseNamespaceImport() : parseNamedImportsOrExports(SyntaxKind::NamedImports);
@@ -7622,13 +7672,13 @@ namespace ts {
 //            // ExportSpecifier:
 //            //   IdentifierName
 //            //   IdentifierName as IdentifierName
-//            let checkIdentifierIsKeyword = isKeyword(token()) && !isIdentifier();
-//            let checkIdentifierStart = scanner.getTokenPos();
-//            let checkIdentifierEnd = scanner.getTextPos();
-//            let isTypeOnly = false;
-//            let propertyName: Identifier | undefined;
-//            let canParseAsKeyword = true;
-//            let name = parseIdentifierName();
+//            auto checkIdentifierIsKeyword = isKeyword(token()) && !isIdentifier();
+//            auto checkIdentifierStart = scanner.getTokenPos();
+//            auto checkIdentifierEnd = scanner.getTextPos();
+//            auto isTypeOnly = false;
+//            auto propertyName: Identifier | undefined;
+//            auto canParseAsKeyword = true;
+//            auto name = parseIdentifierName();
 //            if (name.escapedText == "type") {
 //                // If the first token of an import specifier is 'type', there are a lot of possibilities,
 //                // especially if we see 'as' afterwards:
@@ -7704,9 +7754,9 @@ namespace ts {
 //        function parseExportDeclaration(pos: number, hasJSDoc: boolean, decorators: NodeArray<Decorator> | undefined, modifiers: NodeArray<Modifier> | undefined): ExportDeclaration {
 //            auto savedAwaitContext = inAwaitContext();
 //            setAwaitContext(/*value*/ true);
-//            let exportClause: NamedExportBindings | undefined;
-//            let moduleSpecifier: Expression | undefined;
-//            let assertClause: AssertClause | undefined;
+//            auto exportClause: NamedExportBindings | undefined;
+//            auto moduleSpecifier: Expression | undefined;
+//            auto assertClause: AssertClause | undefined;
 //            auto isTypeOnly = parseOptional(SyntaxKind::TypeKeyword);
 //            auto namespaceExportPos = getNodePos();
 //            if (parseOptional(SyntaxKind::AsteriskToken)) {
@@ -7738,7 +7788,7 @@ namespace ts {
 //        function parseExportAssignment(pos: number, hasJSDoc: boolean, decorators: NodeArray<Decorator> | undefined, modifiers: NodeArray<Modifier> | undefined): ExportAssignment {
 //            auto savedAwaitContext = inAwaitContext();
 //            setAwaitContext(/*value*/ true);
-//            let isExportEquals: boolean | undefined;
+//            auto isExportEquals: boolean | undefined;
 //            if (parseOptional(SyntaxKind::EqualsToken)) {
 //                isExportEquals = true;
 //            }
@@ -7794,7 +7844,7 @@ namespace ts {
 //                auto pos = getNodePos();
 //                auto hasBrace = parseOptional(SyntaxKind::OpenBraceToken);
 //                auto p2 = getNodePos();
-//                let entityName: EntityName | JSDocMemberName = parseEntityName(/* allowReservedWords*/ false);
+//                auto entityName: EntityName | JSDocMemberName = parseEntityName(/* allowReservedWords*/ false);
 //                while (token() == SyntaxKind::PrivateIdentifier) {
 //                    reScanHashToken(); // rescan #id as # id
 //                    nextTokenJSDoc(); // then skip the #
@@ -7867,23 +7917,23 @@ namespace ts {
 //                    return undefined;
 //                }
 //
-//                let tags: JSDocTag[];
-//                let tagsPos: number;
-//                let tagsEnd: number;
-//                let linkEnd: number;
-//                let commentsPos: number | undefined;
-//                let comments: string[] = [];
+//                auto tags: JSDocTag[];
+//                auto tagsPos: number;
+//                auto tagsEnd: number;
+//                auto linkEnd: number;
+//                auto commentsPos: number | undefined;
+//                auto comments: string[] = [];
 //                auto parts: JSDocComment[] = [];
 //
 //                // + 3 for leading /**, - 5 in total for /** */
 //                return scanner.scanRange(start + 3, length - 5, () => {
 //                    // Initially we can parse out a tag.  We also have seen a starting asterisk.
 //                    // This is so that /** * @type */ doesn't parse.
-//                    let state = JSDocState.SawAsterisk;
-//                    let margin: number | undefined;
+//                    auto state = JSDocState.SawAsterisk;
+//                    auto margin: number | undefined;
 //                    // + 4 for leading '/** '
 //                    // + 1 because the last index of \n is always one index before the first character in the line and coincidentally, if there is no \n before start, it is -1, which is also one index before the first character
-//                    let indent = start - (content.lastIndexOf("\n", start) + 1) + 4;
+//                    auto indent = start - (content.lastIndexOf("\n", start) + 1) + 4;
 //                    function pushComment(text: string) {
 //                        if (!margin) {
 //                            margin = indent;
@@ -8024,9 +8074,9 @@ namespace ts {
 //                        }
 //                    }
 //
-//                    let precedingLineBreak = scanner.hasPrecedingLineBreak();
-//                    let seenLineBreak = false;
-//                    let indentText = "";
+//                    auto precedingLineBreak = scanner.hasPrecedingLineBreak();
+//                    auto seenLineBreak = false;
+//                    auto indentText = "";
 //                    while ((precedingLineBreak && token() == SyntaxKind::AsteriskToken) || token() == SyntaxKind::WhitespaceTrivia || token() == SyntaxKind::NewLineTrivia) {
 //                        indentText += scanner.getTokenText();
 //                        if (token() == SyntaxKind::NewLineTrivia) {
@@ -8050,7 +8100,7 @@ namespace ts {
 //                    auto tagName = parseJSDocIdentifierName(/*message*/ undefined);
 //                    auto indentText = skipWhitespaceOrAsterisk();
 //
-//                    let tag: JSDocTag | undefined;
+//                    auto tag: JSDocTag | undefined;
 //                    switch (tagName.escapedText) {
 //                        case "author":
 //                            tag = parseAuthorTag(start, tagName, margin, indentText);
@@ -8131,12 +8181,12 @@ namespace ts {
 //
 //                function parseTagComments(indent: number, initialMargin?: string): string | NodeArray<JSDocComment> | undefined {
 //                    auto commentsPos = getNodePos();
-//                    let comments: string[] = [];
+//                    auto comments: string[] = [];
 //                    auto parts: JSDocComment[] = [];
-//                    let linkEnd;
-//                    let state = JSDocState.BeginningOfLine;
-//                    let previousWhitespace = true;
-//                    let margin: number | undefined;
+//                    auto linkEnd;
+//                    auto state = JSDocState.BeginningOfLine;
+//                    auto previousWhitespace = true;
+//                    auto margin: number | undefined;
 //                    function pushComment(text: string) {
 //                        if (!margin) {
 //                            margin = indent;
@@ -8151,7 +8201,7 @@ namespace ts {
 //                        }
 //                        state = JSDocState.SawAsterisk;
 //                    }
-//                    let tok = token() as JSDocSyntaxKind;
+//                    auto tok = token() as JSDocSyntaxKind;
 //                    loop: while (true) {
 //                        switch (tok) {
 //                            case SyntaxKind::NewLineTrivia:
@@ -8256,7 +8306,7 @@ namespace ts {
 //                    skipWhitespace();
 //                    // parseEntityName logs an error for non-identifier, so create a MissingNode ourselves to avoid the error
 //                    auto p2 = getNodePos();
-//                    let name: EntityName | JSDocMemberName | undefined = tokenIsIdentifierOrKeyword(token())
+//                    auto name: EntityName | JSDocMemberName | undefined = tokenIsIdentifierOrKeyword(token())
 //                        ? parseEntityName(/*allowReservedWords*/ true)
 //                        : undefined;
 //                    if (name) {
@@ -8351,8 +8401,8 @@ namespace ts {
 //                }
 //
 //                function parseParameterOrPropertyTag(start: number, tagName: Identifier, target: PropertyLikeParse, indent: number): JSDocParameterTag | JSDocPropertyTag {
-//                    let typeExpression = tryParseTypeExpression();
-//                    let isNameFirst = !typeExpression;
+//                    auto typeExpression = tryParseTypeExpression();
+//                    auto isNameFirst = !typeExpression;
 //                    skipWhitespaceOrAsterisk();
 //
 //                    auto { name, isBracketed } = parseBracketNameInPropertyAndParamTag();
@@ -8378,8 +8428,8 @@ namespace ts {
 //                function parseNestedTypeLiteral(typeExpression: JSDocTypeExpression | undefined, name: EntityName, target: PropertyLikeParse, indent: number) {
 //                    if (typeExpression && isObjectOrObjectArrayTypeReference(typeExpression.type)) {
 //                        auto pos = getNodePos();
-//                        let child: JSDocPropertyLikeTag | JSDocTypeTag | false;
-//                        let children: JSDocPropertyLikeTag[] | undefined;
+//                        auto child: JSDocPropertyLikeTag | JSDocTypeTag | false;
+//                        auto children: JSDocPropertyLikeTag[] | undefined;
 //                        while (child = tryParse(() => parseChildParameterOrPropertyTag(target, indent, name))) {
 //                            if (child.kind == SyntaxKind::JSDocParameterTag || child.kind == SyntaxKind::JSDocPropertyTag) {
 //                                children = append(children, child);
@@ -8422,7 +8472,7 @@ namespace ts {
 //                function parseAuthorTag(start: number, tagName: Identifier, indent: number, indentText: string): JSDocAuthorTag {
 //                    auto commentStart = getNodePos();
 //                    auto textOnly = parseAuthorNameAndEmail();
-//                    let commentEnd = scanner.getStartPos();
+//                    auto commentEnd = scanner.getStartPos();
 //                    auto comments = parseTrailingTagComments(start, commentEnd, indent, indentText);
 //                    if (!comments) {
 //                        commentEnd = scanner.getStartPos();
@@ -8435,8 +8485,8 @@ namespace ts {
 //
 //                function parseAuthorNameAndEmail(): JSDocText {
 //                    auto comments: string[] = [];
-//                    let inEmail = false;
-//                    let token = scanner.getToken();
+//                    auto inEmail = false;
+//                    auto token = scanner.getToken();
 //                    while (token != SyntaxKind::EndOfFileToken && token != SyntaxKind::NewLineTrivia) {
 //                        if (token == SyntaxKind::LessThanToken) {
 //                            inEmail = true;
@@ -8481,7 +8531,7 @@ namespace ts {
 //
 //                function parsePropertyAccessEntityNameExpression() {
 //                    auto pos = getNodePos();
-//                    let node: Identifier | PropertyAccessEntityNameExpression = parseJSDocIdentifierName();
+//                    auto node: Identifier | PropertyAccessEntityNameExpression = parseJSDocIdentifierName();
 //                    while (parseOptional(SyntaxKind::DotToken)) {
 //                        auto name = parseJSDocIdentifierName();
 //                        node = finishNode(factory::createPropertyAccessExpression(node, name), pos) as PropertyAccessEntityNameExpression;
@@ -8506,19 +8556,19 @@ namespace ts {
 //                }
 //
 //                function parseTypedefTag(start: number, tagName: Identifier, indent: number, indentText: string): JSDocTypedefTag {
-//                    let typeExpression: JSDocTypeExpression | JSDocTypeLiteral | undefined = tryParseTypeExpression();
+//                    auto typeExpression: JSDocTypeExpression | JSDocTypeLiteral | undefined = tryParseTypeExpression();
 //                    skipWhitespaceOrAsterisk();
 //
 //                    auto fullName = parseJSDocTypeNameWithNamespace();
 //                    skipWhitespace();
-//                    let comment = parseTagComments(indent);
+//                    auto comment = parseTagComments(indent);
 //
-//                    let end: number | undefined;
+//                    auto end: number | undefined;
 //                    if (!typeExpression || isObjectOrObjectArrayTypeReference(typeExpression.type)) {
-//                        let child: JSDocTypeTag | JSDocPropertyTag | false;
-//                        let childTypeTag: JSDocTypeTag | undefined;
-//                        let jsDocPropertyTags: JSDocPropertyTag[] | undefined;
-//                        let hasChildren = false;
+//                        auto child: JSDocTypeTag | JSDocPropertyTag | false;
+//                        auto childTypeTag: JSDocTypeTag | undefined;
+//                        auto jsDocPropertyTags: JSDocPropertyTag[] | undefined;
+//                        auto hasChildren = false;
 //                        while (child = tryParse(() => parseChildPropertyTag(indent))) {
 //                            hasChildren = true;
 //                            if (child.kind == SyntaxKind::JSDocTypeTag) {
@@ -8587,8 +8637,8 @@ namespace ts {
 //
 //                function parseCallbackTagParameters(indent: number) {
 //                    auto pos = getNodePos();
-//                    let child: JSDocParameterTag | false;
-//                    let parameters;
+//                    auto child: JSDocParameterTag | false;
+//                    auto parameters;
 //                    while (child = tryParse(() => parseChildParameterOrPropertyTag(PropertyLikeParse.CallbackParameter, indent) as JSDocParameterTag)) {
 //                        parameters = append(parameters, child);
 //                    }
@@ -8598,7 +8648,7 @@ namespace ts {
 //                function parseCallbackTag(start: number, tagName: Identifier, indent: number, indentText: string): JSDocCallbackTag {
 //                    auto fullName = parseJSDocTypeNameWithNamespace();
 //                    skipWhitespace();
-//                    let comment = parseTagComments(indent);
+//                    auto comment = parseTagComments(indent);
 //                    auto parameters = parseCallbackTagParameters(indent);
 //                    auto returnTag = tryParse(() => {
 //                        if (parseOptionalJsdoc(SyntaxKind::AtToken)) {
@@ -8634,8 +8684,8 @@ namespace ts {
 //                }
 //
 //                function parseChildParameterOrPropertyTag(target: PropertyLikeParse, indent: number, name?: EntityName): JSDocTypeTag | JSDocPropertyTag | JSDocParameterTag | false {
-//                    let canParseTag = true;
-//                    let seenAsterisk = false;
+//                    auto canParseTag = true;
+//                    auto seenAsterisk = false;
 //                    while (true) {
 //                        switch (nextTokenJSDoc()) {
 //                            case SyntaxKind::AtToken:
@@ -8676,7 +8726,7 @@ namespace ts {
 //
 //                    auto tagName = parseJSDocIdentifierName();
 //                    skipWhitespace();
-//                    let t: PropertyLikeParse;
+//                    auto t: PropertyLikeParse;
 //                    switch (tagName.escapedText) {
 //                        case "type":
 //                            return target == PropertyLikeParse.Property && parseTypeTag(start, tagName);
@@ -8706,7 +8756,7 @@ namespace ts {
 //                    }
 //                    auto name = parseJSDocIdentifierName(Diagnostics::Unexpected_token_A_type_parameter_name_was_expected_without_curly_braces);
 //
-//                    let defaultType: TypeNode | undefined;
+//                    auto defaultType: TypeNode | undefined;
 //                    if (isBracketed) {
 //                        skipWhitespace();
 //                        parseExpected(SyntaxKind::EqualsToken);
@@ -8760,7 +8810,7 @@ namespace ts {
 //                }
 //
 //                function parseJSDocEntityName(): EntityName {
-//                    let entity: EntityName = parseJSDocIdentifierName();
+//                    auto entity: EntityName = parseJSDocIdentifierName();
 //                    if (parseOptional(SyntaxKind::OpenBracketToken)) {
 //                        parseExpected(SyntaxKind::CloseBracketToken);
 //                        // Note that y[] is accepted as an entity name, but the postfix brackets are not saved for checking.
@@ -8839,7 +8889,7 @@ namespace ts {
 //            // Prime the scanner.
 //            nextToken();
 //            auto pos = getNodePos();
-//            let statements, endOfFileToken;
+//            auto statements, endOfFileToken;
 //            if (token() == SyntaxKind::EndOfFileToken) {
 //                statements = createNodeArray([], pos, pos);
 //                endOfFileToken = parseTokenNode<EndOfFileToken>();
@@ -8847,9 +8897,9 @@ namespace ts {
 //            else {
 //                // Loop and synthesize an ArrayLiteralExpression if there are more than
 //                // one top-level expressions to ensure all input text is consumed.
-//                let expressions: Expression[] | Expression | undefined;
+//                auto expressions: Expression[] | Expression | undefined;
 //                while (token() != SyntaxKind::EndOfFileToken) {
-//                    let expression;
+//                    auto expression;
 //                    switch (token()) {
 //                        case SyntaxKind::OpenBracketToken:
 //                            expression = parseArrayLiteralExpression();
@@ -9025,8 +9075,8 @@ namespace ts {
 //            aggressiveChecks: boolean
 //        ): CommentDirective[] | undefined {
 //            if (!oldDirectives) return newDirectives;
-//            let commentDirectives: CommentDirective[] | undefined;
-//            let addedNewlyScannedDirectives = false;
+//            auto commentDirectives: CommentDirective[] | undefined;
+//            auto addedNewlyScannedDirectives = false;
 //            for (const directive of oldDirectives) {
 //                auto { range, type } = directive;
 //                // Range before the change
@@ -9073,7 +9123,7 @@ namespace ts {
 //            return;
 //
 //            function visitNode(node: IncrementalNode) {
-//                let text = "";
+//                auto text = "";
 //                if (aggressiveChecks && shouldCheckNode(node)) {
 //                    text = oldText.substring(node.pos, node.end);
 //                }
@@ -9196,7 +9246,7 @@ namespace ts {
 //
 //        function checkNodePositions(node: Node, aggressiveChecks: boolean) {
 //            if (aggressiveChecks) {
-//                let pos = node.pos;
+//                auto pos = node.pos;
 //                auto visitNode = (child: Node) => {
 //                    Debug.assert(child.pos >= pos);
 //                    pos = child.end;
@@ -9300,7 +9350,7 @@ namespace ts {
 //            // that the prior token sees that change.
 //            auto maxLookahead = 1;
 //
-//            let start = changeRange.span.start;
+//            auto start = changeRange.span.start;
 //
 //            // the first iteration aligns us with the change start. subsequent iteration move us to
 //            // the left by maxLookahead tokens.  We only need to do this as long as we're not at the
@@ -9320,8 +9370,8 @@ namespace ts {
 //        }
 //
 //        function findNearestNodeStartingBeforeOrAtPosition(sourceFile: SourceFile, position: number): Node {
-//            let bestResult: Node = sourceFile;
-//            let lastNodeEntirelyBeforePosition: Node | undefined;
+//            auto bestResult: Node = sourceFile;
+//            auto lastNodeEntirelyBeforePosition: Node | undefined;
 //
 //            forEachChild(sourceFile, visit);
 //
@@ -9444,12 +9494,12 @@ namespace ts {
 //        }
 //
 //        export function createSyntaxCursor(sourceFile: SourceFile): SyntaxCursor {
-//            let currentArray: NodeArray<Node> = sourceFile.statements;
-//            let currentArrayIndex = 0;
+//            auto currentArray: NodeArray<Node> = sourceFile.statements;
+//            auto currentArrayIndex = 0;
 //
 //            Debug.assert(currentArrayIndex < currentArray.length);
-//            let current = currentArray[currentArrayIndex];
-//            let lastQueriedPosition = InvalidPosition.Value;
+//            auto current = currentArray[currentArrayIndex];
+//            auto lastQueriedPosition = InvalidPosition.Value;
 //
 //            return {
 //                currentNode(position: number) {
@@ -9744,7 +9794,7 @@ namespace ts {
 //
 //        if (range.kind == SyntaxKind::MultiLineCommentTrivia) {
 //            auto multiLinePragmaRegEx = /@(\S+)(\s+.*)?$/gim; // Defined inline since it uses the "g" flag, which keeps a persistent index (for iterating)
-//            let multiLineMatch: RegExpExecArray | null;
+//            auto multiLineMatch: RegExpExecArray | null;
 //            while (multiLineMatch = multiLinePragmaRegEx.exec(text)) {
 //                addPragmaForMatch(pragmas, range, PragmaKindFlags.MultiLine, multiLineMatch);
 //            }
@@ -9783,24 +9833,4 @@ namespace ts {
 //        return argMap;
 //    }
 //
-//    /** @internal */
-//    export function tagNamesAreEquivalent(lhs: JsxTagNameExpression, rhs: JsxTagNameExpression): boolean {
-//        if (lhs.kind != rhs.kind) {
-//            return false;
-//        }
-//
-//        if (lhs.kind == SyntaxKind::Identifier) {
-//            return lhs.escapedText == (rhs as Identifier).escapedText;
-//        }
-//
-//        if (lhs.kind == SyntaxKind::ThisKeyword) {
-//            return true;
-//        }
-//
-//        // If we are at this statement then we must have PropertyAccessExpression and because tag name in Jsx element can only
-//        // take forms of JsxTagNameExpression which includes an identifier, "this" expression, or another propertyAccessExpression
-//        // it is safe to case the expression property as such. See parseJsxElementName for how we parse tag name in Jsx element
-//        return (lhs as PropertyAccessExpression).name.escapedText == (rhs as PropertyAccessExpression).name.escapedText &&
-//            tagNamesAreEquivalent((lhs as PropertyAccessExpression).expression as JsxTagNameExpression, (rhs as PropertyAccessExpression).expression as JsxTagNameExpression);
-//    }
 }

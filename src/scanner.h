@@ -15,10 +15,12 @@ namespace ts {
         string value;
     };
     using ErrorCallback = function<
-    void(DiagnosticMessage
-    message,
-    int length
-    )>;
+            void(DiagnosticMessage
+                 message,
+                 int length
+            )>;
+
+    int skipTrivia(string &text, int pos, optional<bool> stopAfterLineBreak = {}, optional<bool> stopAtComments = {}, optional<bool> inJSDoc = {});
 
     /** @internal */
     static unordered_map<string, SyntaxKind> textToKeywordObj{
@@ -175,6 +177,13 @@ namespace ts {
         return get(textToToken, s);
     }
 
+    static auto tokenStrings = reverse(textToToken);
+
+    /* @internal */
+    static optional<string> tokenToString(SyntaxKind t) {
+        return get(tokenStrings, t);
+    }
+
     /* @internal */
     static bool tokenIsIdentifierOrKeyword(SyntaxKind token) {
         return token >= SyntaxKind::Identifier;
@@ -291,19 +300,35 @@ namespace ts {
             return startPos;
         }
 
-        bool lookAhead(function<any()> callback);
+        template<typename T>
+        T lookAhead(function<T()> callback);
 
-        bool tryScan(function<any()> callback);
+        template<typename T>
+        T tryScan(function<T()> callback);
 
-        bool speculationHelper(function<any()> callback, bool isLookahead);
+        template<typename T>
+        T speculationHelper(function<T()> callback, bool isLookahead);
 
         bool hasPrecedingLineBreak() {
             return (tokenFlags & TokenFlags::PrecedingLineBreak) != 0;
         }
 
+        int getTokenFlags() { return tokenFlags; }
+
+        bool isUnterminated() {
+            return (tokenFlags & (int) TokenFlags::Unterminated) != 0;
+        }
+
         bool isReservedWord() {
             return token >= SyntaxKind::FirstReservedWord && token <= SyntaxKind::LastReservedWord;
         }
+
+        int getNumericLiteralFlags() { return tokenFlags & (int) TokenFlags::NumericLiteralFlags; }
+
+        SyntaxKind scanJsxToken(bool allowMultilineJsxText = true);
+        SyntaxKind scanJsxAttributeValue();
+        SyntaxKind scanJsxIdentifier();
+        SyntaxKind reScanJsxToken(bool allowMultilineJsxText = false);
 
         string getTokenText() {
             return text.substr(tokenPos, pos);
@@ -315,7 +340,7 @@ namespace ts {
             tokenFlags = 0;
             auto ch = charCodeAt(text, pos);
             auto identifierKind = scanIdentifier(ch, ScriptTarget::ESNext);
-            if (identifierKind) {
+            if (identifierKind != SyntaxKind::Unknown) {
                 return token = identifierKind;
             }
             pos += ch.length;

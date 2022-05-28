@@ -33,6 +33,17 @@ namespace ts {
         return const_hash(s);
     }
 
+    string substr(const string &str, int start, int length) {
+        if (start < 0) start += str.length();
+        if (length < 0) length = str.length() + length - start;
+        if (length < 0) return "";
+        return str.substr(start, length);
+    }
+
+    string substr(const string &str, int start) {
+        return substr(str, start, str.length());
+    }
+
     /**
      * shared_ptr has optional semantic already built-in, so we use it instead of std::optional,
      * but instead of using shared_ptr directly, we use opt<T> to make it clear that it can be empty.
@@ -64,10 +75,20 @@ namespace ts {
         return array.back();
     }
 
+    template<typename T>
+    T defaultTo(optional<T> v, T def) {
+        if (v) return *v;
+        return def;
+    }
+
     vector<string> charToStringVector(vector<const char *> chars) {
         vector<string> s;
         for (auto c: chars) s.push_back(c);
         return s;
+    }
+
+    bool startsWith(const string &str, const string &suffix) {
+        return str.find(suffix) == 0;
     }
 
     bool endsWith(const string &str, const string &suffix) {
@@ -232,6 +253,17 @@ namespace ts {
     ) {
         unordered_map<string, T> res(map1);
         res.insert(map2.begin(), map2.end());
+        return res;
+    }
+
+    template<typename K, typename V>
+    unordered_map<V, K> reverse(
+            const unordered_map<K, V> &map1
+    ) {
+        unordered_map<V, K> res;
+        for (auto &i: map1) {
+            res[i.second] = i.first;
+        }
         return res;
     }
 

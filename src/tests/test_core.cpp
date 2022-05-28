@@ -328,6 +328,24 @@ TEST(core, replaceLeading) {
 
 TEST(core, stringReplace) {
     EXPECT_EQ(replaceAll("this/is/a/path", "/", "_"), "this_is_a_path");
+    EXPECT_EQ(replaceAll("this/is/a/path", "/", "/"), "this/is/a/path");
+}
+
+TEST(core, endsWith) {
+    EXPECT_EQ(endsWith("this/is/a/path", "asd"), false);
+    EXPECT_EQ(endsWith("this/is/a/path", "/path"), true);
+}
+
+TEST(core, startsWith) {
+    EXPECT_EQ(startsWith("this/is/a/path", "asd"), false);
+    EXPECT_EQ(startsWith("this/is/a/path", "this"), true);
+    EXPECT_EQ(startsWith("this/is/a/path", "this/"), true);
+}
+
+TEST(core, substrNegative) {
+    string a = "abc";
+    EXPECT_EQ(substr(a, -1), "c");
+    EXPECT_EQ(substr(a, 0, -1), "ab");
 }
 
 TEST(core, regex) {
