@@ -64,7 +64,7 @@ namespace ts {
         return array.back();
     }
 
-    vector<string> charToStringVector(vector<const char*> chars) {
+    vector<string> charToStringVector(vector<const char *> chars) {
         vector<string> s;
         for (auto c: chars) s.push_back(c);
         return s;
@@ -73,6 +73,12 @@ namespace ts {
     bool endsWith(const string &str, const string &suffix) {
         auto expectedPos = str.size() - suffix.size();
         return expectedPos >= 0 && str.find(suffix, expectedPos) == expectedPos;
+    }
+
+    template<typename T>
+    vector<T> append(vector<T> &v, T item) {
+        v.push_back(item);
+        return v;
     }
 
     template<typename T>
@@ -218,6 +224,28 @@ namespace ts {
     static bool has(const vector <T> &vector, T item) {
         return find(vector.begin(), vector.end(), item) != vector.end();
     };
+
+    template<typename T>
+    unordered_map<string, T> combine(
+            const unordered_map<string, T> &map1,
+            const unordered_map<string, T> &map2
+    ) {
+        unordered_map<string, T> res(map1);
+        res.insert(map2.begin(), map2.end());
+        return res;
+    }
+
+    template<typename K, typename T>
+    static optional<T> get(unordered_map<K, T> &m, K key) {
+        auto v = m.find(key);
+        if (v == m.end()) return std::nullopt;
+        return v->second;
+    }
+
+    template<typename K, typename T>
+    static optional<T> set(unordered_map<K, T> &m, K key, T v) {
+        m[key] = v;
+    }
 
     template<typename T, typename U>
     static bool has(unordered_map<T, U> &map, T key) {

@@ -6,7 +6,7 @@
 #include <variant>
 #include "../core.h"
 #include "../types.h"
-#include "../factory.h"
+#include "../node_factory.h"
 
 using namespace std;
 using namespace ts;
@@ -151,19 +151,6 @@ void acceptShared(shared<Node> node) {
     }
 }
 
-//TEST(core, passNodeUnionToSharedNode) {
-//    {
-//        NodeUnion<EntityName> entity;
-//        EXPECT_EQ(entity.is<Identifier>(), true);
-//        acceptShared(entity);
-//    }
-//
-////    {
-////        NodeUnion<EntityName> entity{Identifier()};
-////        acceptShared(entity);
-////    }
-//}
-
 TEST(core, passNodeToShared) {
     {
         Identifier node;
@@ -230,6 +217,21 @@ SyntaxKind takeOptionalNodeUnion(sharedOpt<NodeUnion(Identifier, SourceFile)> no
     return SyntaxKind::Unknown;
 }
 
+TEST(core, passBaseToSharedNode) {
+    auto e = factory::createBaseExpression<BinaryExpression>(SyntaxKind::BinaryExpression);
+    EXPECT_EQ(takeNode(e), SyntaxKind::BinaryExpression);
+}
+
+
+TEST(core, passBaseToSharedNode2) {
+    auto left = factory::createBaseNode<Expression>(SyntaxKind::Unknown);
+    auto right = factory::createBaseNode<Expression>(SyntaxKind::Unknown);
+    auto operatorNode = factory::createBaseNode<Node>(SyntaxKind::Unknown);
+
+    auto e = factory::createBinaryExpression(left, operatorNode, right);
+    EXPECT_EQ(takeNode(e), SyntaxKind::BinaryExpression);
+}
+
 TEST(core, ParameterDeclaration) {
     auto p = make_shared<ParameterDeclaration>();
 
@@ -281,12 +283,12 @@ TEST(core, node2) {
 }
 
 TEST(core, node) {
-    auto node = createBaseNode<Identifier>();
-    node.to<Identifier>().escapedText = "id";
+    auto node = factory::createBaseNode<Identifier>();
+    node->to<Identifier>().escapedText = "id";
 
-    EXPECT_EQ(node.is<MetaProperty>(), false);
-    EXPECT_EQ(node.is<Identifier>(), true);
-    EXPECT_EQ(node.to<Identifier>().escapedText, "id");
+    EXPECT_EQ(node->is<MetaProperty>(), false);
+    EXPECT_EQ(node->is<Identifier>(), true);
+    EXPECT_EQ(node->to<Identifier>().escapedText, "id");
 }
 
 TEST(core, logicalOrOverride) {
@@ -337,4 +339,17 @@ TEST(core, regex) {
     }
 
     EXPECT_EQ(m[1], "ts-ignore");
+}
+
+bool test() {
+    return true;
+}
+
+template<typename T>
+T executeFn(function<T()> callback) {
+    return callback();
+}
+
+TEST(core, passFn) {
+    auto a = executeFn<bool>(test);
 }

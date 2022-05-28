@@ -283,7 +283,7 @@ namespace ts {
         return reduced;
     }
 
-    string normalizePath(const string &_path) {
+    string normalizePath(string &_path) {
         string path = normalizeSlashes(_path);
         // Most paths don't require normalization
         if (! regex_search(path, relativePathSegmentRegExp)) {
