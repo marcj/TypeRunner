@@ -32,19 +32,31 @@ namespace ts {
 
     /* @internal */
     template<typename T>
-    T setTextRangePosEnd(T &range, int pos, int end) {
+    T setTextRangePosEnd(T range, int pos, int end) {
         range->pos = pos;
         range->end = end;
         return range;
     }
 
-    void setTextRangePosEnd(NodeArray &range, int pos, int end) {
+    sharedOpt<Node> lastOrUndefined(optional<NodeArray> array) {
+        if (!array) return nullptr;
+        auto last = lastOrUndefined(array->list);
+        if (last) *last;
+        return nullptr;
+    }
+
+    NodeArray& setTextRangePosEnd(NodeArray &range, int pos, int end) {
         range.pos = pos;
         range.end = end;
+        return range;
     }
 
     template<typename T>
-    shared<T> setTextRange(shared<T> range, sharedOpt<Node> location) {
+    T setTextRange(T range, sharedOpt<Node> location) {
+        return location ? setTextRangePosEnd(range, location->pos, location->end) : range;
+    }
+
+    NodeArray setTextRange(NodeArray range, optional<NodeArray> location) {
         return location ? setTextRangePosEnd(range, location->pos, location->end) : range;
     }
 
@@ -68,7 +80,7 @@ namespace ts {
                 // Skip leading 0s
                 auto nonZeroStart = 0;
                 while (charCodeAt(stringValue, nonZeroStart).code == CharacterCodes::_0) {
-                    nonZeroStart ++;
+                    nonZeroStart++;
                 }
                 return stringValue.substr(nonZeroStart, nIndex);
         }
@@ -84,7 +96,7 @@ namespace ts {
         segments.reserve((bitsNeeded >> 4) + (bitsNeeded & 15 ? 1 : 0));
 
         // Add the digits, one at a time
-        for (int i = endIndex - 1, bitOffset = 0; i >= startIndex; i --, bitOffset += log2Base) {
+        for (int i = endIndex - 1, bitOffset = 0; i >= startIndex; i--, bitOffset += log2Base) {
             auto segment = bitOffset >> 4;
             auto digitChar = charCodeAt(stringValue, i).code;
             // Find character range: 0-9 < A-F < a-f
@@ -104,12 +116,12 @@ namespace ts {
         while (segmentsRemaining) {
             auto mod10 = 0;
             segmentsRemaining = false;
-            for (unsigned long segment = firstNonzeroSegment; segment >= 0; segment --) {
+            for (unsigned long segment = firstNonzeroSegment; segment >= 0; segment--) {
                 auto newSegment = mod10 << 16 | segments[segment];
                 auto segmentValue = (newSegment / 10) | 0;
                 segments[segment] = segmentValue;
                 mod10 = newSegment - segmentValue * 10;
-                if (segmentValue && ! segmentsRemaining) {
+                if (segmentValue && !segmentsRemaining) {
                     firstNonzeroSegment = segment;
                     segmentsRemaining = true;
                 }
@@ -124,29 +136,9 @@ namespace ts {
         return (identifier.size() >= 2 && charCodeAt(identifier, 0).code == CharacterCodes::_ && charCodeAt(identifier, 1).code == CharacterCodes::_ ? "_" + identifier : identifier);
     }
 
-    ModifierFlags modifierToFlag(SyntaxKind token) {
-        switch (token) {
-            case SyntaxKind::StaticKeyword: return ModifierFlags::Static;
-            case SyntaxKind::PublicKeyword: return ModifierFlags::Public;
-            case SyntaxKind::ProtectedKeyword: return ModifierFlags::Protected;
-            case SyntaxKind::PrivateKeyword: return ModifierFlags::Private;
-            case SyntaxKind::AbstractKeyword: return ModifierFlags::Abstract;
-            case SyntaxKind::ExportKeyword: return ModifierFlags::Export;
-            case SyntaxKind::DeclareKeyword: return ModifierFlags::Ambient;
-            case SyntaxKind::ConstKeyword: return ModifierFlags::Const;
-            case SyntaxKind::DefaultKeyword: return ModifierFlags::Default;
-            case SyntaxKind::AsyncKeyword: return ModifierFlags::Async;
-            case SyntaxKind::ReadonlyKeyword: return ModifierFlags::Readonly;
-            case SyntaxKind::OverrideKeyword: return ModifierFlags::Override;
-            case SyntaxKind::InKeyword: return ModifierFlags::In;
-            case SyntaxKind::OutKeyword: return ModifierFlags::Out;
-        }
-        return ModifierFlags::None;
-    }
-
     /* @internal */
     bool isParameterPropertyModifier(SyntaxKind kind) {
-        return !!((int)modifierToFlag(kind) & (int)ModifierFlags::ParameterPropertyModifier);
+        return !!((int) modifierToFlag(kind) & (int) ModifierFlags::ParameterPropertyModifier);
     }
 
     /* @internal */
@@ -175,7 +167,6 @@ namespace ts {
         }
         return false;
     }
-    
 
     bool isCommaSequence(shared<Expression> node) {
         return (node->kind == SyntaxKind::BinaryExpression && node->to<BinaryExpression>().operatorToken->kind == SyntaxKind::CommaToken) || node->kind == SyntaxKind::CommaListExpression;
@@ -397,7 +388,7 @@ namespace ts {
         Lowest = Comma,
         // -1 is lower than all other precedences. Returning it will cause binary expression
         // parsing to stop.
-        Invalid = - 1,
+        Invalid = -1,
     };
 
     int getBinaryOperatorPrecedence(SyntaxKind kind) {
@@ -442,7 +433,7 @@ namespace ts {
                 return (int) OperatorPrecedence::Exponentiation;
         }
         // -1 is lower than all other precedences.  Returning it will cause binary expression parsing to stop.
-        return - 1;
+        return -1;
     }
 
     inline bool isKeyword(types::SyntaxKind token) {
@@ -464,16 +455,30 @@ namespace ts {
 
     using DiagnosticArg = string;
 
-    inline DiagnosticWithDetachedLocation createDetachedDiagnostic(string fileName, int start, int length, DiagnosticMessage message, optional<DiagnosticArg> textArg = {}) {
+    string formatStringFromArg(string &text, int i, string &v) {
+        return replaceAll(text, format("{%d}", i), v);
+//        return text.replace(/{(\d+)}/g, (_match, index: string) => "" + Debug.checkDefined(args[+index + baseIndex]));
+    }
+
+    string DiagnosticArgToString(DiagnosticArg &v) {
+        return v; //currently only string supported
+    }
+
+    inline DiagnosticWithDetachedLocation createDetachedDiagnostic(string fileName, int start, int length, DiagnosticMessage message, vector<DiagnosticArg> textArg = {}) {
         //    assertDiagnosticLocation(/*file*/ undefined, start, length);
         auto text = getLocaleSpecificMessage(message);
 
-        if (textArg) {
-            text = *textArg;
-        }
-        //if (arguments.length > 4) {
-        //  text = formatStringFromArgs(text, arguments, 4);
-        //}
+//        if (holds_alternative<vector<DiagnosticArg>>(textArg)) {
+//            auto v = get<vector<DiagnosticArg>>(textArg);
+//            if (!v.empty()) {
+//                for (int i = 0; i < v.size(); i++) {
+//                    text = formatStringFromArg(text, i, v[i]);
+//                }
+//            }
+//        } else if (holds_alternative<DiagnosticArg>(textArg)) {
+//            auto v = get<DiagnosticArg>(textArg);
+//            text = formatStringFromArg(text, 0, v);
+//        }
 
         return DiagnosticWithDetachedLocation{
                 {
@@ -490,6 +495,18 @@ namespace ts {
         };
     }
 
+    DiagnosticWithDetachedLocation &addRelatedInfo(DiagnosticWithDetachedLocation &diagnostic, vector<DiagnosticRelatedInformation> relatedInformation) {
+        if (!relatedInformation.size()) {
+            return diagnostic;
+        }
+        if (!diagnostic.relatedInformation) {
+            diagnostic.relatedInformation = vector<DiagnosticRelatedInformation>();
+        }
+//        Debug::assert(diagnostic.relatedInformation !== emptyArray, "Diagnostic had empty array singleton for related info, but is still being constructed!");
+        for (auto &v: relatedInformation) (*diagnostic.relatedInformation).push_back(v);
+        return diagnostic;
+    }
+
     ScriptKind ensureScriptKind(string fileName, optional<ScriptKind> scriptKind) {
         // Using scriptKind as a condition handles both:
         // - 'scriptKind' is unspecified and thus it is `undefined`
@@ -501,6 +518,23 @@ namespace ts {
 
         //todo: Find generic way to logicalOrLastValue
 //        return getScriptKindFromFileName(fileName) || ScriptKind::TS;
+    }
+    /** @internal */
+    bool hasInvalidEscape(shared<NodeUnion(TemplateLiteral)> templateLiteral) {
+        if (isNoSubstitutionTemplateLiteral(templateLiteral)) {
+            return !!templateLiteral->to<NoSubstitutionTemplateLiteral>().templateFlags;
+        }
+
+        return !!templateLiteral->to<TemplateExpression>().head->templateFlags
+               || some<TemplateSpan>(templateLiteral->to<TemplateExpression>().templateSpans, [](shared<TemplateSpan> span) {
+            if (span->literal->kind == SyntaxKind::TemplateTail) return !!span->literal->to<TemplateTail>().templateFlags;
+            if (span->literal->kind == SyntaxKind::TemplateMiddle) return !!span->literal->to<TemplateMiddle>().templateFlags;
+            return false;
+        });
+
+//        return templateLiteral && !!(isNoSubstitutionTemplateLiteral(templateLiteral)
+//        ? templateLiteral->templateFlags
+//        : (template.head.templateFlags || some(templateLiteral->templateSpans, span => !!span.literal.templateFlags)));
     }
 
     string fileExt(const string &filename) {
@@ -532,36 +566,47 @@ namespace ts {
         }
     }
 
-    bool isOuterExpression(shared<Node> node, int kinds = (int)OuterExpressionKinds::All) {
+    bool isOuterExpression(shared<Node> node, int kinds = (int) OuterExpressionKinds::All) {
         switch (node->kind) {
             case SyntaxKind::ParenthesizedExpression:
 //                if (kinds & (int)OuterExpressionKinds::ExcludeJSDocTypeAssertion && isJSDocTypeAssertion(node)) {
 //                    return false;
 //                }
-                return (kinds & (int)OuterExpressionKinds::Parentheses) != 0;
+                return (kinds & (int) OuterExpressionKinds::Parentheses) != 0;
             case SyntaxKind::TypeAssertionExpression:
             case SyntaxKind::AsExpression:
-                return (kinds & (int)OuterExpressionKinds::TypeAssertions) != 0;
+                return (kinds & (int) OuterExpressionKinds::TypeAssertions) != 0;
             case SyntaxKind::NonNullExpression:
-                return (kinds & (int)OuterExpressionKinds::NonNullAssertions) != 0;
+                return (kinds & (int) OuterExpressionKinds::NonNullAssertions) != 0;
             case SyntaxKind::PartiallyEmittedExpression:
-                return (kinds & (int)OuterExpressionKinds::PartiallyEmittedExpressions) != 0;
+                return (kinds & (int) OuterExpressionKinds::PartiallyEmittedExpressions) != 0;
         }
         return false;
     }
 
     shared<Expression> getExpression(shared<Node> node) {
         switch (node->kind) {
-            case SyntaxKind::ParenthesizedExpression: return node->to<ParenthesizedExpression>().expression;
-            case SyntaxKind::TypeAssertionExpression: return node->to<TypeAssertion>().expression;
-            case SyntaxKind::AsExpression: return node->to<AsExpression>().expression;
-            case SyntaxKind::NonNullExpression: return node->to<NonNullExpression>().expression;
-            case SyntaxKind::PartiallyEmittedExpression: return node->to<PartiallyEmittedExpression>().expression;
+            case SyntaxKind::ParenthesizedExpression:
+                return node->to<ParenthesizedExpression>().expression;
+            case SyntaxKind::TypeAssertionExpression:
+                return node->to<TypeAssertion>().expression;
+            case SyntaxKind::AsExpression:
+                return node->to<AsExpression>().expression;
+            case SyntaxKind::ElementAccessExpression:
+                return node->to<ElementAccessExpression>().expression;
+            case SyntaxKind::PropertyAccessExpression:
+                return node->to<PropertyAccessExpression>().expression;
+            case SyntaxKind::NonNullExpression:
+                return node->to<NonNullExpression>().expression;
+            case SyntaxKind::CallExpression:
+                return node->to<CallExpression>().expression;
+            case SyntaxKind::PartiallyEmittedExpression:
+                return node->to<PartiallyEmittedExpression>().expression;
         }
-        throw runtime_error(format("No expression found in type %d", (int)node->kind));
+        throw runtime_error(format("No expression found in type %d", (int) node->kind));
     }
 
-    shared<Node> skipOuterExpressions(shared<Node> node, int kinds = (int)OuterExpressionKinds::All) {
+    shared<Node> skipOuterExpressions(shared<Node> node, int kinds = (int) OuterExpressionKinds::All) {
         while (isOuterExpression(node, kinds)) {
             node = getExpression(node);
         }
@@ -569,7 +614,7 @@ namespace ts {
     }
 
     shared<Node> skipPartiallyEmittedExpressions(shared<Node> node) {
-        return skipOuterExpressions(node, (int)OuterExpressionKinds::PartiallyEmittedExpressions);
+        return skipOuterExpressions(node, (int) OuterExpressionKinds::PartiallyEmittedExpressions);
     }
 
     bool isLeftHandSideExpressionKind(SyntaxKind kind) {
@@ -624,7 +669,7 @@ namespace ts {
                 return isLeftHandSideExpressionKind(kind);
         }
     }
-    
+
     /* @internal */
     bool isUnaryExpression(shared<Node> node) {
         return isUnaryExpressionKind(skipPartiallyEmittedExpressions(node)->kind);
@@ -633,21 +678,21 @@ namespace ts {
     int getOperatorPrecedence(SyntaxKind nodeKind, SyntaxKind operatorKind, optional<bool> hasArguments = {}) {
         switch (nodeKind) {
             case SyntaxKind::CommaListExpression:
-                return (int)OperatorPrecedence::Comma;
+                return (int) OperatorPrecedence::Comma;
 
             case SyntaxKind::SpreadElement:
-                return (int)OperatorPrecedence::Spread;
+                return (int) OperatorPrecedence::Spread;
 
             case SyntaxKind::YieldExpression:
-                return (int)OperatorPrecedence::Yield;
+                return (int) OperatorPrecedence::Yield;
 
             case SyntaxKind::ConditionalExpression:
-                return (int)OperatorPrecedence::Conditional;
+                return (int) OperatorPrecedence::Conditional;
 
             case SyntaxKind::BinaryExpression:
                 switch (operatorKind) {
                     case SyntaxKind::CommaToken:
-                        return (int)OperatorPrecedence::Comma;
+                        return (int) OperatorPrecedence::Comma;
 
                     case SyntaxKind::EqualsToken:
                     case SyntaxKind::PlusEqualsToken:
@@ -665,13 +710,13 @@ namespace ts {
                     case SyntaxKind::BarBarEqualsToken:
                     case SyntaxKind::AmpersandAmpersandEqualsToken:
                     case SyntaxKind::QuestionQuestionEqualsToken:
-                        return (int)OperatorPrecedence::Assignment;
+                        return (int) OperatorPrecedence::Assignment;
 
                     default:
                         return getBinaryOperatorPrecedence(operatorKind);
                 }
 
-            // TODO: Should prefix `++` and `--` be moved to the `Update` precedence?
+                // TODO: Should prefix `++` and `--` be moved to the `Update` precedence?
             case SyntaxKind::TypeAssertionExpression:
             case SyntaxKind::NonNullExpression:
             case SyntaxKind::PrefixUnaryExpression:
@@ -679,25 +724,25 @@ namespace ts {
             case SyntaxKind::VoidExpression:
             case SyntaxKind::DeleteExpression:
             case SyntaxKind::AwaitExpression:
-                return (int)OperatorPrecedence::Unary;
+                return (int) OperatorPrecedence::Unary;
 
             case SyntaxKind::PostfixUnaryExpression:
-                return (int)OperatorPrecedence::Update;
+                return (int) OperatorPrecedence::Update;
 
             case SyntaxKind::CallExpression:
-                return (int)OperatorPrecedence::LeftHandSide;
+                return (int) OperatorPrecedence::LeftHandSide;
 
             case SyntaxKind::NewExpression:
-                return hasArguments && *hasArguments ? (int)OperatorPrecedence::Member : (int)OperatorPrecedence::LeftHandSide;
+                return hasArguments && *hasArguments ? (int) OperatorPrecedence::Member : (int) OperatorPrecedence::LeftHandSide;
 
             case SyntaxKind::TaggedTemplateExpression:
             case SyntaxKind::PropertyAccessExpression:
             case SyntaxKind::ElementAccessExpression:
             case SyntaxKind::MetaProperty:
-                return (int)OperatorPrecedence::Member;
+                return (int) OperatorPrecedence::Member;
 
             case SyntaxKind::AsExpression:
-                return (int)OperatorPrecedence::Relational;
+                return (int) OperatorPrecedence::Relational;
 
             case SyntaxKind::ThisKeyword:
             case SyntaxKind::SuperKeyword:
@@ -722,31 +767,28 @@ namespace ts {
             case SyntaxKind::JsxElement:
             case SyntaxKind::JsxSelfClosingElement:
             case SyntaxKind::JsxFragment:
-                return (int)OperatorPrecedence::Primary;
+                return (int) OperatorPrecedence::Primary;
 
             default:
-                return (int)OperatorPrecedence::Invalid;
+                return (int) OperatorPrecedence::Invalid;
         }
     }
 
-    SyntaxKind getOperator(shared<Node> expression)  {
+    SyntaxKind getOperator(shared<Node> expression) {
         if (expression->kind == SyntaxKind::BinaryExpression) {
             return expression->to<BinaryExpression>().operatorToken->kind;
-        }
-        else if (expression->kind == SyntaxKind::PrefixUnaryExpression) {
+        } else if (expression->kind == SyntaxKind::PrefixUnaryExpression) {
             return expression->to<PrefixUnaryExpression>().operatorKind;
-        }
-        else if (expression->kind == SyntaxKind::PostfixUnaryExpression) {
+        } else if (expression->kind == SyntaxKind::PostfixUnaryExpression) {
             return expression->to<PostfixUnaryExpression>().operatorKind;
-        }
-        else {
+        } else {
             return expression->kind;
         }
     }
 
     /* @internal */
     bool isGeneratedIdentifier(shared<Node> node) {
-        return node->kind == SyntaxKind::Identifier && (defaultTo(node->to<Identifier>().autoGenerateFlags, 0) & (int)GeneratedIdentifierFlags::KindMask) > (int)GeneratedIdentifierFlags::None;
+        return node->kind == SyntaxKind::Identifier && (defaultTo(node->to<Identifier>().autoGenerateFlags, 0) & (int) GeneratedIdentifierFlags::KindMask) > (int) GeneratedIdentifierFlags::None;
     }
 
     int getExpressionPrecedence(shared<Node> expression) {
@@ -755,14 +797,13 @@ namespace ts {
         return getOperatorPrecedence(expression->kind, operatorNode, hasArguments);
     }
 
-
     bool isLeftHandSideExpression(shared<Node> node) {
         return isLeftHandSideExpressionKind(skipPartiallyEmittedExpressions(node)->kind);
     }
 
     bool positionIsSynthesized(int pos) {
-    // This is a fast way of testing the following conditions:
-    //  pos === undefined || pos === null || isNaN(pos) || pos < 0;
+        // This is a fast way of testing the following conditions:
+        //  pos === undefined || pos === null || isNaN(pos) || pos < 0;
         return !(pos >= 0);
     }
 
@@ -786,20 +827,76 @@ namespace ts {
         return node->pos == node->end && node->pos >= 0 && node->kind != SyntaxKind::EndOfFileToken;
     }
 
-    string getTextOfNodeFromSourceText(string &sourceText, shared<Node> node, bool includeTrivia = false){
+    string getTextOfNodeFromSourceText(string &sourceText, shared<Node> node, bool includeTrivia = false) {
         if (nodeIsMissing(node)) {
             return "";
         }
 
-        auto text = substring(sourceText, includeTrivia ? node->pos : skipTrivia(sourceText, node->pos), node->end);
+        auto text = substr(sourceText, includeTrivia ? node->pos : skipTrivia(sourceText, node->pos), node->end);
 
-        if (isJSDocTypeExpressionOrChild(node)) {
-            // strip space + asterisk at line start
-            //todo:
-//            text = text.split(/\r\n|\n|\r/).map(line => trimStringStart(line.replace(/^\s*\*/, ""))).join("\n");
-        }
+        //we don't care about JSDoc
+//        if (isJSDocTypeExpressionOrChild(node)) {
+//            // strip space + asterisk at line start
+//            //todo:
+////            text = text.split(/\r\n|\n|\r/).map(line => trimStringStart(line.replace(/^\s*\*/, ""))).join("\n");
+//        }
 
         return text;
+    }
+
+    int getFullWidth(shared<Node> node) {
+        return node->end - node->pos;
+    }
+
+    /**
+     * Remove extra underscore from escaped identifier text content.
+     *
+     * @param identifier The escaped identifier text.
+     * @returns The unescaped identifier text.
+     */
+    string unescapeLeadingUnderscores(__String id) {
+        return id.size() >= 3 && charCodeAt(id, 0).code == CharacterCodes::_ && charCodeAt(id, 1).code == CharacterCodes::_ && charCodeAt(id, 2).code == CharacterCodes::_ ? substr(id, 1) : id;
+    }
+
+    string idText(shared<NodeUnion(Identifier | PrivateIdentifier)> identifierOrPrivateName) {
+        return unescapeLeadingUnderscores(getEscapedName(identifierOrPrivateName));
+    }
+
+    shared<Expression> getLeftmostExpression(shared<Expression> node, bool stopAtCallExpressions) {
+        while (true) {
+            switch (node->kind) {
+                case SyntaxKind::PostfixUnaryExpression:
+                    node = node->to<PostfixUnaryExpression>().operand;
+                    continue;
+
+                case SyntaxKind::BinaryExpression:
+                    node = node->to<BinaryExpression>().left;
+                    continue;
+
+                case SyntaxKind::ConditionalExpression:
+                    node = node->to<ConditionalExpression>().condition;
+                    continue;
+
+                case SyntaxKind::TaggedTemplateExpression:
+                    node = node->to<TaggedTemplateExpression>().tag;
+                    continue;
+
+                case SyntaxKind::CallExpression:
+                    if (stopAtCallExpressions) {
+                        return node;
+                    }
+                    // falls through
+                case SyntaxKind::AsExpression:
+                case SyntaxKind::ElementAccessExpression:
+                case SyntaxKind::PropertyAccessExpression:
+                case SyntaxKind::NonNullExpression:
+                case SyntaxKind::PartiallyEmittedExpression:
+                    node = getExpression(node);
+                    continue;
+            }
+
+            return node;
+        }
     }
 
 }

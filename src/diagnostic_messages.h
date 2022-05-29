@@ -18,7 +18,7 @@ namespace ts {
         static inline const auto Identifier_expected = diag(1003, DiagnosticCategory::Error, "Identifier_expected_1003", "Identifier expected.");
         static inline const auto _0_expected = diag(1005, DiagnosticCategory::Error, "_0_expected_1005", "'{0}' expected.");
         static inline const auto A_file_cannot_have_a_reference_to_itself = diag(1006, DiagnosticCategory::Error, "A_file_cannot_have_a_reference_to_itself_1006", "A file cannot have a reference to itself.");
-        static inline const auto The_parser_expected_to_find_a_to_match_the_token_here = diag(1007, DiagnosticCategory::Error, "The_parser_expected_to_find_a_to_match_the_token_here_1007", "The parser expected to find a '}' to match the '{' token here.");
+        static inline const auto The_parser_expected_to_find_a_1_to_match_the_0_token_here = diag(1007, DiagnosticCategory::Error, "The_parser_expected_to_find_a_1_to_match_the_0_token_here_1007", "The parser expected to find a '{1}' to match the '{0}' token here.");
         static inline const auto Trailing_comma_not_allowed = diag(1009, DiagnosticCategory::Error, "Trailing_comma_not_allowed_1009", "Trailing comma not allowed.");
         static inline const auto Asterisk_Slash_expected = diag(1010, DiagnosticCategory::Error, "Asterisk_Slash_expected_1010", "'*/' expected.");
         static inline const auto An_element_access_expression_should_take_an_argument = diag(1011, DiagnosticCategory::Error, "An_element_access_expression_should_take_an_argument_1011", "An element access expression should take an argument.");

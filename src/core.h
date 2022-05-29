@@ -8,6 +8,12 @@
 #include <optional>
 #include <sstream>
 
+namespace ts::Debug {
+    void asserts(bool v, std::string text = "") {
+        if (!v) throw std::runtime_error("assert: " + text);
+    }
+}
+
 namespace ts {
     using std::string;
     using std::vector;
@@ -191,6 +197,11 @@ namespace ts {
         }
         return false;
     };
+
+    template<typename T>
+    inline bool some(optional<vector<T>> array) {
+        return array && !array->empty();
+    }
 
     //inline bool some(optional<T> array, std::function<void(typename decltype(data)::value_type::value_type)> predicate) {
     template<typename T>

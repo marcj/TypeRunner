@@ -19,6 +19,17 @@ namespace ts::types {
     using namespace std;
     struct CompilerOptions;
 
+    /**
+     * This represents a string whose leading underscore have been escaped by adding extra leading underscores.
+     *
+     * The shape of this brand is rather unique compared to others we've used.
+     * Instead of just an intersection of a string and an object, it is that union-ed
+     * with an intersection of void and an object. This makes it wholly incompatible
+     * with a normal string (which is good, it cannot be misused on assignment or on usage),
+     * while still being comparable with a normal string via === (also good) and castable from a string.
+     */
+    using __String = std::string;
+
     enum class ScriptTarget {
         ES3 = 0,
         ES5 = 1,
@@ -110,7 +121,7 @@ namespace ts::types {
 
         bool reportsDeprecated = false;
         string source;
-        vector<DiagnosticRelatedInformation> relatedInformation;
+        optional<vector<DiagnosticRelatedInformation>> relatedInformation;
         /* @internal */ CompilerOptions *skippedOn = nullptr;
     };
 
@@ -864,6 +875,43 @@ namespace ts::types {
         /* @internal */ PermanentlySetIncrementalFlags = PossiblyContainsDynamicImport | PossiblyContainsImportMeta,
     };
 
+    enum class EmitFlags {
+        None = 0,
+        SingleLine = 1 << 0,                    // The contents of this node should be emitted on a single line.
+        AdviseOnEmitNode = 1 << 1,              // The printer should invoke the onEmitNode callback when printing this node.
+        NoSubstitution = 1 << 2,                // Disables further substitution of an expression.
+        CapturesThis = 1 << 3,                  // The function captures a lexical `this`
+        NoLeadingSourceMap = 1 << 4,            // Do not emit a leading source map location for this node.
+        NoTrailingSourceMap = 1 << 5,           // Do not emit a trailing source map location for this node.
+        NoSourceMap = NoLeadingSourceMap | NoTrailingSourceMap, // Do not emit a source map location for this node.
+        NoNestedSourceMaps = 1 << 6,            // Do not emit source map locations for children of this node.
+        NoTokenLeadingSourceMaps = 1 << 7,      // Do not emit leading source map location for token nodes.
+        NoTokenTrailingSourceMaps = 1 << 8,     // Do not emit trailing source map location for token nodes.
+        NoTokenSourceMaps = NoTokenLeadingSourceMaps | NoTokenTrailingSourceMaps, // Do not emit source map locations for tokens of this node.
+        NoLeadingComments = 1 << 9,             // Do not emit leading comments for this node.
+        NoTrailingComments = 1 << 10,           // Do not emit trailing comments for this node.
+        NoComments = NoLeadingComments | NoTrailingComments, // Do not emit comments for this node.
+        NoNestedComments = 1 << 11,
+        HelperName = 1 << 12,                   // The Identifier refers to an *unscoped* emit helper (one that is emitted at the top of the file)
+        ExportName = 1 << 13,                   // Ensure an export prefix is added for an identifier that points to an exported declaration with a local name (see SymbolFlags.ExportHasLocal).
+        LocalName = 1 << 14,                    // Ensure an export prefix is not added for an identifier that points to an exported declaration.
+        InternalName = 1 << 15,                 // The name is internal to an ES5 class body function.
+        Indented = 1 << 16,                     // Adds an explicit extra indentation level for class and function bodies when printing (used to match old emitter).
+        NoIndentation = 1 << 17,                // Do not indent the node.
+        AsyncFunctionBody = 1 << 18,
+        ReuseTempVariableScope = 1 << 19,       // Reuse the existing temp variable scope during emit.
+        CustomPrologue = 1 << 20,               // Treat the statement as if it were a prologue directive (NOTE: Prologue directives are *not* transformed).
+        NoHoisting = 1 << 21,                   // Do not hoist this declaration in --module system
+        HasEndOfDeclarationMarker = 1 << 22,    // Declaration has an associated NotEmittedStatement to mark the end of the declaration
+        Iterator = 1 << 23,                     // The expression to a `yield*` should be treated as an Iterator when down-leveling, not an Iterable.
+        NoAsciiEscaping = 1 << 24,              // When synthesizing nodes that lack an original node or textSourceNode, we want to write the text on the node with ASCII escaping substitutions.
+        /*@internal*/ TypeScriptClassWrapper = 1 << 25, // The node is an IIFE class wrapper created by the ts transform.
+        /*@internal*/ NeverApplyImportHelper = 1 << 26, // Indicates the node should never be wrapped with an import star helper (because, for example, it imports tslib itself)
+        /*@internal*/ IgnoreSourceNewlines = 1 << 27,   // Overrides `printerOptions.preserveSourceNewlines` to print this node (and all descendants) with default whitespace.
+        /*@internal*/ Immutable = 1 << 28,      // Indicates a node is a singleton intended to be reused in multiple locations. Any attempt to make further changes to the node will result in an error.
+        /*@internal*/ IndirectCall = 1 << 29,   // Emit CallExpression as an indirect call: `(0, f)()`
+    };
+
     enum class ModifierFlags {
         None = 0,
         Export = 1 << 0,  // Declarations
@@ -1134,11 +1182,28 @@ namespace ts {
             return list.size();
         }
 
+        bool empty() {
+            return list.empty();
+        }
+
         vector<shared<Node>> slice(int start, int end = 0) {
             if (!end) end = list.size();
             return std::vector<shared<Node>>(list.begin() + start, list.begin() + end);
         }
     };
+
+    template<class T>
+    bool some(optional<NodeArray> array, function<bool(shared<T>)> callback) {
+        if (!array) return false;
+        for (auto &item: array->list) {
+            if (callback(dynamic_pointer_cast<T>(item))) return true;
+        }
+        return false;
+    }
+
+    inline bool some(optional<NodeArray> array) {
+        return array && !array->empty();
+    }
 
 #define NodeTypeArray(x...) NodeArray
 
@@ -1153,6 +1218,23 @@ namespace ts {
 //
 //        bool empty();
 //    };
+
+    struct EmitNode {
+//        optional<vector<shared<Node>>> annotatedNodes;                 // Tracks Parse-tree nodes with EmitNodes for eventual cleanup.
+        /*EmitFlags*/ int flags = 0;                        // Flags that customize emit
+//        optional<vector<SynthesizedComment>> leadingComments;  // Synthesized leading comments
+//        trailingComments?: SynthesizedComment[]; // Synthesized trailing comments
+//        commentRange?: TextRange;                // The text range to use when emitting leading or trailing comments
+//        sourceMapRange?: SourceMapRange;         // The text range to use when emitting leading or trailing source mappings
+//        tokenSourceMapRanges?: (SourceMapRange | undefined)[]; // The text range to use when emitting source mappings for tokens
+//        constantValue?: string | number;         // The constant value of an expression
+//        externalHelpersModuleName?: Identifier;  // The local name for an imported helpers module
+//        externalHelpers?: boolean;
+//        helpers?: EmitHelper[];                  // Emit helpers for the node
+//        startsOnNewLine?: boolean;               // If the node should begin on a new line
+//        snippetElement?: SnippetElement;         // Snippet element of the node
+//        typeNode?: TypeNode;                         // VariableDeclaration type
+    };
 
     /**
      * All BaseNode pointers are owned by SourceFile. If SourceFile destroys, all its Nodes are destroyed as well.
@@ -1169,14 +1251,14 @@ namespace ts {
         optional<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
         optional<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
         /* @internal */ /* types::TransformFlags */ int transformFlags; // Flags for transforms
-////        /* @internal */ id?: NodeId;                          // Unique id (used to look up NodeLinks)
+//        /* @internal */ id?: NodeId;                          // Unique id (used to look up NodeLinks)
 //        /* @internal */ original?: Node;                      // The original BaseNode if this is an updated node.
 //        /* @internal */ symbol: Symbol;                       // Symbol declared by BaseNode (initialized by binding)
 //        /* @internal */ locals?: SymbolTable;                 // Locals associated with BaseNode (initialized by binding)
 //        /* @internal */ nextContainer?: Node;                 // Next container in declaration order (initialized by binding)
 //        /* @internal */ localSymbol?: Symbol;                 // Local symbol declared by BaseNode (initialized by binding only for exported nodes)
 //        /* @internal */ flowNode?: FlowNode;                  // Associated FlowNode (initialized by binding)
-//        /* @internal */ optional<EmitNode> emitNode; //?: ;                  // Associated EmitNode (initialized by transforms)
+        /* @internal */ optional<EmitNode> emitNode; //?: ;                  // Associated EmitNode (initialized by transforms)
 //        /* @internal */ contextualType?: Type;                // Used to temporarily assign a contextual type during overload resolution
 //        /* @internal */ inferenceContext?: InferenceContext;  // Inference context for contextual type
 
@@ -1185,24 +1267,6 @@ namespace ts {
         bool hasParent() {
             return &parent != this;
         }
-
-//        sharedOpt<Node> operator = (const sharedOpt<BaseUnion> &a) {
-////        if (a) return a;
-////        return b;
-//            return a->node;
-//        };
-
-//        Node() {}
-//        Node(const sharedOpt<BaseUnion> &a) {
-//
-//        }
-//        Node(const BaseUnion &a) {
-//
-//        }
-//
-//        Node(BaseUnion a) {
-//
-//        }
 
         Node &getParent() {
             if (! hasParent()) throw std::runtime_error("Node has no parent set");
@@ -1233,12 +1297,6 @@ namespace ts {
             if (kind != T::KIND) throw std::runtime_error(format("Can not convert Node, from kind %d to %d", kind, T::KIND));
             return *reinterpret_cast<T *>(this);
         }
-
-//        //if you know what you are doing
-//        template<typename T>
-//        T &cast() {
-//            return *reinterpret_cast<T *>(this);
-//        }
     };
 
     sharedOpt<Node> operator||(sharedOpt<Node> a, sharedOpt<Node> b) {
@@ -1252,143 +1310,7 @@ namespace ts {
 
 #define NodeUnion(x...) Node
 
-////    template<class T>
-////    bool is(Node &node) {
-////        return data && node.kind == T::KIND;
-////    }
-//
-//    template<typename Default, typename ... Ts>
-//    struct Union: BaseUnion {
-////        std::variant<shared_ptr<Default>, shared_ptr<Ts>...> value = make_shared<Default>();
-////    auto types() {
-////        using ETypes = std::tuple<decltype(Ts{})...>;
-////        ETypes types;
-////        return types;
-////    }
-//
-//        Union() {
-//            this->node = make_shared<Default>();
-//        }
-//
-//        operator Node() {
-//            return *this->node;
-//        }
-//
-////        operator shared<Node>() {
-////            return this->node;
-////        }
-//
-////        operator const Node() {
-////            return *this->node;
-////        }
-//
-////        operator Node&() {
-////            return *this->node;
-////        }
-////
-////        operator const Node&() {
-////            return *this->node;
-////        }
-//
-////        operator sharedOpt<Node>() {
-////            if (node->kind == types::Unknown) return nullptr;
-////            return this->node;
-////        }
-////
-////        sharedOpt<Node> operator=(sharedOpt<reference_wrapper<const BaseUnion>>) {
-////            if (node->kind == types::Unknown) return nullptr;
-////            return this->node;
-////        }
-//
-////        operator reference_wrapper<Node>() {
-////            return *this->node;
-////        }
-//
-////        operator optional<Node>() {
-////            if (node->kind == types::Unknown) return nullopt;
-////            return *this->node;
-////        }
-//
-//        sharedOpt<Node> lol() {
-//            if (node->kind == types::Unknown) return nullptr;
-//            return this->node;
-//        }
-//
-////        optional<Node> operator=(OptionalNode other) {
-////            if (node->kind == types::Unknown) return nullopt;
-////            return *this->node;
-////        }
-//
-//        template<typename T>
-//        bool is() {
-//            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
-//            return node->kind == T::KIND; //std::holds_alternative<shared_ptr<T>>(value);
-//        }
-//
-//        template<typename T>
-//        T &to() {
-//            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
-//            if (! is<T>()) {
-//                node = make_shared<T>();
-//            }
-//            return reinterpret_cast<T &>(*node);
-////            return *node; //*std::get<shared_ptr<T>>(value);
-//        }
-//    };
-//
-//    template<typename Default, typename ... Ts>
-//    struct NodeUnion: Union<Default, Ts...> {
-//        NodeUnion() {
-//            this->node = make_shared<Default>();
-//        }
-//
-//        NodeUnion(auto node) {
-//            this->node = make_shared<decltype(node)>();
-//        }
-//
-//        operator shared<Node>() {
-//            return this->node;
-//        }
-//
-//        operator Node() {
-//            return *this->node;
-//        }
-//
-////        operator const shared<Node>() & {
-////            return this->node;
-////        }
-//
-////        operator optional<const Node> () {
-////            throw runtime_error("Ads");
-////        }
-//
-////        NodeUnion& operator=(const SourceFile &node) {
-////            this->node = node;
-////            return *this;
-////        }
-//
-////        template<typename T>
-////        NodeUnion(const T &node) {
-////            this->node = node;
-////        }
-//
-//        /**
-//         * Casts whatever is current hold as Node.
-//         */
-//        Node &getNode() {
-//            Node *b = nullptr;
-//
-//            std::visit([&b](auto &arg) {
-//                b = reinterpret_cast<Node *>(&(*arg));
-//            }, this->value);
-//
-//            if (! b) throw std::runtime_error("Union does not hold a Node");
-//
-//            return *b;
-//        }
-//    };
-
-//just to have the type information in the IDE
+    //just to have the type information in the code
     template<typename ... Types>
     using UnionNode = Node;
 
@@ -1397,8 +1319,8 @@ namespace ts {
 /**
  * Defines a shared union property and initializes its first type.
  */
-#define UnionProperty(name, Types...) shared<UnionNode<Types>> name = make_shared<FIRST_ARG((Types))>()
-#define OptionalUnionProperty(name, Types...) sharedOpt<UnionNode<Types>> name
+#define UnionProperty(name, Types...) shared<Node> name = make_shared<FIRST_ARG((Types))>()
+#define OptionalUnionProperty(name, Types...) sharedOpt<Node> name
 
 //Parent properties can not have initializer as it would lead to circular ref. We expect from the user to set it where required.
 #define ParentProperty(Types...) shared<UnionNode<Types>> parent
@@ -1545,13 +1467,13 @@ namespace ts {
 
     struct ModifiersArray: NodeTypeArray(Modifier) {};
 
-    struct LiteralLikeNode: Node {
+    struct LiteralLike: PrimaryExpression {
         std::string text;
         optional<bool> isUnterminated;
         optional<bool> hasExtendedUnicodeEscape;
     };
 
-    struct LiteralExpression: LiteralLikeNode {};
+    struct LiteralExpression: LiteralLike {};
 
     struct Identifier;
     struct NoSubstitutionTemplateLiteral;
@@ -1588,6 +1510,7 @@ namespace ts {
         string escapedText;
         optional<SyntaxKind> originalKeywordKind;// Original syntaxKind which get set so that we can report an error later
 
+        optional<bool> isInJSDocNamespace;
         /*@internal*/ optional</*GeneratedIdentifierFlags*/int> autoGenerateFlags; // Specifies whether to auto-generate the text for an identifier.
         /*@internal*/ optional<int> autoGenerateId;           // Ensures unique generated identifiers get unique names, but clones get the same name.
         /*@internal*/ sharedOpt<ImportSpecifier> generatedImportReference; // Reference to the generated import specifier this identifier refers to
@@ -1618,7 +1541,7 @@ namespace ts {
         /*@internal*/ bool multiLine;
     };
 
-    struct TemplateLiteralLikeNode: LiteralLikeNode {
+    struct TemplateLiteralLike: LiteralLike {
         optional<string> rawText = {};
         /* @internal */
         optional<int> templateFlags; //types::TokenFlags
@@ -1659,7 +1582,7 @@ namespace ts {
         Property(argumentExpression, Expression);
     };
 
-    struct OmittedExpression: BrandKind<SyntaxKind::OmittedExpression, Node> {};
+    struct OmittedExpression: BrandKind<SyntaxKind::OmittedExpression, Expression> {};
 
     struct VariableDeclaration;
     struct ParameterDeclaration;
@@ -1852,6 +1775,8 @@ namespace ts {
         UnionProperty(name, Identifier, PrivateIdentifier);
     };
 
+    using PropertyAccessChain = PropertyAccessExpression;
+
     struct PropertyAccessEntityNameExpression;
 
     struct EntityNameExpression: NodeUnion(Identifier, PropertyAccessEntityNameExpression) {};
@@ -2022,7 +1947,7 @@ namespace ts {
         NodeTypeArray(TypeElement) members;
     };
 
-    struct NodeWithTypeArguments: TypeNode {
+    struct NodeWithTypeArguments {
         optional<NodeTypeArray(TypeNode)> typeArguments;
     };
 
@@ -2032,7 +1957,7 @@ namespace ts {
 
     struct HeritageClause: BrandKind<SyntaxKind::HeritageClause, Node> {
         ParentProperty(InterfaceDeclaration, ClassLikeDeclaration);
-        Property(token, SyntaxKind); //SyntaxKind.ExtendsKeyword | SyntaxKind.ImplementsKeyword
+        SyntaxKind token; //SyntaxKind.ExtendsKeyword | SyntaxKind.ImplementsKeyword
         NodeTypeArray(ExpressionWithTypeArguments) types;
     };
 
@@ -2070,7 +1995,7 @@ namespace ts {
         OptionalProperty(initializer, Expression);
     };
 
-    struct TypeReferenceNode: BrandKind<SyntaxKind::TypeReference, NodeWithTypeArguments> {
+    struct TypeReferenceNode: BrandKind<SyntaxKind::TypeReference, NodeWithTypeArguments, Node> {
         UnionProperty(typeName, EntityName);
     };
 
@@ -2260,21 +2185,21 @@ namespace ts {
 
     struct ThisTypeNode: BrandKind<SyntaxKind::ThisType, TypeNode> {};
 
-    struct CallSignatureDeclaration: BrandKind<SyntaxKind::CallSignature, SignatureDeclarationBase, TypeElement> {
+    struct CallSignatureDeclaration: BrandKind<SyntaxKind::CallSignature, SignatureDeclarationBase, TypeElement, Node> {
         using TypeElement::name;
     };
-    struct ConstructSignatureDeclaration: BrandKind<SyntaxKind::ConstructSignature, SignatureDeclarationBase, TypeElement> {
+    struct ConstructSignatureDeclaration: BrandKind<SyntaxKind::ConstructSignature, SignatureDeclarationBase, TypeElement, Node> {
         using TypeElement::name;
     };
 
 #define ObjectTypeDeclaration ClassLikeDeclaration, InterfaceDeclaration, TypeLiteralNode
 
-    struct MethodSignature: BrandKind<SyntaxKind::MethodSignature, SignatureDeclarationBase, TypeElement> {
+    struct MethodSignature: BrandKind<SyntaxKind::MethodSignature, SignatureDeclarationBase, TypeElement, Node> {
         shared<NodeUnion(ObjectTypeDeclaration)> parent;
         UnionProperty(name, PropertyName);
     };
 
-    struct IndexSignatureDeclaration: BrandKind<SyntaxKind::IndexSignature, SignatureDeclarationBase, ClassElement, TypeElement> {
+    struct IndexSignatureDeclaration: BrandKind<SyntaxKind::IndexSignature, SignatureDeclarationBase, ClassElement, TypeElement, Node> {
         using TypeElement::name;
         shared<NodeUnion(ObjectTypeDeclaration)> parent;
 //        optional<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
@@ -2306,14 +2231,15 @@ namespace ts {
     // Because of this, it may be necessary to determine what sort of MethodDeclaration you have
     // at later stages of the compiler pipeline.  In that case, you can either check the parent kind
     // of the method, or use helpers like isObjectLiteralMethodDeclaration
-    struct MethodDeclaration: BrandKind<SyntaxKind::MethodDeclaration, FunctionLikeDeclarationBase, ClassElement, ObjectLiteralElement> {
+    struct MethodDeclaration: BrandKind<SyntaxKind::MethodDeclaration, FunctionLikeDeclarationBase, ClassElement, ObjectLiteralElement, Node> {
         ParentProperty(ClassLikeDeclaration, ObjectLiteralExpression);
         UnionProperty(name, PropertyName);
         UnionProperty(body, FunctionBody);
         /* @internal*/ OptionalProperty(exclamationToken, ExclamationToken); // Present for use with reporting a grammar error
     };
 
-    struct ConstructorDeclaration: FunctionLikeDeclarationBase, ClassElement, BrandKind<SyntaxKind::Constructor> {
+    struct ConstructorDeclaration: BrandKind<SyntaxKind::Constructor, FunctionLikeDeclarationBase, ClassElement, Node> {
+        using ClassElement::name;
         shared<NodeUnion(ClassLikeDeclaration)> parent;
         OptionalProperty(body, FunctionBody);
 
@@ -2321,9 +2247,11 @@ namespace ts {
         /* @internal */ OptionalProperty(type, TypeNode); // Present for use with reporting a grammar error
     };
 
+    struct SemicolonClassElement: BrandKind<SyntaxKind::SemicolonClassElement, ClassElement, Node> {};
+
     // See the comment on MethodDeclaration for the intuition behind GetAccessorDeclaration being a
     // ClassElement and an ObjectLiteralElement.
-    struct GetAccessorDeclaration: BrandKind<SyntaxKind::GetAccessor, FunctionLikeDeclarationBase, ClassElement, TypeElement, ObjectLiteralElement> {
+    struct GetAccessorDeclaration: BrandKind<SyntaxKind::GetAccessor, FunctionLikeDeclarationBase, ClassElement, TypeElement, ObjectLiteralElement, Node> {
         ParentProperty(ClassLikeDeclaration, ObjectLiteralExpression, TypeLiteralNode, InterfaceDeclaration);
         UnionProperty(name, PropertyName);
         OptionalProperty(body, FunctionBody);
@@ -2332,7 +2260,7 @@ namespace ts {
 
     // See the comment on MethodDeclaration for the intuition behind SetAccessorDeclaration being a
     // ClassElement and an ObjectLiteralElement.
-    struct SetAccessorDeclaration: BrandKind<SyntaxKind::SetAccessor, FunctionLikeDeclarationBase, ClassElement, TypeElement, ObjectLiteralElement> {
+    struct SetAccessorDeclaration: BrandKind<SyntaxKind::SetAccessor, FunctionLikeDeclarationBase, ClassElement, TypeElement, ObjectLiteralElement, Node> {
         ParentProperty(ClassLikeDeclaration, ObjectLiteralExpression, TypeLiteralNode, InterfaceDeclaration);
         UnionProperty(name, PropertyName);
         OptionalUnionProperty(body, FunctionBody);
@@ -2489,19 +2417,19 @@ namespace ts {
     struct TemplateSpan;
     struct TemplateLiteralTypeSpan;
 
-    struct TemplateHead: BrandKind<SyntaxKind::TemplateHead, TemplateLiteralLikeNode> {
+    struct TemplateHead: BrandKind<SyntaxKind::TemplateHead, TemplateLiteralLike> {
         ParentProperty(TemplateExpression, TemplateLiteralTypeNode);
         /* @internal */
         optional<types::TokenFlags> templateFlags;
     };
 
-    struct TemplateMiddle: BrandKind<SyntaxKind::TemplateMiddle, TemplateLiteralLikeNode> {
+    struct TemplateMiddle: BrandKind<SyntaxKind::TemplateMiddle, TemplateLiteralLike> {
         shared<NodeUnion(TemplateSpan, TemplateLiteralTypeSpan)> parent;
         /* @internal */
         optional<types::TokenFlags> templateFlags;
     };
 
-    struct TemplateTail: BrandKind<SyntaxKind::TemplateTail, TemplateLiteralLikeNode> {
+    struct TemplateTail: BrandKind<SyntaxKind::TemplateTail, TemplateLiteralLike> {
         ParentProperty(TemplateSpan, TemplateLiteralTypeSpan);
         /* @internal */
         optional<types::TokenFlags> templateFlags;
@@ -2605,7 +2533,7 @@ namespace ts {
     };
 
     struct TypeOperatorNode: BrandKind<SyntaxKind::TypeOperator, TypeNode> {
-        Property(operatorKind, SyntaxKind);
+        SyntaxKind operatorKind;
         Property(type, TypeNode);
     };
 
@@ -2674,7 +2602,7 @@ namespace ts {
         Property(attributes, JsxAttributes);
     };
 
-    struct JsxText: BrandKind<SyntaxKind::JsxText, LiteralLikeNode> {
+    struct JsxText: BrandKind<SyntaxKind::JsxText, LiteralLike> {
         shared<NodeUnion(JsxElement, JsxFragment)> parent;
         bool containsOnlyTriviaWhiteSpaces;
     };
