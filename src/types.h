@@ -30,6 +30,13 @@ namespace ts::types {
      */
     using __String = std::string;
 
+    /* @internal */
+    enum class Comparison {
+        LessThan    = -1,
+        EqualTo     = 0,
+        GreaterThan = 1
+    };
+
     enum class ScriptTarget {
         ES3 = 0,
         ES5 = 1,
@@ -67,8 +74,8 @@ namespace ts::types {
     };
 
     struct TextRange {
-        int pos;
-        int end;
+        int pos = -1;
+        int end = -1;
     };
 
     struct CommentDirective {
@@ -1071,10 +1078,6 @@ namespace ts {
         return kinds;
     }
 
-    struct ReadonlyTextRange {
-        int pos = - 1;
-        int end = - 1;
-    };
 
     struct Decorator;
     struct Modifier;
@@ -1186,9 +1189,22 @@ namespace ts {
             return list.empty();
         }
 
+        void push(shared<Node> node) {
+            list.push_back(node);
+        }
+
+        bool operator==(NodeArray &other) {
+            if (pos != other.pos || end != other.end || hasTrailingComma != other.hasTrailingComma || isMissingList != other.isMissingList) return false;
+            if (transformFlags != other.transformFlags) return false;
+            if (list.size() != other.list.size()) return false;
+            for (int i = 0; i < list.size(); i++) {
+                if (list[i] != other.list[i]) return false;
+            }
+            return true;
+        }
+
         vector<shared<Node>> slice(int start, int end = 0) {
-            if (!end) end = list.size();
-            return std::vector<shared<Node>>(list.begin() + start, list.begin() + end);
+            return slice<shared<Node>>(list, start, end);
         }
     };
 
@@ -1219,13 +1235,35 @@ namespace ts {
 //        bool empty();
 //    };
 
+    struct SourceMapSource {
+        string fileName;
+        string text;
+        /* @internal */ vector<int> lineMap;
+        optional<function<int(int)>> skipTrivia;
+    };
+
+    struct SourceMapRange: types::TextRange {
+        optional<SourceMapSource> source;
+    };
+
+    struct CommentRange: types::TextRange {
+        bool hasTrailingNewLine = false;
+        SyntaxKind kind; //SyntaxKind.SingleLineCommentTrivia | SyntaxKind.MultiLineCommentTrivia
+    };
+
+    struct SynthesizedComment: CommentRange {
+        string text;
+        bool hasLeadingNewline = false;
+    };
+
     struct EmitNode {
 //        optional<vector<shared<Node>>> annotatedNodes;                 // Tracks Parse-tree nodes with EmitNodes for eventual cleanup.
         /*EmitFlags*/ int flags = 0;                        // Flags that customize emit
-//        optional<vector<SynthesizedComment>> leadingComments;  // Synthesized leading comments
-//        trailingComments?: SynthesizedComment[]; // Synthesized trailing comments
-//        commentRange?: TextRange;                // The text range to use when emitting leading or trailing comments
-//        sourceMapRange?: SourceMapRange;         // The text range to use when emitting leading or trailing source mappings
+        optional<vector<SynthesizedComment>> leadingComments;  // Synthesized leading comments
+        optional<vector<SynthesizedComment>> trailingComments;  // Synthesized trailing comments
+        sharedOpt<types::TextRange> commentRange;                // The text range to use when emitting leading or trailing comments
+        sharedOpt<SourceMapRange> sourceMapRange;         // The text range to use when emitting leading or trailing source mappings
+        //todo: if we enable that, we have to adjust mergeEmitNode()
 //        tokenSourceMapRanges?: (SourceMapRange | undefined)[]; // The text range to use when emitting source mappings for tokens
 //        constantValue?: string | number;         // The constant value of an expression
 //        externalHelpersModuleName?: Identifier;  // The local name for an imported helpers module
@@ -1241,24 +1279,25 @@ namespace ts {
      *
      * There are a big variety of sub types: All have in common that they are the owner of their data (except *parent).
      */
-    class Node: public ReadonlyTextRange {
+    class Node: public SourceMapRange {
     protected:
         Node &parent = *this;                                 // Parent BaseNode (initialized by binding)
     public:
         SyntaxKind kind = SyntaxKind::Unknown;
+        constexpr static auto KIND = SyntaxKind::Unknown;
         /* types::NodeFlags */ int flags;
         /* @internal */ /* types::ModifierFlags */ int modifierFlagsCache;
         optional<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
         optional<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
         /* @internal */ /* types::TransformFlags */ int transformFlags; // Flags for transforms
 //        /* @internal */ id?: NodeId;                          // Unique id (used to look up NodeLinks)
-//        /* @internal */ original?: Node;                      // The original BaseNode if this is an updated node.
+        /* @internal */ sharedOpt<Node> original;                      // The original BaseNode if this is an updated node.
 //        /* @internal */ symbol: Symbol;                       // Symbol declared by BaseNode (initialized by binding)
 //        /* @internal */ locals?: SymbolTable;                 // Locals associated with BaseNode (initialized by binding)
 //        /* @internal */ nextContainer?: Node;                 // Next container in declaration order (initialized by binding)
 //        /* @internal */ localSymbol?: Symbol;                 // Local symbol declared by BaseNode (initialized by binding only for exported nodes)
 //        /* @internal */ flowNode?: FlowNode;                  // Associated FlowNode (initialized by binding)
-        /* @internal */ optional<EmitNode> emitNode; //?: ;                  // Associated EmitNode (initialized by transforms)
+        /* @internal */ sharedOpt<EmitNode> emitNode; //?: ;                  // Associated EmitNode (initialized by transforms)
 //        /* @internal */ contextualType?: Type;                // Used to temporarily assign a contextual type during overload resolution
 //        /* @internal */ inferenceContext?: InferenceContext;  // Inference context for contextual type
 
@@ -1299,9 +1338,22 @@ namespace ts {
         }
     };
 
-    sharedOpt<Node> operator||(sharedOpt<Node> a, sharedOpt<Node> b) {
+    template<class T>
+    sharedOpt<T> to(sharedOpt<Node> p) {
+        if (!p) return nullptr;
+        if (T::KIND != SyntaxKind::Unknown && p->kind != T::KIND) return nullptr;
+        return reinterpret_pointer_cast<T>(p);
+    }
+
+    inline sharedOpt<Node> operator||(sharedOpt<Node> a, sharedOpt<Node> b) {
         if (a) return a;
         return b;
+    };
+
+    inline bool operator==(optional<NodeArray> a, optional<NodeArray> b) {
+        if (!a && !b) return true;
+        if (!a || !b) return false;
+        return *a == *b;
     };
 
     template<typename Default, typename ... T>
@@ -1359,6 +1411,7 @@ namespace ts {
     struct DotToken: Token<SyntaxKind::DotToken> {};
     struct DotDotDotToken: Token<SyntaxKind::DotDotDotToken> {};
     struct QuestionToken: Token<SyntaxKind::QuestionToken> {};
+    struct CommaToken: Token<SyntaxKind::CommaToken> {};
     struct ExclamationToken: Token<SyntaxKind::ExclamationToken> {};
     struct ColonToken: Token<SyntaxKind::ColonToken> {};
     struct EqualsToken: Token<SyntaxKind::EqualsToken> {};
@@ -1995,7 +2048,7 @@ namespace ts {
         OptionalProperty(initializer, Expression);
     };
 
-    struct TypeReferenceNode: BrandKind<SyntaxKind::TypeReference, NodeWithTypeArguments, Node> {
+    struct TypeReferenceNode: BrandKind<SyntaxKind::TypeReference, NodeWithTypeArguments, TypeNode> {
         UnionProperty(typeName, EntityName);
     };
 
@@ -2176,7 +2229,7 @@ namespace ts {
         bool multiLine = false;
     };
 
-    struct ImportTypeNode: BrandKind<SyntaxKind::ImportType, NodeWithTypeArguments> {
+    struct ImportTypeNode: BrandKind<SyntaxKind::ImportType, NodeWithTypeArguments, TypeNode> {
         bool isTypeOf;
         Property(argument, TypeNode);
         OptionalProperty(assertions, ImportTypeAssertionContainer);
@@ -2356,7 +2409,7 @@ namespace ts {
 //
 //    export type BindingOrAssignmentPattern = ObjectBindingOrAssignmentPattern | ArrayBindingOrAssignmentPattern;
 
-    struct ConditionalExpression: Expression, BrandKind<SyntaxKind::ConditionalExpression> {
+    struct ConditionalExpression: BrandKind<SyntaxKind::ConditionalExpression, Expression> {
         Property(condition, Expression);
         Property(questionToken, QuestionToken);
         Property(whenTrue, Expression);
@@ -2396,7 +2449,8 @@ namespace ts {
         NodeTypeArray(Expression) arguments;
     };
 
-    struct CallChain: CallExpression {};
+    using CallChain = CallExpression;
+    using OuterExpression = Expression; // ParenthesizedExpression | TypeAssertion | AsExpression | NonNullExpression | PartiallyEmittedExpression;
 
 /* @internal */
     struct CallChainRoot: CallChain {};
@@ -2475,6 +2529,8 @@ namespace ts {
         Property(expression, Expression);
     };
 
+    using NonNullChain = NonNullExpression;
+
     struct ParenthesizedExpression: BrandKind<SyntaxKind::ParenthesizedExpression, PrimaryExpression> {
         Property(expression, Expression);
     };
@@ -2484,7 +2540,7 @@ namespace ts {
         Property(expression, Expression);
     };
 
-    struct TypeQueryNode: BrandKind<SyntaxKind::TypeQuery, NodeWithTypeArguments> {
+    struct TypeQueryNode: BrandKind<SyntaxKind::TypeQuery, NodeWithTypeArguments, TypeNode> {
         UnionProperty(exprName, EntityName);
     };
 

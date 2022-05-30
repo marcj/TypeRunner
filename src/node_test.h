@@ -16,11 +16,19 @@ namespace ts {
         return node->emitNode ? node->emitNode->flags : 0;
     }
 
+    bool isCommaSequence(shared<Node> node) {
+        return node->kind == SyntaxKind::BinaryExpression && node->to<BinaryExpression>().operatorToken->kind == SyntaxKind::CommaToken || node->kind == SyntaxKind::CommaListExpression;
+    }
+
+    bool isAssignmentOperator(SyntaxKind token) {
+        return token >= SyntaxKind::FirstAssignment && token <= SyntaxKind::LastAssignment;
+    }
+
     /**
      * Gets whether an identifier should only be referred to by its local name.
      */
     bool isLocalName(const shared<Node> &node) {
-        return (getEmitFlags(node) & (int)EmitFlags::LocalName) != 0;
+        return (getEmitFlags(node) & (int) EmitFlags::LocalName) != 0;
     }
 
     ModifierFlags modifierToFlag(SyntaxKind token) {
@@ -74,19 +82,19 @@ namespace ts {
      */
     int getSyntacticModifierFlagsNoCache(shared<Node> node) {
         auto flags = modifiersToFlags(node->modifiers);
-        if (node->flags & (int)NodeFlags::NestedNamespace || (node->kind == SyntaxKind::Identifier && node->to<Identifier>().isInJSDocNamespace)) {
-            flags |= (int)ModifierFlags::Export;
+        if (node->flags & (int) NodeFlags::NestedNamespace || (node->kind == SyntaxKind::Identifier && node->to<Identifier>().isInJSDocNamespace)) {
+            flags |= (int) ModifierFlags::Export;
         }
         return flags;
     }
 
     int getModifierFlagsWorker(shared<Node> node, bool includeJSDoc, optional<bool> alwaysIncludeJSDoc = {}) {
         if (node->kind >= SyntaxKind::FirstToken && node->kind <= SyntaxKind::LastToken) {
-            return (int)ModifierFlags::None;
+            return (int) ModifierFlags::None;
         }
 
-        if (!(node->modifierFlagsCache & (int)ModifierFlags::HasComputedFlags)) {
-            node->modifierFlagsCache = getSyntacticModifierFlagsNoCache(node) | (int)ModifierFlags::HasComputedFlags;
+        if (!(node->modifierFlagsCache & (int) ModifierFlags::HasComputedFlags)) {
+            node->modifierFlagsCache = getSyntacticModifierFlagsNoCache(node) | (int) ModifierFlags::HasComputedFlags;
         }
 
         //we don't support JSDoc
@@ -94,7 +102,7 @@ namespace ts {
 //            node->modifierFlagsCache |= getJSDocModifierFlagsNoCache(node) | (int)ModifierFlags::HasComputedJSDocModifiers;
 //        }
 
-        return node->modifierFlagsCache & ~((int)ModifierFlags::HasComputedFlags | (int)ModifierFlags::HasComputedJSDocModifiers);
+        return node->modifierFlagsCache & ~((int) ModifierFlags::HasComputedFlags | (int) ModifierFlags::HasComputedJSDocModifiers);
     }
 
     int getSyntacticModifierFlags(shared<Node> node) {
@@ -110,7 +118,7 @@ namespace ts {
     }
 
     bool hasStaticModifier(shared<Node> node) {
-        return hasSyntacticModifier(node, (int)ModifierFlags::Static);
+        return hasSyntacticModifier(node, (int) ModifierFlags::Static);
     }
 
     shared<NodeUnion(PropertyName)> resolveNameToNode(const shared<Node> &node) {
@@ -406,7 +414,6 @@ namespace ts {
         return node->kind == SyntaxKind::Identifier && identifierIsThisKeyword(node->to<Identifier>());
     }
 
-
     /**
      * Determines whether a node is a property or element access expression for `super`.
      */
@@ -668,6 +675,10 @@ namespace ts {
         return node->kind == SyntaxKind::CallExpression;
     }
 
+    bool isCallChain(shared<Node> node) {
+        return isCallExpression(node) && !!(node->flags & (int)NodeFlags::OptionalChain);
+    }
+
     bool isNewExpression(const shared<Node> &node) {
         return node->kind == SyntaxKind::NewExpression;
     }
@@ -754,6 +765,10 @@ namespace ts {
 
     bool isNonNullExpression(const shared<Node> &node) {
         return node->kind == SyntaxKind::NonNullExpression;
+    }
+
+    bool isNonNullChain(shared<Node> node) {
+        return isNonNullExpression(node) && !!(node->flags & (int)NodeFlags::OptionalChain);
     }
 
     bool isMetaProperty(const shared<Node> &node) {

@@ -596,6 +596,12 @@ namespace ts {
             return token = scanTemplateAndSetTokenValue(isTaggedTemplate);
         }
 
+        SyntaxKind reScanQuestionToken() {
+            Debug::asserts(token == SyntaxKind::QuestionQuestionToken, "'reScanQuestionToken' should only be called on a '??'");
+            pos = tokenPos + 1;
+            return token = SyntaxKind::QuestionToken;
+        }
+
         SyntaxKind reScanGreaterToken();
 
         SyntaxKind reScanSlashToken();

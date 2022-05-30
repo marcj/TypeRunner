@@ -12,6 +12,8 @@ namespace ts::factory {
     NodeArray createNodeArray(optional<NodeArray> elements, optional<bool> hasTrailingComma = {});
     NodeArray createNodeArray(vector<shared<Node>> elements, optional<bool> hasTrailingComma = {});
     shared<ParenthesizedTypeNode> createParenthesizedType(shared<TypeNode> type);
+    shared<CallExpression> updateCallExpression(shared<CallExpression> node, shared<Expression> expression, optional<NodeArray> typeArguments, NodeArray argumentsArray);
+    shared<Expression> restoreOuterExpressions(sharedOpt<Expression> outerExpression, shared<Expression> innerExpression, int kinds = (int) OuterExpressionKinds::All);
 }
 
 namespace ts::parenthesizerRules {
@@ -19,7 +21,7 @@ namespace ts::parenthesizerRules {
     using namespace ts::types;
 
     template<typename T>
-    NodeArray map(optional<NodeArray> array, function<shared<Node>(shared<T>, int)> callback) {
+    NodeArray map(optional<NodeArray> array, function<shared<T>(shared<T>, int)> callback) {
         NodeArray result;
         if (array) {
             auto i = 0;
@@ -241,27 +243,27 @@ namespace ts::parenthesizerRules {
     shared<Expression> parenthesizeExpressionOfComputedPropertyName(shared<Expression> expression) {
         return isCommaSequence(expression) ? factory::createParenthesizedExpression(expression) : expression;
     }
-//
-//    function parenthesizeConditionOfConditionalExpression(condition: Expression): Expression {
-//        auto conditionalPrecedence = getOperatorPrecedence(SyntaxKind::ConditionalExpression, SyntaxKind::QuestionToken);
-//        auto emittedCondition = skipPartiallyEmittedExpressions(condition);
-//        auto conditionPrecedence = getExpressionPrecedence(emittedCondition);
-//        if (compareValues(conditionPrecedence, conditionalPrecedence) !== Comparison.GreaterThan) {
-//            return factory::createParenthesizedExpression(condition);
-//        }
-//        return condition;
-//    }
-//
-//    function parenthesizeBranchOfConditionalExpression(branch: Expression): Expression {
-//        // per ES grammar both 'whenTrue' and 'whenFalse' parts of conditional expression are assignment expressions
-//        // so in case when comma expression is introduced as a part of previous transformations
-//        // if should be wrapped in parens since comma operator has the lowest precedence
-//        auto emittedExpression = skipPartiallyEmittedExpressions(branch);
-//        return isCommaSequence(emittedExpression)
-//            ? factory::createParenthesizedExpression(branch)
-//            : branch;
-//    }
-//
+
+    shared<Expression> parenthesizeConditionOfConditionalExpression(shared<Expression> condition) {
+        auto conditionalPrecedence = getOperatorPrecedence(SyntaxKind::ConditionalExpression, SyntaxKind::QuestionToken);
+        auto emittedCondition = skipPartiallyEmittedExpressions(condition);
+        auto conditionPrecedence = getExpressionPrecedence(emittedCondition);
+        if (compareValues(conditionPrecedence, conditionalPrecedence) != Comparison::GreaterThan) {
+            return factory::createParenthesizedExpression(condition);
+        }
+        return condition;
+    }
+
+    shared<Expression> parenthesizeBranchOfConditionalExpression(shared<Expression> branch) {
+        // per ES grammar both 'whenTrue' and 'whenFalse' parts of conditional expression are assignment expressions
+        // so in case when comma expression is introduced as a part of previous transformations
+        // if should be wrapped in parens since comma operator has the lowest precedence
+        auto emittedExpression = skipPartiallyEmittedExpressions(branch);
+        return isCommaSequence(emittedExpression)
+            ? factory::createParenthesizedExpression(branch)
+            : branch;
+    }
+
 //    /**
 //     *  [Per the spec](https://tc39.github.io/ecma262/#prod-ExportDeclaration), `export default` accepts _AssigmentExpression_ but
 //     *  has a lookahead restriction for `function`, `async function`, and `class`.
@@ -351,46 +353,48 @@ namespace ts::parenthesizerRules {
         return setTextRange(factory::createNodeArray(result, elements.hasTrailingComma), elements);
     }
 
-//    function parenthesizeExpressionOfExpressionStatement(shared<Expression> expression): Expression {
-//        auto emittedExpression = skipPartiallyEmittedExpressions(expression);
-//        if (isCallExpression(emittedExpression)) {
-//            auto callee = emittedExpression.expression;
-//            auto kind = skipPartiallyEmittedExpressions(callee).kind;
-//            if (kind === SyntaxKind::FunctionExpression || kind === SyntaxKind::ArrowFunction) {
-//                // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
-//                auto updated = factory::updateCallExpression(
-//                    emittedExpression,
-//                    setTextRange(factory::createParenthesizedExpression(callee), callee),
-//                    emittedExpression.typeArguments,
-//                    emittedExpression.arguments
-//                );
-//                return factory::restoreOuterExpressions(expression, updated, OuterExpressionKinds.PartiallyEmittedExpressions);
-//            }
-//        }
-//
-//        auto leftmostExpressionKind = getLeftmostExpression(emittedExpression, /*stopAtCallExpressions*/ false).kind;
-//        if (leftmostExpressionKind === SyntaxKind::ObjectLiteralExpression || leftmostExpressionKind === SyntaxKind::FunctionExpression) {
-//            // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
-//            return setTextRange(factory::createParenthesizedExpression(expression), expression);
-//        }
-//
-//        return expression;
-//    }
-//
+    shared<Expression> parenthesizeExpressionOfExpressionStatement(shared<Expression> expression) {
+        auto emittedExpression = skipPartiallyEmittedExpressions(expression);
+        if (auto e = to<CallExpression>(emittedExpression)) {
+            auto callee = e->expression;
+            auto kind = skipPartiallyEmittedExpressions(callee)->kind;
+            if (kind == SyntaxKind::FunctionExpression || kind == SyntaxKind::ArrowFunction) {
+                // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
+                auto updated = factory::updateCallExpression(
+                        e,
+                        setTextRange(factory::createParenthesizedExpression(callee), callee),
+                        e->typeArguments,
+                        e->arguments
+                );
+                return factory::restoreOuterExpressions(expression, updated, (int) OuterExpressionKinds::PartiallyEmittedExpressions);
+            }
+        }
+
+        auto leftmostExpressionKind = getLeftmostExpression(to<Expression>(emittedExpression), /*stopAtCallExpressions*/ false)->kind;
+        if (leftmostExpressionKind == SyntaxKind::ObjectLiteralExpression || leftmostExpressionKind == SyntaxKind::FunctionExpression) {
+            // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
+            return setTextRange(factory::createParenthesizedExpression(expression), expression);
+        }
+
+        return expression;
+    }
+
 //    function parenthesizeConciseBodyOfArrowFunction(body: Expression): Expression;
 //    function parenthesizeConciseBodyOfArrowFunction(body: ConciseBody): ConciseBody;
-//    function parenthesizeConciseBodyOfArrowFunction(body: ConciseBody): ConciseBody {
-//        if (!isBlock(body) && (isCommaSequence(body) || getLeftmostExpression(body, /*stopAtCallExpressions*/ false).kind === SyntaxKind::ObjectLiteralExpression)) {
-//            // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
-//            return setTextRange(factory::createParenthesizedExpression(body), body);
-//        }
-//
-//        return body;
-//    }
-//
-//    // Type[Extends] :
-//    //     FunctionOrConstructorType
-//    //     ConditionalType[?Extends]
+    shared<Node> parenthesizeConciseBodyOfArrowFunction(shared<Node> body) {
+        if (isBlock(body)) return body;
+        auto e = dynamic_pointer_cast<Expression>(body);
+        if (isCommaSequence(body) || getLeftmostExpression(e, /*stopAtCallExpressions*/ false)->kind == SyntaxKind::ObjectLiteralExpression) {
+            // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
+            return setTextRange(factory::createParenthesizedExpression(e), body);
+        }
+
+        return body;
+    }
+
+    // Type[Extends] :
+    //     FunctionOrConstructorType
+    //     ConditionalType[?Extends]
 
     // ConditionalType[Extends] :
     //     UnionType[?Extends]
@@ -408,21 +412,21 @@ namespace ts::parenthesizerRules {
         }
         return checkType;
     }
-//
-//    function parenthesizeExtendsTypeOfConditionalType(extendsType: TypeNode): TypeNode {
-//        switch (extendsType.kind) {
-//            case SyntaxKind::ConditionalType:
-//                return factory::createParenthesizedType(extendsType);
-//        }
-//        return extendsType;
-//    }
+
+    shared<TypeNode> parenthesizeExtendsTypeOfConditionalType(shared<TypeNode> extendsType) {
+        switch (extendsType->kind) {
+            case SyntaxKind::ConditionalType:
+                return factory::createParenthesizedType(extendsType);
+        }
+        return extendsType;
+    }
 
     // UnionType[Extends] :
     //     `|`? IntersectionType[?Extends]
     //     UnionType[?Extends] `|` IntersectionType[?Extends]
     //
     // - A union type constituent has the same precedence as the check type of a conditional type
-    shared<TypeNode> parenthesizeConstituentTypeOfUnionType(shared<TypeNode> type) {
+    shared<TypeNode> parenthesizeConstituentTypeOfUnionType(shared<TypeNode> type, int = 0) {
         switch (type->kind) {
             case SyntaxKind::UnionType: // Not strictly necessary, but a union containing a union should have been flattened
             case SyntaxKind::IntersectionType: // Not strictly necessary, but makes generated output more readable and avoids breaks in DT tests
@@ -431,16 +435,16 @@ namespace ts::parenthesizerRules {
         return parenthesizeCheckTypeOfConditionalType(type);
     }
 
-//    function parenthesizeConstituentTypesOfUnionType(members: readonly TypeNode[]): NodeArray<TypeNode> {
-//        return factory::createNodeArray(sameMap(members, parenthesizeConstituentTypeOfUnionType));
-//    }
+    NodeArray parenthesizeConstituentTypesOfUnionType(NodeArray members) {
+        return factory::createNodeArray(map < TypeNode > (members, parenthesizeConstituentTypeOfUnionType));
+    }
 
     // IntersectionType[Extends] :
     //     `&`? TypeOperator[?Extends]
     //     IntersectionType[?Extends] `&` TypeOperator[?Extends]
     //
     // - An intersection type constituent does not allow function, constructor, conditional, or union types (they must be parenthesized)
-    shared<TypeNode> parenthesizeConstituentTypeOfIntersectionType(shared<TypeNode> type) {
+    shared<TypeNode> parenthesizeConstituentTypeOfIntersectionType(shared<TypeNode> type, int = 0) {
         switch (type->kind) {
             case SyntaxKind::UnionType:
             case SyntaxKind::IntersectionType: // Not strictly necessary, but an intersection containing an intersection should have been flattened
@@ -448,10 +452,10 @@ namespace ts::parenthesizerRules {
         }
         return parenthesizeConstituentTypeOfUnionType(type);
     }
-//
-//    function parenthesizeConstituentTypesOfIntersectionType(members: readonly TypeNode[]): NodeArray<TypeNode> {
-//        return factory::createNodeArray(sameMap(members, parenthesizeConstituentTypeOfIntersectionType));
-//    }
+
+    NodeArray parenthesizeConstituentTypesOfIntersectionType(NodeArray members) {
+        return factory::createNodeArray(map < TypeNode > (members, parenthesizeConstituentTypeOfIntersectionType));
+    }
 
     // TypeOperator[Extends] :
     //     PostfixType
@@ -476,69 +480,69 @@ namespace ts::parenthesizerRules {
         return parenthesizeOperandOfTypeOperator(type);
     }
 
-//    // PostfixType :
-//    //     NonArrayType
-//    //     NonArrayType [no LineTerminator here] `!` // JSDoc
-//    //     NonArrayType [no LineTerminator here] `?` // JSDoc
-//    //     IndexedAccessType
-//    //     ArrayType
-//    //
-//    // IndexedAccessType :
-//    //     NonArrayType `[` Type[~Extends] `]`
-//    //
-//    // ArrayType :
-//    //     NonArrayType `[` `]`
-//    //
-//    function parenthesizeNonArrayTypeOfPostfixType(type: TypeNode) {
-//        switch (type.kind) {
-//            case SyntaxKind::InferType:
-//            case SyntaxKind::TypeOperator:
-//            case SyntaxKind::TypeQuery: // Not strictly necessary, but makes generated output more readable and avoids breaks in DT tests
-//                return factory::createParenthesizedType(type);
-//        }
-//        return parenthesizeOperandOfTypeOperator(type);
-//    }
-//
-//    // TupleType :
-//    //     `[` Elision? `]`
-//    //     `[` NamedTupleElementTypes `]`
-//    //     `[` NamedTupleElementTypes `,` Elision? `]`
-//    //     `[` TupleElementTypes `]`
-//    //     `[` TupleElementTypes `,` Elision? `]`
-//    //
-//    // NamedTupleElementTypes :
-//    //     Elision? NamedTupleMember
-//    //     NamedTupleElementTypes `,` Elision? NamedTupleMember
-//    //
-//    // NamedTupleMember :
-//    //     Identifier `?`? `:` Type[~Extends]
-//    //     `...` Identifier `:` Type[~Extends]
-//    //
-//    // TupleElementTypes :
-//    //     Elision? TupleElementType
-//    //     TupleElementTypes `,` Elision? TupleElementType
-//    //
-//    // TupleElementType :
-//    //     Type[~Extends] // NOTE: Needs cover grammar to disallow JSDoc postfix-optional
-//    //     OptionalType
-//    //     RestType
-//    //
-//    // OptionalType :
-//    //     Type[~Extends] `?` // NOTE: Needs cover grammar to disallow JSDoc postfix-optional
-//    //
-//    // RestType :
-//    //     `...` Type[~Extends]
-//    //
-//    function parenthesizeElementTypesOfTupleType(types: readonly (TypeNode | NamedTupleMember)[]): NodeArray<TypeNode> {
-//        return factory::createNodeArray(sameMap(types, parenthesizeElementTypeOfTupleType));
-//    }
-//
-//    function parenthesizeElementTypeOfTupleType(type: TypeNode | NamedTupleMember): TypeNode {
+    // PostfixType :
+    //     NonArrayType
+    //     NonArrayType [no LineTerminator here] `!` // JSDoc
+    //     NonArrayType [no LineTerminator here] `?` // JSDoc
+    //     IndexedAccessType
+    //     ArrayType
+    //
+    // IndexedAccessType :
+    //     NonArrayType `[` Type[~Extends] `]`
+    //
+    // ArrayType :
+    //     NonArrayType `[` `]`
+    //
+    shared<TypeNode> parenthesizeNonArrayTypeOfPostfixType(shared<TypeNode> type) {
+        switch (type->kind) {
+            case SyntaxKind::InferType:
+            case SyntaxKind::TypeOperator:
+            case SyntaxKind::TypeQuery: // Not strictly necessary, but makes generated output more readable and avoids breaks in DT tests
+                return factory::createParenthesizedType(type);
+        }
+        return parenthesizeOperandOfTypeOperator(type);
+    }
+
+    shared<TypeNode> parenthesizeElementTypeOfTupleType(shared<TypeNode> type, int = 0) {
 //        if (hasJSDocPostfixQuestion(type)) return factory::createParenthesizedType(type);
-//        return type;
-//    }
-//
-//    function hasJSDocPostfixQuestion(type: TypeNode | NamedTupleMember): boolean {
+        return type;
+    }
+
+    // TupleType :
+    //     `[` Elision? `]`
+    //     `[` NamedTupleElementTypes `]`
+    //     `[` NamedTupleElementTypes `,` Elision? `]`
+    //     `[` TupleElementTypes `]`
+    //     `[` TupleElementTypes `,` Elision? `]`
+    //
+    // NamedTupleElementTypes :
+    //     Elision? NamedTupleMember
+    //     NamedTupleElementTypes `,` Elision? NamedTupleMember
+    //
+    // NamedTupleMember :
+    //     Identifier `?`? `:` Type[~Extends]
+    //     `...` Identifier `:` Type[~Extends]
+    //
+    // TupleElementTypes :
+    //     Elision? TupleElementType
+    //     TupleElementTypes `,` Elision? TupleElementType
+    //
+    // TupleElementType :
+    //     Type[~Extends] // NOTE: Needs cover grammar to disallow JSDoc postfix-optional
+    //     OptionalType
+    //     RestType
+    //
+    // OptionalType :
+    //     Type[~Extends] `?` // NOTE: Needs cover grammar to disallow JSDoc postfix-optional
+    //
+    // RestType :
+    //     `...` Type[~Extends]
+    //
+    NodeArray parenthesizeElementTypesOfTupleType(NodeArray types) {
+        return factory::createNodeArray(map < TypeNode > (types, parenthesizeElementTypeOfTupleType));
+    }
+
+//    function hasJSDocPostfixQuestion(shared<TypeNode> type | NamedTupleMember): boolean {
 //        if (isJSDocNullableType(type)) return type.postfix;
 //        if (isNamedTupleMember(type)) return hasJSDocPostfixQuestion(type.type);
 //        if (isFunctionTypeNode(type) || isConstructorTypeNode(type) || isTypeOperatorNode(type)) return hasJSDocPostfixQuestion(type.type);
@@ -549,7 +553,7 @@ namespace ts::parenthesizerRules {
 //        return false;
 //    }
 //
-//    function parenthesizeTypeOfOptionalType(type: TypeNode): TypeNode {
+//    function parenthesizeTypeOfOptionalType(shared<TypeNode> type): TypeNode {
 //        if (hasJSDocPostfixQuestion(type)) return factory::createParenthesizedType(type);
 //        return parenthesizeNonArrayTypeOfPostfixType(type);
 //    }
@@ -767,10 +771,10 @@ namespace ts::factory {
 //        function createToken<TKind extends SyntaxKind>(token: TKind): Token<TKind>;
     template<class T>
     shared<T> createToken(SyntaxKind token) {
-//        Debug.assert(token >= SyntaxKind::FirstToken && token <= SyntaxKind::LastToken, "Invalid token");
-//        Debug.assert(token <= SyntaxKind::FirstTemplateToken || token >= SyntaxKind::LastTemplateToken, "Invalid token. Use 'createTemplateLiteralLikeNode' to create template literals.");
-//        Debug.assert(token <= SyntaxKind::FirstLiteralToken || token >= SyntaxKind::LastLiteralToken, "Invalid token. Use 'createLiteralLikeNode' to create literals.");
-//        Debug.assert(token != SyntaxKind::Identifier, "Invalid token. Use 'createIdentifier' to create identifiers");
+//        Debug::asserts(token >= SyntaxKind::FirstToken && token <= SyntaxKind::LastToken, "Invalid token");
+//        Debug::asserts(token <= SyntaxKind::FirstTemplateToken || token >= SyntaxKind::LastTemplateToken, "Invalid token. Use 'createTemplateLiteralLikeNode' to create template literals.");
+//        Debug::asserts(token <= SyntaxKind::FirstLiteralToken || token >= SyntaxKind::LastLiteralToken, "Invalid token. Use 'createLiteralLikeNode' to create literals.");
+//        Debug::asserts(token != SyntaxKind::Identifier, "Invalid token. Use 'createIdentifier' to create identifiers");
         auto node = createBaseToken<T>(token);
         int transformFlags = (int) TransformFlags::None;
         switch (token) {
@@ -916,6 +920,19 @@ namespace ts::factory {
     }
 
     template<class T>
+    shared<T> updateWithoutOriginal(shared<T> updated, shared<T> original) {
+        if (updated != original) {
+            setTextRange(updated, original);
+        }
+        return updated;
+    }
+
+    template<class T>
+    shared<T> update(shared<T> updated, shared<T> original) {
+        return updateWithoutOriginal<T>(updated, original);
+    }
+
+    template<class T>
     shared<T> createBaseNamedDeclaration(
             SyntaxKind kind,
             optional<NodeArray> decorators,
@@ -1014,7 +1031,7 @@ namespace ts::factory {
             optional<NodeArray> typeParameters,
             optional<NodeArray> parameters,
             sharedOpt<TypeNode> type,
-            shared<Block> body
+            decltype(declval<T>().body) body
     ) {
         auto node = createBaseSignatureDeclaration<T>(
                 kind,
@@ -1245,15 +1262,15 @@ namespace ts::factory {
 //        /** Create a unique name based on the supplied text. */
 //        // @api
 //        function createUniqueName(text: string, flags: GeneratedIdentifierFlags = GeneratedIdentifierFlags.None): Identifier {
-//            Debug.assert(!(flags & GeneratedIdentifierFlags.KindMask), "Argument out of range: flags");
-//            Debug.assert((flags & (GeneratedIdentifierFlags.Optimistic | GeneratedIdentifierFlags.FileLevel)) != GeneratedIdentifierFlags.FileLevel, "GeneratedIdentifierFlags.FileLevel cannot be set without also setting GeneratedIdentifierFlags.Optimistic");
+//            Debug::asserts(!(flags & GeneratedIdentifierFlags.KindMask), "Argument out of range: flags");
+//            Debug::asserts((flags & (GeneratedIdentifierFlags.Optimistic | GeneratedIdentifierFlags.FileLevel)) != GeneratedIdentifierFlags.FileLevel, "GeneratedIdentifierFlags.FileLevel cannot be set without also setting GeneratedIdentifierFlags.Optimistic");
 //            return createBaseGeneratedIdentifier(text, GeneratedIdentifierFlags.Unique | flags);
 //        }
 //
 //        /** Create a unique name generated for a node-> */
 //        // @api
 //        function getGeneratedNameForNode(node: Node | undefined, flags: GeneratedIdentifierFlags = 0): Identifier {
-//            Debug.assert(!(flags & GeneratedIdentifierFlags.KindMask), "Argument out of range: flags");
+//            Debug::asserts(!(flags & GeneratedIdentifierFlags.KindMask), "Argument out of range: flags");
 //            auto name = createBaseGeneratedIdentifier(node && isIdentifier(node) ? idText(node) : "", GeneratedIdentifierFlags.Node | flags);
 //            name.original = node;
 //            return name;
@@ -1306,16 +1323,16 @@ namespace ts::factory {
 //        // Names
 //        //
 //
-        // @api
-        auto createQualifiedName(shared<Node> left, NameType right) {
-            auto node = createBaseNode<QualifiedName>(SyntaxKind::QualifiedName);
-            node->left = left;
-            node->right = dynamic_pointer_cast<Identifier>(asName(right));
-            node->transformFlags |=
+    // @api
+    auto createQualifiedName(shared<Node> left, NameType right) {
+        auto node = createBaseNode<QualifiedName>(SyntaxKind::QualifiedName);
+        node->left = left;
+        node->right = dynamic_pointer_cast<Identifier>(asName(right));
+        node->transformFlags |=
                 propagateChildFlags(node->left) |
                 propagateIdentifierNameFlags(node->right);
-            return node;
-        }
+        return node;
+    }
 
 //        // @api
 //        function updateQualifiedName(node: QualifiedName, left: EntityName, right: Identifier) {
@@ -1945,7 +1962,7 @@ namespace ts::factory {
 //            optional<NodeArray> decorators,
 //            optional<NodeArray> modifiers,
 //            NodeArray parameters,
-//            type: TypeNode
+//            shared<TypeNode> type
 //        ) {
 //            return node->parameters != parameters
 //                || node->type != type
@@ -1954,18 +1971,18 @@ namespace ts::factory {
 //                ? updateBaseSignatureDeclaration(createIndexSignature(decorators, modifiers, parameters, type), node)
 //                : node;
 //        }
-//
+
+    // @api
+    auto createTemplateLiteralTypeSpan(shared<TypeNode> type, shared<NodeUnion(TemplateMiddle, TemplateTail)> literal) {
+        auto node = createBaseNode<TemplateLiteralTypeSpan>(SyntaxKind::TemplateLiteralTypeSpan);
+        node->type = type;
+        node->literal = literal;
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
-//        function createTemplateLiteralTypeSpan(type: TypeNode, literal: TemplateMiddle | TemplateTail) {
-//            auto node = createBaseNode<TemplateLiteralTypeSpan>(SyntaxKind::TemplateLiteralTypeSpan);
-//            node->type = type;
-//            node->literal = literal;
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
-//        // @api
-//        function updateTemplateLiteralTypeSpan(node: TemplateLiteralTypeSpan, type: TypeNode, literal: TemplateMiddle | TemplateTail) {
+//        function updateTemplateLiteralTypeSpan(node: TemplateLiteralTypeSpan, shared<TypeNode> type, literal: TemplateMiddle | TemplateTail) {
 //            return node->type != type
 //                || node->literal != literal
 //                ? update(createTemplateLiteralTypeSpan(type, literal), node)
@@ -2000,14 +2017,14 @@ namespace ts::factory {
 //                : node;
 //        }
 
-        // @api
-        auto createTypeReferenceNode(NameType typeName, optional<NodeArray> typeArguments) {
-            auto node = createBaseNode<TypeReferenceNode>(SyntaxKind::TypeReference);
-            node->typeName = asName(typeName);
-            if (typeArguments) node->typeArguments = parenthesizerRules::parenthesizeTypeArguments(createNodeArray(typeArguments));
-            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-            return node;
-        }
+    // @api
+    auto createTypeReferenceNode(NameType typeName, optional<NodeArray> typeArguments) {
+        auto node = createBaseNode<TypeReferenceNode>(SyntaxKind::TypeReference);
+        node->typeName = asName(typeName);
+        if (typeArguments) node->typeArguments = parenthesizerRules::parenthesizeTypeArguments(createNodeArray(typeArguments));
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
 
 //        // @api
 //        function updateTypeReferenceNode(node: TypeReferenceNode, typeName: EntityName, typeArguments: NodeArray<TypeNode> | undefined) {
@@ -2117,15 +2134,15 @@ namespace ts::factory {
 //            return updateConstructorTypeNode1(node, node->modifiers, typeParameters, parameters, type);
 //        }
 //
-//        // @api
-//        function createTypeQueryNode(exprName: EntityName, typeArguments?: readonly TypeNode[]) {
-//            auto node = createBaseNode<TypeQueryNode>(SyntaxKind::TypeQuery);
-//            node->exprName = exprName;
-//            node->typeArguments = typeArguments && parenthesizerRules::parenthesizeTypeArguments(typeArguments);
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
+    // @api
+    auto createTypeQueryNode(shared<NodeUnion(EntityName)> exprName, optional<NodeArray> typeArguments) {
+        auto node = createBaseNode<TypeQueryNode>(SyntaxKind::TypeQuery);
+        node->exprName = exprName;
+        if (typeArguments) node->typeArguments = parenthesizerRules::parenthesizeTypeArguments(typeArguments);
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
 //        function updateTypeQueryNode(node: TypeQueryNode, exprName: EntityName, typeArguments?: readonly TypeNode[]) {
 //            return node->exprName != exprName
@@ -2148,30 +2165,30 @@ namespace ts::factory {
 //                ? update(createTypeLiteralNode(members), node)
 //                : node;
 //        }
-//
+
+    // @api
+    auto createArrayTypeNode(shared<TypeNode> elementType) {
+        auto node = createBaseNode<ArrayTypeNode>(SyntaxKind::ArrayType);
+        node->elementType = parenthesizerRules::parenthesizeNonArrayTypeOfPostfixType(elementType);
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
-//        function createArrayTypeNode(elementType: TypeNode) {
-//            auto node = createBaseNode<ArrayTypeNode>(SyntaxKind::ArrayType);
-//            node->elementType = parenthesizerRules::parenthesizeNonArrayTypeOfPostfixType(elementType);
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
-//        // @api
-//        function updateArrayTypeNode(node: ArrayTypeNode, elementType: TypeNode): ArrayTypeNode {
+//        function updateArrayTypeNode(node: ArrayTypeNode, shared<TypeNode> elementType): ArrayTypeNode {
 //            return node->elementType != elementType
 //                ? update(createArrayTypeNode(elementType), node)
 //                : node;
 //        }
 //
-//        // @api
-//        function createTupleTypeNode(elements: readonly (TypeNode | NamedTupleMember)[]) {
-//            auto node = createBaseNode<TupleTypeNode>(SyntaxKind::TupleType);
-//            node->elements = createNodeArray(parenthesizerRules::parenthesizeElementTypesOfTupleType(elements));
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
+    // @api
+    auto createTupleTypeNode(NodeArray elements) {
+        auto node = createBaseNode<TupleTypeNode>(SyntaxKind::TupleType);
+        node->elements = createNodeArray(parenthesizerRules::parenthesizeElementTypesOfTupleType(elements));
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
 //        function updateTupleTypeNode(node: TupleTypeNode, elements: readonly (TypeNode | NamedTupleMember)[]) {
 //            return node->elements != elements
@@ -2179,19 +2196,19 @@ namespace ts::factory {
 //                : node;
 //        }
 //
+    // @api
+    auto createNamedTupleMember(sharedOpt<DotDotDotToken> dotDotDotToken, shared<Identifier> name, sharedOpt<QuestionToken> questionToken, shared<TypeNode> type) {
+        auto node = createBaseNode<NamedTupleMember>(SyntaxKind::NamedTupleMember);
+        node->dotDotDotToken = dotDotDotToken;
+        node->name = name;
+        node->questionToken = questionToken;
+        node->type = type;
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
-//        function createNamedTupleMember(dotDotDotToken: DotDotDotToken | undefined, name: Identifier, sharedOpt<QuestionToken> questionToken, type: TypeNode) {
-//            auto node = createBaseNode<NamedTupleMember>(SyntaxKind::NamedTupleMember);
-//            node->dotDotDotToken = dotDotDotToken;
-//            node->name = name;
-//            node->questionToken = questionToken;
-//            node->type = type;
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
-//        // @api
-//        function updateNamedTupleMember(node: NamedTupleMember, dotDotDotToken: DotDotDotToken | undefined, name: Identifier, sharedOpt<QuestionToken> questionToken, type: TypeNode) {
+//        function updateNamedTupleMember(node: NamedTupleMember, dotDotDotToken: DotDotDotToken | undefined, name: Identifier, sharedOpt<QuestionToken> questionToken, shared<TypeNode> type) {
 //            return node->dotDotDotToken != dotDotDotToken
 //                || node->name != name
 //                || node->questionToken != questionToken
@@ -2201,7 +2218,7 @@ namespace ts::factory {
 //        }
 //
 //        // @api
-//        function createOptionalTypeNode(type: TypeNode) {
+//        function createOptionalTypeNode(shared<TypeNode> type) {
 //            auto node = createBaseNode<OptionalTypeNode>(SyntaxKind::OptionalType);
 //            node->type = parenthesizerRules::parenthesizeTypeOfOptionalType(type);
 //            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
@@ -2209,71 +2226,72 @@ namespace ts::factory {
 //        }
 //
 //        // @api
-//        function updateOptionalTypeNode(node: OptionalTypeNode, type: TypeNode): OptionalTypeNode {
+//        function updateOptionalTypeNode(node: OptionalTypeNode, shared<TypeNode> type): OptionalTypeNode {
 //            return node->type != type
 //                ? update(createOptionalTypeNode(type), node)
 //                : node;
 //        }
 //
+    // @api
+    auto createRestTypeNode(shared<TypeNode> type) {
+        auto node = createBaseNode<RestTypeNode>(SyntaxKind::RestType);
+        node->type = type;
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
-//        function createRestTypeNode(type: TypeNode) {
-//            auto node = createBaseNode<RestTypeNode>(SyntaxKind::RestType);
-//            node->type = type;
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
-//        // @api
-//        function updateRestTypeNode(node: RestTypeNode, type: TypeNode): RestTypeNode {
+//        function updateRestTypeNode(node: RestTypeNode, shared<TypeNode> type): RestTypeNode {
 //            return node->type != type
 //                ? update(createRestTypeNode(type), node)
 //                : node;
 //        }
-//
-//        function createUnionOrIntersectionTypeNode(kind: SyntaxKind::UnionType | SyntaxKind::IntersectionType, types: readonly TypeNode[], parenthesize: (nodes: readonly TypeNode[]) => readonly TypeNode[]) {
-//            auto node = createBaseNode<UnionTypeNode | IntersectionTypeNode>(kind);
-//            node->types = factory::createNodeArray(parenthesize(types));
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
+
+    template<class T>
+    shared<T> createUnionOrIntersectionTypeNode(SyntaxKind kind, NodeArray types, function<NodeArray(NodeArray)> parenthesize) {
+        auto node = createBaseNode<T>(kind);
+        node->types = factory::createNodeArray(parenthesize(types));
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        function updateUnionOrIntersectionTypeNode<T extends UnionOrIntersectionTypeNode>(node: T, types: NodeArray<TypeNode>, parenthesize: (nodes: readonly TypeNode[]) => readonly TypeNode[]): T {
 //            return node->types != types
 //                ? update(createUnionOrIntersectionTypeNode(node->kind, types, parenthesize) as T, node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createUnionTypeNode(types: readonly TypeNode[]): UnionTypeNode {
-//            return createUnionOrIntersectionTypeNode(SyntaxKind::UnionType, types, parenthesizerRules::parenthesizeConstituentTypesOfUnionType) as UnionTypeNode;
-//        }
-//
+
+    // @api
+    auto createUnionTypeNode(NodeArray types) {
+        return createUnionOrIntersectionTypeNode<UnionTypeNode>(SyntaxKind::UnionType, types, parenthesizerRules::parenthesizeConstituentTypesOfUnionType);
+    }
+
 //        // @api
 //        function updateUnionTypeNode(node: UnionTypeNode, types: NodeArray<TypeNode>) {
 //            return updateUnionOrIntersectionTypeNode(node, types, parenthesizerRules::parenthesizeConstituentTypesOfUnionType);
 //        }
-//
-//        // @api
-//        function createIntersectionTypeNode(types: readonly TypeNode[]): IntersectionTypeNode {
-//            return createUnionOrIntersectionTypeNode(SyntaxKind::IntersectionType, types, parenthesizerRules::parenthesizeConstituentTypesOfIntersectionType) as IntersectionTypeNode;
-//        }
-//
+
+    // @api
+    auto createIntersectionTypeNode(NodeArray types) {
+        return createUnionOrIntersectionTypeNode<IntersectionTypeNode>(SyntaxKind::IntersectionType, types, parenthesizerRules::parenthesizeConstituentTypesOfIntersectionType);
+    }
+
 //        // @api
 //        function updateIntersectionTypeNode(node: IntersectionTypeNode, types: NodeArray<TypeNode>) {
 //            return updateUnionOrIntersectionTypeNode(node, types, parenthesizerRules::parenthesizeConstituentTypesOfIntersectionType);
 //        }
-//
-//        // @api
-//        function createConditionalTypeNode(checkType: TypeNode, extendsType: TypeNode, trueType: TypeNode, falseType: TypeNode) {
-//            auto node = createBaseNode<ConditionalTypeNode>(SyntaxKind::ConditionalType);
-//            node->checkType = parenthesizerRules::parenthesizeCheckTypeOfConditionalType(checkType);
-//            node->extendsType = parenthesizerRules::parenthesizeExtendsTypeOfConditionalType(extendsType);
-//            node->trueType = trueType;
-//            node->falseType = falseType;
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
+
+    // @api
+    auto createConditionalTypeNode(shared<TypeNode> checkType, shared<TypeNode> extendsType, shared<TypeNode> trueType, shared<TypeNode> falseType) {
+        auto node = createBaseNode<ConditionalTypeNode>(SyntaxKind::ConditionalType);
+        node->checkType = parenthesizerRules::parenthesizeCheckTypeOfConditionalType(checkType);
+        node->extendsType = parenthesizerRules::parenthesizeExtendsTypeOfConditionalType(extendsType);
+        node->trueType = trueType;
+        node->falseType = falseType;
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
 //        function updateConditionalTypeNode(node: ConditionalTypeNode, checkType: TypeNode, extendsType: TypeNode, trueType: TypeNode, falseType: TypeNode) {
 //            return node->checkType != checkType
@@ -2284,13 +2302,13 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-        // @api
-        auto createInferTypeNode(shared<TypeParameterDeclaration> typeParameter) {
-            auto node = createBaseNode<InferTypeNode>(SyntaxKind::InferType);
-            node->typeParameter = typeParameter;
-            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-            return node;
-        }
+    // @api
+    auto createInferTypeNode(shared<TypeParameterDeclaration> typeParameter) {
+        auto node = createBaseNode<InferTypeNode>(SyntaxKind::InferType);
+        node->typeParameter = typeParameter;
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
 
 //        // @api
 //        function updateInferTypeNode(node: InferTypeNode, typeParameter: TypeParameterDeclaration) {
@@ -2298,16 +2316,16 @@ namespace ts::factory {
 //                ? update(createInferTypeNode(typeParameter), node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createTemplateLiteralType(head: TemplateHead, templateSpans: readonly TemplateLiteralTypeSpan[]) {
-//            auto node = createBaseNode<TemplateLiteralTypeNode>(SyntaxKind::TemplateLiteralType);
-//            node->head = head;
-//            node->templateSpans = createNodeArray(templateSpans);
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
+
+    // @api
+    auto createTemplateLiteralType(shared<TemplateHead> head, NodeArray templateSpans) {
+        auto node = createBaseNode<TemplateLiteralTypeNode>(SyntaxKind::TemplateLiteralType);
+        node->head = head;
+        node->templateSpans = createNodeArray(templateSpans);
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
 //        function updateTemplateLiteralType(node: TemplateLiteralTypeNode, head: TemplateHead, templateSpans: readonly TemplateLiteralTypeSpan[]) {
 //            return node->head != head
@@ -2319,29 +2337,56 @@ namespace ts::factory {
 //        // @api
 //        function createImportTypeNode(argument: TypeNode, qualifier?: EntityName, typeArguments?: readonly TypeNode[], isTypeOf?: boolean): ImportTypeNode;
 //        function createImportTypeNode(argument: TypeNode, assertions?: ImportTypeAssertionContainer, qualifier?: EntityName, typeArguments?: readonly TypeNode[], isTypeOf?: boolean): ImportTypeNode;
-//        function createImportTypeNode(
-//            argument: TypeNode,
-//            qualifierOrAssertions?: EntityName | ImportTypeAssertionContainer,
-//            typeArgumentsOrQualifier?: readonly TypeNode[] | EntityName,
-//            isTypeOfOrTypeArguments?: boolean | readonly TypeNode[],
-//            isTypeOf?: boolean
-//        ) {
+    auto createImportTypeNode(
+            shared<TypeNode> argument,
+            optional<variant<shared<NodeUnion(EntityName)>, shared<ImportTypeAssertionContainer>>> qualifierOrAssertions,
+            optional<variant<shared<NodeUnion(EntityName)>, NodeArray>> typeArgumentsOrQualifier,
+            optional<variant<bool, NodeArray>> isTypeOfOrTypeArguments,
+            optional<bool> isTypeOf
+    ) {
+        sharedOpt<ImportTypeAssertionContainer> assertion;
+        sharedOpt<NodeUnion(EntityName)> qualifier;
+        optional<NodeArray> typeArguments;
+        if (qualifierOrAssertions) {
+            if (holds_alternative<shared<ImportTypeAssertionContainer>>(*qualifierOrAssertions)) {
+                assertion = get<shared<ImportTypeAssertionContainer>>(*qualifierOrAssertions);
+            } else if (holds_alternative<shared<NodeUnion(EntityName)>>(*qualifierOrAssertions)) {
+                qualifier = get<shared<NodeUnion(EntityName)>>(*qualifierOrAssertions);
+            }
+        }
+
+        if (typeArgumentsOrQualifier) {
+            if (holds_alternative<NodeArray>(*typeArgumentsOrQualifier)) {
+                typeArguments = get<NodeArray>(*typeArgumentsOrQualifier);
+            } else if (holds_alternative<shared<NodeUnion(EntityName)>>(*typeArgumentsOrQualifier)) {
+                qualifier = get<shared<NodeUnion(EntityName)>>(*typeArgumentsOrQualifier);
+            }
+        }
+
+        if (isTypeOfOrTypeArguments) {
+            if (holds_alternative<NodeArray>(*isTypeOfOrTypeArguments)) {
+                typeArguments = get<NodeArray>(*isTypeOfOrTypeArguments);
+            } else if (holds_alternative<bool>(*isTypeOfOrTypeArguments)) {
+                isTypeOf = get<bool>(*isTypeOfOrTypeArguments);
+            }
+        }
+
 //            auto assertion = qualifierOrAssertions && qualifierOrAssertions.kind == SyntaxKind::ImportTypeAssertionContainer ? qualifierOrAssertions : undefined;
 //            auto qualifier = qualifierOrAssertions && isEntityName(qualifierOrAssertions) ? qualifierOrAssertions
 //                : typeArgumentsOrQualifier && !isArray(typeArgumentsOrQualifier) ? typeArgumentsOrQualifier : undefined;
 //            auto typeArguments = isArray(typeArgumentsOrQualifier) ? typeArgumentsOrQualifier : isArray(isTypeOfOrTypeArguments) ? isTypeOfOrTypeArguments : undefined;
 //            isTypeOf = typeof isTypeOfOrTypeArguments == "boolean" ? isTypeOfOrTypeArguments : typeof isTypeOf == "boolean" ? isTypeOf : false;
-//
-//            auto node = createBaseNode<ImportTypeNode>(SyntaxKind::ImportType);
-//            node->argument = argument;
-//            node->assertions = assertion;
-//            node->qualifier = qualifier;
-//            node->typeArguments = typeArguments && parenthesizerRules::parenthesizeTypeArguments(typeArguments);
-//            node->isTypeOf = isTypeOf;
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
+
+        auto node = createBaseNode<ImportTypeNode>(SyntaxKind::ImportType);
+        node->argument = argument;
+        node->assertions = assertion;
+        node->qualifier = qualifier;
+        if (typeArguments) node->typeArguments = parenthesizerRules::parenthesizeTypeArguments(*typeArguments);
+        node->isTypeOf = isTrue(isTypeOf);
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
 //        function updateImportTypeNode(node: ImportTypeNode, argument: TypeNode, qualifier: EntityName | undefined, optional<NodeArray> typeArguments, isTypeOf?: boolean | undefined): ImportTypeNode;
 //        function updateImportTypeNode(node: ImportTypeNode, argument: TypeNode, assertions: ImportTypeAssertionContainer | undefined, qualifier: EntityName | undefined, optional<NodeArray> typeArguments, isTypeOf?: boolean | undefined): ImportTypeNode;
@@ -2367,7 +2412,7 @@ namespace ts::factory {
 //                ? update(createImportTypeNode(argument, assertion, qualifier, typeArguments, isTypeOf), node)
 //                : node;
 //        }
-//
+
     // @api
     shared<ParenthesizedTypeNode> createParenthesizedType(shared<TypeNode> type) {
         auto node = createBaseNode<ParenthesizedTypeNode>(SyntaxKind::ParenthesizedType);
@@ -2375,48 +2420,48 @@ namespace ts::factory {
         node->transformFlags = (int) TransformFlags::ContainsTypeScript;
         return node;
     }
-//
+
 //        // @api
-//        function updateParenthesizedType(node: ParenthesizedTypeNode, type: TypeNode) {
+//        function updateParenthesizedType(node: ParenthesizedTypeNode, shared<TypeNode> type) {
 //            return node->type != type
 //                ? update(createParenthesizedType(type), node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createThisTypeNode() {
-//            auto node = createBaseNode<ThisTypeNode>(SyntaxKind::ThisType);
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
 
-        // @api
-        auto createTypeOperatorNode(SyntaxKind operatorKind, shared<TypeNode> type) {
-            auto node = createBaseNode<TypeOperatorNode>(SyntaxKind::TypeOperator);
-            node->operatorKind = operatorKind;
-            node->type = operatorKind == SyntaxKind::ReadonlyKeyword ?
-                parenthesizerRules::parenthesizeOperandOfReadonlyTypeOperator(type) :
-                parenthesizerRules::parenthesizeOperandOfTypeOperator(type);
-            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-            return node;
-        }
+    // @api
+    auto createThisTypeNode() {
+        auto node = createBaseNode<ThisTypeNode>(SyntaxKind::ThisType);
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
+    // @api
+    auto createTypeOperatorNode(SyntaxKind operatorKind, shared<TypeNode> type) {
+        auto node = createBaseNode<TypeOperatorNode>(SyntaxKind::TypeOperator);
+        node->operatorKind = operatorKind;
+        node->type = operatorKind == SyntaxKind::ReadonlyKeyword ?
+                     parenthesizerRules::parenthesizeOperandOfReadonlyTypeOperator(type) :
+                     parenthesizerRules::parenthesizeOperandOfTypeOperator(type);
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
 
 //        // @api
-//        function updateTypeOperatorNode(node: TypeOperatorNode, type: TypeNode) {
+//        function updateTypeOperatorNode(node: TypeOperatorNode, shared<TypeNode> type) {
 //            return node->type != type
 //                ? update(createTypeOperatorNode(node->operator, type), node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createIndexedAccessTypeNode(objectType: TypeNode, indexType: TypeNode) {
-//            auto node = createBaseNode<IndexedAccessTypeNode>(SyntaxKind::IndexedAccessType);
-//            node->objectType = parenthesizerRules::parenthesizeNonArrayTypeOfPostfixType(objectType);
-//            node->indexType = indexType;
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
+
+    // @api
+    auto createIndexedAccessTypeNode(shared<TypeNode> objectType, shared<TypeNode> indexType) {
+        auto node = createBaseNode<IndexedAccessTypeNode>(SyntaxKind::IndexedAccessType);
+        node->objectType = parenthesizerRules::parenthesizeNonArrayTypeOfPostfixType(objectType);
+        node->indexType = indexType;
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
 //        function updateIndexedAccessTypeNode(node: IndexedAccessTypeNode, objectType: TypeNode, indexType: TypeNode) {
 //            return node->objectType != objectType
@@ -2424,20 +2469,27 @@ namespace ts::factory {
 //                ? update(createIndexedAccessTypeNode(objectType, indexType), node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createMappedTypeNode(readonlyToken: ReadonlyKeyword | PlusToken | MinusToken | undefined, typeParameter: TypeParameterDeclaration, namesharedOpt<TypeNode> type, questionToken: QuestionToken | PlusToken | MinusToken | undefined, sharedOpt<TypeNode> type, optional<NodeArray> members): MappedTypeNode {
-//            auto node = createBaseNode<MappedTypeNode>(SyntaxKind::MappedType);
-//            node->readonlyToken = readonlyToken;
-//            node->typeParameter = typeParameter;
-//            node->nameType = nameType;
-//            node->questionToken = questionToken;
-//            node->type = type;
-//            node->members = members && createNodeArray(members);
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
+
+    // @api
+    auto createMappedTypeNode(
+            sharedOpt<Node> readonlyToken, //: ReadonlyKeyword | PlusToken | MinusToken | undefined,
+            shared<TypeParameterDeclaration> typeParameter,
+            sharedOpt<TypeNode> nameType,
+            sharedOpt<Node> questionToken, //: QuestionToken | PlusToken | MinusToken | undefined,
+            sharedOpt<TypeNode> type,
+            optional<NodeArray> members
+    ) {
+        auto node = createBaseNode<MappedTypeNode>(SyntaxKind::MappedType);
+        node->readonlyToken = readonlyToken;
+        node->typeParameter = typeParameter;
+        node->nameType = nameType;
+        node->questionToken = questionToken;
+        node->type = type;
+        if (members) node->members = createNodeArray(members);
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
 //        function updateMappedTypeNode(node: MappedTypeNode, readonlyToken: ReadonlyKeyword | PlusToken | MinusToken | undefined, typeParameter: TypeParameterDeclaration, namesharedOpt<TypeNode> type, questionToken: QuestionToken | PlusToken | MinusToken | undefined, sharedOpt<TypeNode> type, optional<NodeArray> members): MappedTypeNode {
 //            return node->readonlyToken != readonlyToken
@@ -2450,14 +2502,14 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createLiteralTypeNode(literal: LiteralTypeNode["literal"]) {
-//            auto node = createBaseNode<LiteralTypeNode>(SyntaxKind::LiteralType);
-//            node->literal = literal;
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
+    // @api
+    auto createLiteralTypeNode(shared<Expression> literal) {
+        auto node = createBaseNode<LiteralTypeNode>(SyntaxKind::LiteralType);
+        node->literal = literal;
+        node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
 //        // @api
 //        function updateLiteralTypeNode(node: LiteralTypeNode, literal: LiteralTypeNode["literal"]) {
 //            return node->literal != literal
@@ -2645,7 +2697,7 @@ namespace ts::factory {
 //
 //        // @api
 //        function updatePropertyAccessChain(node: PropertyAccessChain, shared<Expression> expression, sharedOpt<QuestionDotToken> questionDotToken, name: Identifier | PrivateIdentifier) {
-//            Debug.assert(!!(node->flags & NodeFlags::OptionalChain), "Cannot update a PropertyAccessExpression using updatePropertyAccessChain. Use updatePropertyAccess instead.");
+//            Debug::asserts(!!(node->flags & NodeFlags::OptionalChain), "Cannot update a PropertyAccessExpression using updatePropertyAccessChain. Use updatePropertyAccess instead.");
 //            // Because we are updating an existing PropertyAccessChain we want to inherit its emitFlags
 //            // instead of using the default from createPropertyAccess
 //            return node->expression != expression
@@ -2701,7 +2753,7 @@ namespace ts::factory {
 
 //        // @api
 //        function updateElementAccessChain(node: ElementAccessChain, shared<Expression> expression, sharedOpt<QuestionDotToken> questionDotToken, argumentExpression: Expression) {
-//            Debug.assert(!!(node->flags & NodeFlags::OptionalChain), "Cannot update a ElementAccessExpression using updateElementAccessChain. Use updateElementAccess instead.");
+//            Debug::asserts(!!(node->flags & NodeFlags::OptionalChain), "Cannot update a ElementAccessExpression using updateElementAccessChain. Use updateElementAccess instead.");
 //            // Because we are updating an existing ElementAccessChain we want to inherit its emitFlags
 //            // instead of using the default from createElementAccess
 //            return node->expression != expression
@@ -2732,18 +2784,6 @@ namespace ts::factory {
         return node;
     }
 
-//        // @api
-//        function updateCallExpression(node: CallExpression, shared<Expression> expression, optional<NodeArray> typeArguments, argumentsArray: readonly Expression[]) {
-//            if (isCallChain(node)) {
-//                return updateCallChain(node, expression, node->questionDotToken, typeArguments, argumentsArray);
-//            }
-//            return node->expression != expression
-//                || node->typeArguments != typeArguments
-//                || node->arguments != argumentsArray
-//                ? update(createCallExpression(expression, typeArguments, argumentsArray), node)
-//                : node;
-//        }
-//
     // @api
     auto createCallChain(shared<Expression> expression, sharedOpt<QuestionDotToken> questionDotToken, optional<NodeArray> typeArguments, optional<NodeArray> argumentsArray) {
         auto node = createBaseExpression<CallChain>(SyntaxKind::CallExpression);
@@ -2767,16 +2807,28 @@ namespace ts::factory {
         return node;
     }
 
-//        // @api
-//        function updateCallChain(node: CallChain, shared<Expression> expression, sharedOpt<QuestionDotToken> questionDotToken, optional<NodeArray> typeArguments, argumentsArray: readonly Expression[]) {
-//            Debug.assert(!!(node->flags & NodeFlags::OptionalChain), "Cannot update a CallExpression using updateCallChain. Use updateCall instead.");
-//            return node->expression != expression
-//                || node->questionDotToken != questionDotToken
-//                || node->typeArguments != typeArguments
-//                || node->arguments != argumentsArray
-//                ? update(createCallChain(expression, questionDotToken, typeArguments, argumentsArray), node)
-//                : node;
-//        }
+    // @api
+    auto updateCallChain(shared<CallChain> node, shared<Expression> expression, sharedOpt<QuestionDotToken> questionDotToken, optional<NodeArray> typeArguments, NodeArray argumentsArray) {
+        Debug::asserts(!!(node->flags & (int) NodeFlags::OptionalChain), "Cannot update a CallExpression using updateCallChain. Use updateCall instead.");
+        return node->expression != expression
+               || node->questionDotToken != questionDotToken
+               || node->typeArguments != typeArguments
+               || node->arguments != argumentsArray
+               ? update(createCallChain(expression, questionDotToken, typeArguments, argumentsArray), node)
+               : node;
+    }
+
+    // @api
+    shared<CallExpression> updateCallExpression(shared<CallExpression> node, shared<Expression> expression, optional<NodeArray> typeArguments, NodeArray argumentsArray) {
+        if (isCallChain(node)) {
+            return updateCallChain(node, expression, node->questionDotToken, typeArguments, argumentsArray);
+        }
+        return node->expression != expression
+               || node->typeArguments != typeArguments
+               || node->arguments != argumentsArray
+               ? update(createCallExpression(expression, typeArguments, argumentsArray), node)
+               : node;
+    }
 
     // @api
     auto createNewExpression(shared<Expression> expression, optional<NodeArray> typeArguments, optional<NodeArray> argumentsArray) {
@@ -2845,14 +2897,14 @@ namespace ts::factory {
         return node;
     }
 
-//        // @api
-//        function updateTypeAssertion(node: TypeAssertion, type: TypeNode, shared<Expression> expression) {
-//            return node->type != type
-//                || node->expression != expression
-//                ? update(createTypeAssertion(type, expression), node)
-//                : node;
-//        }
-//
+    // @api
+    auto updateTypeAssertion(shared<TypeAssertion> node, shared<TypeNode> type, shared<Expression> expression) {
+        return node->type != type
+               || node->expression != expression
+               ? update(createTypeAssertion(type, expression), node)
+               : node;
+    }
+
 // @api
     shared<ParenthesizedExpression> createParenthesizedExpression(shared<Expression> expression) {
         auto node = createBaseExpression<ParenthesizedExpression>(SyntaxKind::ParenthesizedExpression);
@@ -2861,13 +2913,13 @@ namespace ts::factory {
         return node;
     }
 
-//        // @api
-//        function updateParenthesizedExpression(node: ParenthesizedExpression, shared<Expression> expression) {
-//            return node->expression != expression
-//                ? update(createParenthesizedExpression(expression), node)
-//                : node;
-//        }
-//
+    // @api
+    auto updateParenthesizedExpression(shared<ParenthesizedExpression> node, shared<Expression> expression) {
+        return node->expression != expression
+               ? update(createParenthesizedExpression(expression), node)
+               : node;
+    }
+
     // @api
     auto createFunctionExpression(
             optional<NodeArray> modifiers,
@@ -2926,36 +2978,35 @@ namespace ts::factory {
 //                ? updateBaseFunctionLikeDeclaration(createFunctionExpression(modifiers, asteriskToken, name, typeParameters, parameters, type, body), node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createArrowFunction(
-//            optional<NodeArray> modifiers,
-//            optional<NodeArray> typeParameters,
-//            NodeArray parameters,
-//            sharedOpt<TypeNode> type,
-//            equalsGreaterThanToken: EqualsGreaterThanToken | undefined,
-//            body: ConciseBody
-//        ) {
-//            auto node = createBaseFunctionLikeDeclaration<ArrowFunction>(
-//                SyntaxKind::ArrowFunction,
-//                /*decorators*/ {},
-//                modifiers,
-//                /*name*/ {},
-//                typeParameters,
-//                parameters,
-//                type,
-//                parenthesizerRules::parenthesizeConciseBodyOfArrowFunction(body)
-//            );
-//            node->equalsGreaterThanToken = equalsGreaterThanToken ?? createToken(SyntaxKind::EqualsGreaterThanToken);
-//            node->transformFlags |=
-//                propagateChildFlags(node->equalsGreaterThanToken) |
-//                TransformFlags::ContainsES2015;
-//            if (modifiersToFlags(node->modifiers) & ModifierFlags::Async) {
-//                node->transformFlags |= (int)TransformFlags::ContainsES2017 | TransformFlags::ContainsLexicalThis;
-//            }
-//            return node;
-//        }
-//
+    // @api
+    auto createArrowFunction(
+            optional<NodeArray> modifiers,
+            optional<NodeArray> typeParameters,
+            NodeArray parameters,
+            sharedOpt<TypeNode> type,
+            sharedOpt<EqualsGreaterThanToken> equalsGreaterThanToken,
+            shared<NodeUnion(ConciseBody)> body
+    ) {
+        auto node = createBaseFunctionLikeDeclaration<ArrowFunction>(
+                SyntaxKind::ArrowFunction,
+                /*decorators*/ {},
+                modifiers,
+                /*name*/ {},
+                typeParameters,
+                parameters,
+                type,
+                parenthesizerRules::parenthesizeConciseBodyOfArrowFunction(body)
+        );
+        node->equalsGreaterThanToken = equalsGreaterThanToken ? equalsGreaterThanToken : createToken<EqualsGreaterThanToken>(SyntaxKind::EqualsGreaterThanToken);
+        node->transformFlags |=
+                propagateChildFlags(node->equalsGreaterThanToken) |
+                (int) TransformFlags::ContainsES2015;
+        if (modifiersToFlags(node->modifiers) & (int) ModifierFlags::Async) {
+            node->transformFlags |= (int) TransformFlags::ContainsES2017 | (int) TransformFlags::ContainsLexicalThis;
+        }
+        return node;
+    }
+
 //        // @api
 //        function updateArrowFunction(
 //            node: ArrowFunction,
@@ -3105,15 +3156,15 @@ namespace ts::factory {
 //            else if (operatorKind == SyntaxKind::EqualsToken) {
 //                if (isObjectLiteralExpression(node->left)) {
 //                    node->transformFlags |=
-//                        TransformFlags::ContainsES2015 |
-//                        TransformFlags::ContainsES2018 |
-//                        TransformFlags::ContainsDestructuringAssignment |
+//                        (int)TransformFlags::ContainsES2015 |
+//                        (int)TransformFlags::ContainsES2018 |
+//                        (int)TransformFlags::ContainsDestructuringAssignment |
 //                        propagateAssignmentPatternFlags(node->left);
 //                }
 //                else if (isArrayLiteralExpression(node->left)) {
 //                    node->transformFlags |=
-//                        TransformFlags::ContainsES2015 |
-//                        TransformFlags::ContainsDestructuringAssignment |
+//                        (int)TransformFlags::ContainsES2015 |
+//                        (int)TransformFlags::ContainsDestructuringAssignment |
 //                        propagateAssignmentPatternFlags(node->left);
 //                }
 //            }
@@ -3155,24 +3206,24 @@ namespace ts::factory {
 //                ? update(createBinaryExpression(left, operator, right), node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createConditionalExpression(condition: Expression, sharedOpt<QuestionToken> questionToken, whenTrue: Expression, colonToken: ColonToken | undefined, whenFalse: Expression) {
-//            auto node = createBaseExpression<ConditionalExpression>(SyntaxKind::ConditionalExpression);
-//            node->condition = parenthesizerRules::parenthesizeConditionOfConditionalExpression(condition);
-//            node->questionToken = questionToken ?? createToken(SyntaxKind::QuestionToken);
-//            node->whenTrue = parenthesizerRules::parenthesizeBranchOfConditionalExpression(whenTrue);
-//            node->colonToken = colonToken ?? createToken(SyntaxKind::ColonToken);
-//            node->whenFalse = parenthesizerRules::parenthesizeBranchOfConditionalExpression(whenFalse);
-//            node->transformFlags |=
-//                propagateChildFlags(node->condition) |
-//                propagateChildFlags(node->questionToken) |
-//                propagateChildFlags(node->whenTrue) |
-//                propagateChildFlags(node->colonToken) |
-//                propagateChildFlags(node->whenFalse);
-//            return node;
-//        }
-//
+
+        // @api
+        auto createConditionalExpression(shared<Expression> condition, sharedOpt<QuestionToken> questionToken, shared<Expression> whenTrue, sharedOpt<ColonToken> colonToken, shared<Expression> whenFalse) {
+            auto node = createBaseExpression<ConditionalExpression>(SyntaxKind::ConditionalExpression);
+            node->condition = parenthesizerRules::parenthesizeConditionOfConditionalExpression(condition);
+            node->questionToken = questionToken ? questionToken: createToken<QuestionToken>(SyntaxKind::QuestionToken);
+            node->whenTrue = parenthesizerRules::parenthesizeBranchOfConditionalExpression(whenTrue);
+            node->colonToken = colonToken ? colonToken : createToken<ColonToken>(SyntaxKind::ColonToken);
+            node->whenFalse = parenthesizerRules::parenthesizeBranchOfConditionalExpression(whenFalse);
+            node->transformFlags |=
+                propagateChildFlags(node->condition) |
+                propagateChildFlags(node->questionToken) |
+                propagateChildFlags(node->whenTrue) |
+                propagateChildFlags(node->colonToken) |
+                propagateChildFlags(node->whenFalse);
+            return node;
+        }
+
 //        // @api
 //        function updateConditionalExpression(
 //            node: ConditionalExpression,
@@ -3212,7 +3263,7 @@ namespace ts::factory {
 //        }
 //
 //        function createTemplateLiteralLikeNodeChecked(kind: TemplateLiteralToken["kind"], text: string | undefined, rawText: string | undefined, templateFlags = TokenFlags::None) {
-//            Debug.assert(!(templateFlags & ~TokenFlags::TemplateLiteralLikeFlags), "Unsupported template flags.");
+//            Debug::asserts(!(templateFlags & ~TokenFlags::TemplateLiteralLikeFlags), "Unsupported template flags.");
 //            // NOTE: without the assignment to `undefined`, we don't narrow the initial type of `cooked`.
 //            // eslint-disable-next-line no-undef-init
 //            let cooked: string | object | undefined = undefined;
@@ -3229,7 +3280,7 @@ namespace ts::factory {
 //                text = cooked;
 //            }
 //            else if (cooked != undefined) {
-//                Debug.assert(text == cooked, "Expected argument 'text' to be the normalized (i.e. 'cooked') version of argument 'rawText'.");
+//                Debug::asserts(text == cooked, "Expected argument 'text' to be the normalized (i.e. 'cooked') version of argument 'rawText'.");
 //            }
 //            return createTemplateLiteralLikeNode(kind, text, rawText, templateFlags);
 //        }
@@ -3253,22 +3304,22 @@ namespace ts::factory {
 //        function createNoSubstitutionTemplateLiteral(text: string | undefined, rawText?: string, templateFlags?: TokenFlags) {
 //            return createTemplateLiteralLikeNodeChecked(SyntaxKind::NoSubstitutionTemplateLiteral, text, rawText, templateFlags) as NoSubstitutionTemplateLiteral;
 //        }
-//
-//        // @api
-//        function createYieldExpression(sharedOpt<AsteriskToken> asteriskToken, sharedOpt<Expression> expression): YieldExpression {
-//            Debug.assert(!asteriskToken || !!expression, "A `YieldExpression` with an asteriskToken must have an expression.");
-//            auto node = createBaseExpression<YieldExpression>(SyntaxKind::YieldExpression);
-//            node->expression = expression && parenthesizerRules::parenthesizeExpressionForDisallowedComma(expression);
-//            node->asteriskToken = asteriskToken;
-//            node->transformFlags |=
-//                propagateChildFlags(node->expression) |
-//                propagateChildFlags(node->asteriskToken) |
-//                TransformFlags::ContainsES2015 |
-//                TransformFlags::ContainsES2018 |
-//                TransformFlags::ContainsYield;
-//            return node;
-//        }
-//
+
+    // @api
+    shared<YieldExpression> createYieldExpression(sharedOpt<AsteriskToken> asteriskToken, sharedOpt<Expression> expression) {
+        Debug::asserts(!asteriskToken || !!expression, "A `YieldExpression` with an asteriskToken must have an expression.");
+        auto node = createBaseExpression<YieldExpression>(SyntaxKind::YieldExpression);
+        if (expression) node->expression = parenthesizerRules::parenthesizeExpressionForDisallowedComma(expression);
+        node->asteriskToken = asteriskToken;
+        node->transformFlags |=
+                propagateChildFlags(node->expression) |
+                propagateChildFlags(node->asteriskToken) |
+                (int) TransformFlags::ContainsES2015 |
+                (int) TransformFlags::ContainsES2018 |
+                (int) TransformFlags::ContainsYield;
+        return node;
+    }
+
 //        // @api
 //        function updateYieldExpression(node: YieldExpression, sharedOpt<AsteriskToken> asteriskToken, shared<Expression> expression) {
 //            return node->expression != expression
@@ -3374,14 +3425,14 @@ namespace ts::factory {
         return node;
     }
 
-//        // @api
-//        function updateAsExpression(node: AsExpression, shared<Expression> expression, type: TypeNode) {
-//            return node->expression != expression
-//                || node->type != type
-//                ? update(createAsExpression(expression, type), node)
-//                : node;
-//        }
-//
+    // @api
+    auto updateAsExpression(shared<AsExpression> node, shared<Expression> expression, shared<TypeNode> type) {
+        return node->expression != expression
+               || node->type != type
+               ? update(createAsExpression(expression, type), node)
+               : node;
+    }
+
     // @api
     shared<NonNullExpression> createNonNullExpression(shared<Expression> expression) {
         auto node = createBaseExpression<NonNullExpression>(SyntaxKind::NonNullExpression);
@@ -3392,35 +3443,35 @@ namespace ts::factory {
         return node;
     }
 
-//        // @api
-//        function updateNonNullExpression(node: NonNullExpression, shared<Expression> expression) {
-//            if (isNonNullChain(node)) {
-//                return updateNonNullChain(node, expression);
-//            }
-//            return node->expression != expression
-//                ? update(createNonNullExpression(expression), node)
-//                : node;
-//        }
-//
-//        // @api
-//        function createNonNullChain(shared<Expression> expression) {
-//            auto node = createBaseExpression<NonNullChain>(SyntaxKind::NonNullExpression);
-//            node->flags |= NodeFlags::OptionalChain;
-//            node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
-//            node->transformFlags |=
-//                propagateChildFlags(node->expression) |
-//                TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
-//        // @api
-//        function updateNonNullChain(node: NonNullChain, shared<Expression> expression) {
-//            Debug.assert(!!(node->flags & NodeFlags::OptionalChain), "Cannot update a NonNullExpression using updateNonNullChain. Use updateNonNullExpression instead.");
-//            return node->expression != expression
-//                ? update(createNonNullChain(expression), node)
-//                : node;
-//        }
-//
+    // @api
+    auto createNonNullChain(shared<Expression> expression) {
+        auto node = createBaseExpression<NonNullChain>(SyntaxKind::NonNullExpression);
+        node->flags |= (int) NodeFlags::OptionalChain;
+        node->expression = parenthesizerRules::parenthesizeLeftSideOfAccess(expression);
+        node->transformFlags |=
+                propagateChildFlags(node->expression) |
+                (int) TransformFlags::ContainsTypeScript;
+        return node;
+    }
+
+    // @api
+    auto updateNonNullChain(shared<NonNullChain> node, shared<Expression> expression) {
+        Debug::asserts(!!(node->flags & (int) NodeFlags::OptionalChain), "Cannot update a NonNullExpression using updateNonNullChain. Use updateNonNullExpression instead.");
+        return node->expression != expression
+               ? update(createNonNullChain(expression), node)
+               : node;
+    }
+
+    // @api
+    auto updateNonNullExpression(shared<NonNullExpression> node, shared<Expression> expression) {
+        if (isNonNullChain(node)) {
+            return updateNonNullChain(node, expression);
+        }
+        return node->expression != expression
+               ? update(createNonNullExpression(expression), node)
+               : node;
+    }
+
     // @api
     auto createMetaProperty(SyntaxKind keywordToken, shared<Identifier> name) {
         auto node = createBaseExpression<MetaProperty>(SyntaxKind::MetaProperty);
@@ -3517,20 +3568,54 @@ namespace ts::factory {
 //                ? update(createVariableStatement(modifiers, declarationList), node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createEmptyStatement() {
-//            return createBaseNode<EmptyStatement>(SyntaxKind::EmptyStatement);
+
+    // @api
+    auto createEmptyStatement() {
+        return createBaseNode<EmptyStatement>(SyntaxKind::EmptyStatement);
+    }
+
+    shared<EmitNode> mergeEmitNode(shared<EmitNode> sourceEmitNode, sharedOpt<EmitNode> destEmitNode) {
+        if (!destEmitNode) destEmitNode = make_shared<EmitNode>();
+        // We are using `.slice()` here in case `destEmitNode.leadingComments` is pushed to later.
+        if (sourceEmitNode->leadingComments) destEmitNode->leadingComments = addRange<SynthesizedComment>(slice(sourceEmitNode->leadingComments), destEmitNode->leadingComments);
+        if (sourceEmitNode->trailingComments) destEmitNode->trailingComments = addRange<SynthesizedComment>(slice(sourceEmitNode->trailingComments), destEmitNode->trailingComments);
+        if (sourceEmitNode->flags) destEmitNode->flags = sourceEmitNode->flags & ~(int)EmitFlags::Immutable;
+        if (sourceEmitNode->commentRange) destEmitNode->commentRange = sourceEmitNode->commentRange;
+        if (sourceEmitNode->sourceMapRange) destEmitNode->sourceMapRange = sourceEmitNode->sourceMapRange;
+//        if (sourceEmitNode->tokenSourceMapRanges) destEmitNode->tokenSourceMapRanges = mergeTokenSourceMapRanges(sourceEmitNode->tokenSourceMapRanges, destEmitNode->tokenSourceMapRanges!);
+//        if (sourceEmitNode->constantValue != false) destEmitNode->constantValue = constantValue;
+//        if (sourceEmitNode->helpers) {
+//            for (auto helper of helpers) {
+//                destEmitNode.helpers = appendIfUnique(destEmitNode.helpers, helper);
+//            }
 //        }
-//
-//        // @api
-//        function createExpressionStatement(shared<Expression> expression): ExpressionStatement {
-//            auto node = createBaseNode<ExpressionStatement>(SyntaxKind::ExpressionStatement);
-//            node->expression = parenthesizerRules::parenthesizeExpressionOfExpressionStatement(expression);
-//            node->transformFlags |= propagateChildFlags(node->expression);
-//            return node;
-//        }
-//
+//        if (startsOnNewLine != undefined) destEmitNode.startsOnNewLine = startsOnNewLine;
+        return destEmitNode;
+    }
+
+    template<class T>
+    T setOriginalNode(T node, sharedOpt<Node> original) {
+        node->original = original;
+        if (original) {
+            auto emitNode = original->emitNode;
+            if (emitNode) node->emitNode = mergeEmitNode(emitNode, node->emitNode);
+        }
+        return node;
+    }
+
+    template<class T>
+    sharedOpt<T> asEmbeddedStatement(sharedOpt<T> statement) {
+        return statement && isNotEmittedStatement(statement) ? setTextRange(setOriginalNode(createEmptyStatement(), statement), statement) : statement;
+    }
+
+    // @api
+    auto createExpressionStatement(shared<Expression> expression) {
+        auto node = createBaseNode<ExpressionStatement>(SyntaxKind::ExpressionStatement);
+        node->expression = parenthesizerRules::parenthesizeExpressionOfExpressionStatement(expression);
+        node->transformFlags |= propagateChildFlags(node->expression);
+        return node;
+    }
+
 //        // @api
 //        function updateExpressionStatement(node: ExpressionStatement, shared<Expression> expression) {
 //            return node->expression != expression
@@ -3657,7 +3742,7 @@ namespace ts::factory {
 //                propagateChildFlags(node->initializer) |
 //                propagateChildFlags(node->expression) |
 //                propagateChildFlags(node->statement) |
-//                TransformFlags::ContainsES2015;
+//                (int)TransformFlags::ContainsES2015;
 //            if (awaitModifier) node->transformFlags |= (int)TransformFlags::ContainsES2018;
 //            return node;
 //        }
@@ -3678,7 +3763,7 @@ namespace ts::factory {
 //            node->label = asName(label);
 //            node->transformFlags |=
 //                propagateChildFlags(node->label) |
-//                TransformFlags::ContainsHoistedDeclarationOrCompletion;
+//                (int)TransformFlags::ContainsHoistedDeclarationOrCompletion;
 //            return node;
 //        }
 //
@@ -3695,7 +3780,7 @@ namespace ts::factory {
 //            node->label = asName(label);
 //            node->transformFlags |=
 //                propagateChildFlags(node->label) |
-//                TransformFlags::ContainsHoistedDeclarationOrCompletion;
+//                (int)TransformFlags::ContainsHoistedDeclarationOrCompletion;
 //            return node;
 //        }
 //
@@ -3713,8 +3798,8 @@ namespace ts::factory {
 //            // return in an ES2018 async generator must be awaited
 //            node->transformFlags |=
 //                propagateChildFlags(node->expression) |
-//                TransformFlags::ContainsES2018 |
-//                TransformFlags::ContainsHoistedDeclarationOrCompletion;
+//                (int)TransformFlags::ContainsES2018 |
+//                (int)TransformFlags::ContainsHoistedDeclarationOrCompletion;
 //            return node;
 //        }
 //
@@ -3763,17 +3848,17 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createLabeledStatement(label: string | Identifier, statement: Statement) {
-//            auto node = createBaseNode<LabeledStatement>(SyntaxKind::LabeledStatement);
-//            node->label = asName(label);
-//            node->statement = asEmbeddedStatement(statement);
-//            node->transformFlags |=
-//                propagateChildFlags(node->label) |
-//                propagateChildFlags(node->statement);
-//            return node;
-//        }
-//
+        // @api
+        auto createLabeledStatement(NameType label, shared<Statement> statement) {
+            auto node = createBaseNode<LabeledStatement>(SyntaxKind::LabeledStatement);
+            node->label = to<Identifier>(asName(label));
+            node->statement = asEmbeddedStatement(statement);
+            node->transformFlags |=
+                propagateChildFlags(node->label) |
+                propagateChildFlags(node->statement);
+            return node;
+        }
+
 //        // @api
 //        function updateLabeledStatement(node: LabeledStatement, label: Identifier, statement: Statement) {
 //            return node->label != label
@@ -3859,11 +3944,11 @@ namespace ts::factory {
 //            node->declarations = createNodeArray(declarations);
 //            node->transformFlags |=
 //                propagateChildrenFlags(node->declarations) |
-//                TransformFlags::ContainsHoistedDeclarationOrCompletion;
+//                (int)TransformFlags::ContainsHoistedDeclarationOrCompletion;
 //            if (flags & NodeFlags::BlockScoped) {
 //                node->transformFlags |=
-//                    TransformFlags::ContainsES2015 |
-//                    TransformFlags::ContainsBlockScopedBinding;
+//                    (int)TransformFlags::ContainsES2015 |
+//                    (int)TransformFlags::ContainsBlockScopedBinding;
 //            }
 //            return node;
 //        }
@@ -3903,7 +3988,7 @@ namespace ts::factory {
 //            else {
 //                node->transformFlags |=
 //                    propagateChildFlags(node->asteriskToken) |
-//                    TransformFlags::ContainsHoistedDeclarationOrCompletion;
+//                    (int)TransformFlags::ContainsHoistedDeclarationOrCompletion;
 //                if (modifiersToFlags(node->modifiers) & ModifierFlags::Async) {
 //                    if (node->asteriskToken) {
 //                        node->transformFlags |= (int)TransformFlags::ContainsES2018;
@@ -4040,7 +4125,7 @@ namespace ts::factory {
 //            optional<NodeArray> modifiers,
 //            name: string | Identifier,
 //            optional<NodeArray> typeParameters,
-//            type: TypeNode
+//            shared<TypeNode> type
 //        ) {
 //            auto node = createBaseGenericNamedDeclaration<TypeAliasDeclaration>(
 //                SyntaxKind::TypeAliasDeclaration,
@@ -4061,7 +4146,7 @@ namespace ts::factory {
 //            optional<NodeArray> modifiers,
 //            name: Identifier,
 //            optional<NodeArray> typeParameters,
-//            type: TypeNode
+//            shared<TypeNode> type
 //        ) {
 //            return node->decorators != decorators
 //                || node->modifiers != modifiers
@@ -4088,7 +4173,7 @@ namespace ts::factory {
 //            node->members = createNodeArray(members);
 //            node->transformFlags |=
 //                propagateChildrenFlags(node->members) |
-//                TransformFlags::ContainsTypeScript;
+//                (int)TransformFlags::ContainsTypeScript;
 //            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // Enum declarations cannot contain `await`
 //            return node;
 //        }
@@ -4131,7 +4216,7 @@ namespace ts::factory {
 //                node->transformFlags |=
 //                    propagateChildFlags(node->name) |
 //                    propagateChildFlags(node->body) |
-//                    TransformFlags::ContainsTypeScript;
+//                    (int)TransformFlags::ContainsTypeScript;
 //            }
 //            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // Module declarations cannot contain `await`.
 //            return node;
@@ -4308,15 +4393,15 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createAssertClause(elements: readonly AssertEntry[], multiLine?: boolean): AssertClause {
-//            auto node = createBaseNode<AssertClause>(SyntaxKind::AssertClause);
-//            node->elements = createNodeArray(elements);
-//            node->multiLine = multiLine;
-//            node->transformFlags |= (int)TransformFlags::ContainsESNext;
-//            return node;
-//        }
-//
+    // @api
+    auto createAssertClause(NodeArray elements, bool multiLine) {
+        auto node = createBaseNode<AssertClause>(SyntaxKind::AssertClause);
+        node->elements = createNodeArray(elements);
+        node->multiLine = multiLine;
+        node->transformFlags |= (int) TransformFlags::ContainsESNext;
+        return node;
+    }
+
 //        // @api
 //        function updateAssertClause(node: AssertClause, elements: readonly AssertEntry[], multiLine?: boolean): AssertClause {
 //            return node->elements != elements
@@ -4325,15 +4410,15 @@ namespace ts::factory {
 //                : node;
 //        }
 //
-//        // @api
-//        function createAssertEntry(name: AssertionKey, value: Expression): AssertEntry {
-//            auto node = createBaseNode<AssertEntry>(SyntaxKind::AssertEntry);
-//            node->name = name;
-//            node->value = value;
-//            node->transformFlags |= (int)TransformFlags::ContainsESNext;
-//            return node;
-//        }
-//
+    // @api
+    auto createAssertEntry(shared<NodeUnion(AssertionKey)> name, shared<Expression> value) {
+        auto node = createBaseNode<AssertEntry>(SyntaxKind::AssertEntry);
+        node->name = name;
+        node->value = value;
+        node->transformFlags |= (int) TransformFlags::ContainsESNext;
+        return node;
+    }
+
 //        // @api
 //        function updateAssertEntry(node: AssertEntry, name: AssertionKey, value: Expression): AssertEntry {
 //            return node->name != name
@@ -4341,15 +4426,15 @@ namespace ts::factory {
 //                ? update(createAssertEntry(name, value), node)
 //                : node;
 //        }
-//
-//        // @api
-//        function createImportTypeAssertionContainer(clause: AssertClause, multiLine?: boolean): ImportTypeAssertionContainer {
-//            auto node = createBaseNode<ImportTypeAssertionContainer>(SyntaxKind::ImportTypeAssertionContainer);
-//            node->assertClause = clause;
-//            node->multiLine = multiLine;
-//            return node;
-//        }
-//
+
+    // @api
+    auto createImportTypeAssertionContainer(shared<AssertClause> clause, bool multiLine) {
+        auto node = createBaseNode<ImportTypeAssertionContainer>(SyntaxKind::ImportTypeAssertionContainer);
+        node->assertClause = clause;
+        node->multiLine = multiLine;
+        return node;
+    }
+
 //        // @api
 //        function updateImportTypeAssertionContainer(node: ImportTypeAssertionContainer, clause: AssertClause, multiLine?: boolean): ImportTypeAssertionContainer {
 //            return node->assertClause != clause
@@ -4380,7 +4465,7 @@ namespace ts::factory {
 //            node->name = name;
 //            node->transformFlags |=
 //                propagateChildFlags(node->name) |
-//                TransformFlags::ContainsESNext;
+//                (int)TransformFlags::ContainsESNext;
 //            node->transformFlags &= ~TransformFlags::ContainsPossibleTopLevelAwait; // always parsed in an Await context
 //            return node;
 //        }
@@ -4669,14 +4754,14 @@ namespace ts::factory {
 //        }
 //
 //        // @api
-//        function createJSDocTypeExpression(type: TypeNode): JSDocTypeExpression {
+//        function createJSDocTypeExpression(shared<TypeNode> type): JSDocTypeExpression {
 //            auto node = createBaseNode<JSDocTypeExpression>(SyntaxKind::JSDocTypeExpression);
 //            node->type = type;
 //            return node;
 //        }
 //
 //        // @api
-//        function updateJSDocTypeExpression(node: JSDocTypeExpression, type: TypeNode): JSDocTypeExpression {
+//        function updateJSDocTypeExpression(node: JSDocTypeExpression, shared<TypeNode> type): JSDocTypeExpression {
 //            return node->type != type
 //                ? update(createJSDocTypeExpression(type), node)
 //                : node;
@@ -5443,7 +5528,7 @@ namespace ts::factory {
 //            node->transformFlags |=
 //                propagateChildFlags(node->name) |
 //                propagateChildFlags(node->initializer) |
-//                TransformFlags::ContainsTypeScript;
+//                (int)TransformFlags::ContainsTypeScript;
 //            return node;
 //        }
 //
@@ -5637,33 +5722,33 @@ namespace ts::factory {
 //            setTextRange(node, original);
 //            return node;
 //        }
-//
-//        /**
-//         * Creates a synthetic expression to act as a placeholder for a not-emitted expression in
-//         * order to preserve comments or sourcemap positions.
-//         *
-//         * @param expression The inner expression to emit.
-//         * @param original The original outer expression.
-//         */
-//        // @api
-//        function createPartiallyEmittedExpression(shared<Expression> expression, original?: Node) {
-//            auto node = createBaseNode<PartiallyEmittedExpression>(SyntaxKind::PartiallyEmittedExpression);
-//            node->expression = expression;
-//            node->original = original;
-//            node->transformFlags |=
-//                propagateChildFlags(node->expression) |
-//                TransformFlags::ContainsTypeScript;
-//            setTextRange(node, original);
-//            return node;
-//        }
-//
-//        // @api
-//        function updatePartiallyEmittedExpression(node: PartiallyEmittedExpression, shared<Expression> expression) {
-//            return node->expression != expression
-//                ? update(createPartiallyEmittedExpression(expression, node->original), node)
-//                : node;
-//        }
-//
+
+    /**
+     * Creates a synthetic expression to act as a placeholder for a not-emitted expression in
+     * order to preserve comments or sourcemap positions.
+     *
+     * @param expression The inner expression to emit.
+     * @param original The original outer expression.
+     */
+    // @api
+    auto createPartiallyEmittedExpression(shared<Expression> expression, sharedOpt<Node> original) {
+        auto node = createBaseNode<PartiallyEmittedExpression>(SyntaxKind::PartiallyEmittedExpression);
+        node->expression = expression;
+        node->original = original;
+        node->transformFlags |=
+                propagateChildFlags(node->expression) |
+                (int) TransformFlags::ContainsTypeScript;
+        setTextRange(node, original);
+        return node;
+    }
+
+    // @api
+    auto updatePartiallyEmittedExpression(shared<PartiallyEmittedExpression> node, shared<Expression> expression) {
+        return node->expression != expression
+               ? update(createPartiallyEmittedExpression(expression, node->original), node)
+               : node;
+    }
+
 //        function flattenCommaElements(node: Expression): Expression | readonly Expression[] {
 //            if (nodeIsSynthesized(node) && !isParseTreeNode(node) && !node->original && !node->emitNode && !node->id) {
 //                if (isCommaListExpression(node)) {
@@ -5907,53 +5992,59 @@ namespace ts::factory {
 //            let isAccessor = tryAddPropertyAssignment(properties, "get", attributes.get);
 //            isAccessor = tryAddPropertyAssignment(properties, "set", attributes.set) || isAccessor;
 //
-//            Debug.assert(!(isData && isAccessor), "A PropertyDescriptor may not be both an accessor descriptor and a data descriptor.");
+//            Debug::asserts(!(isData && isAccessor), "A PropertyDescriptor may not be both an accessor descriptor and a data descriptor.");
 //            return createObjectLiteralExpression(properties, !singleLine);
 //        }
-//
-//        function updateOuterExpression(shared<OuterExpression> outerExpression, shared<Expression> expression) {
-//            switch (outerExpression.kind) {
-//                case SyntaxKind::ParenthesizedExpression: return updateParenthesizedExpression(outerExpression, expression);
-//                case SyntaxKind::TypeAssertionExpression: return updateTypeAssertion(outerExpression, outerExpression.type, expression);
-//                case SyntaxKind::AsExpression: return updateAsExpression(outerExpression, expression, outerExpression.type);
-//                case SyntaxKind::NonNullExpression: return updateNonNullExpression(outerExpression, expression);
-//                case SyntaxKind::PartiallyEmittedExpression: return updatePartiallyEmittedExpression(outerExpression, expression);
-//            }
-//        }
-//
-//        /**
-//         * Determines whether a node is a parenthesized expression that can be ignored when recreating outer expressions.
-//         *
-//         * A parenthesized expression can be ignored when all of the following are true:
-//         *
-//         * - It's `pos` and `end` are not -1
-//         * - It does not have a custom source map range
-//         * - It does not have a custom comment range
-//         * - It does not have synthetic leading or trailing comments
-//         *
-//         * If an outermost parenthesized expression is ignored, but the containing expression requires a parentheses around
-//         * the expression to maintain precedence, a new parenthesized expression should be created automatically when
-//         * the containing expression is created/updated.
-//         */
-//        function isIgnorableParen(node: Expression) {
-//            return isParenthesizedExpression(node)
-//                && nodeIsSynthesized(node)
-//                && nodeIsSynthesized(getSourceMapRange(node))
-//                && nodeIsSynthesized(getCommentRange(node))
-//                && !some(getSyntheticLeadingComments(node))
-//                && !some(getSyntheticTrailingComments(node));
-//        }
-//
-//        function restoreOuterExpressions(outerExpression: Expression | undefined, innerExpression: Expression, kinds = OuterExpressionKinds.All): Expression {
-//            if (outerExpression && isOuterExpression(outerExpression, kinds) && !isIgnorableParen(outerExpression)) {
-//                return updateOuterExpression(
-//                    outerExpression,
-//                    restoreOuterExpressions(outerExpression.expression, innerExpression)
-//                );
-//            }
-//            return innerExpression;
-//        }
-//
+
+    shared<Expression> updateOuterExpression(shared<OuterExpression> outerExpression, shared<Expression> expression) {
+        switch (outerExpression->kind) {
+            case SyntaxKind::ParenthesizedExpression:
+                return updateParenthesizedExpression(to<ParenthesizedExpression>(outerExpression), expression);
+            case SyntaxKind::TypeAssertionExpression:
+                return updateTypeAssertion(to<TypeAssertion>(outerExpression), to<TypeAssertion>(outerExpression)->type, expression);
+            case SyntaxKind::AsExpression:
+                return updateAsExpression(to<AsExpression>(outerExpression), expression, to<AsExpression>(outerExpression)->type);
+            case SyntaxKind::NonNullExpression:
+                return updateNonNullExpression(to<NonNullExpression>(outerExpression), expression);
+            case SyntaxKind::PartiallyEmittedExpression:
+                return updatePartiallyEmittedExpression(to<PartiallyEmittedExpression>(outerExpression), expression);
+        }
+        throw runtime_error("Invalid OuterExpression passed");
+    }
+
+    /**
+     * Determines whether a node is a parenthesized expression that can be ignored when recreating outer expressions.
+     *
+     * A parenthesized expression can be ignored when all of the following are true:
+     *
+     * - It's `pos` and `end` are not -1
+     * - It does not have a custom source map range
+     * - It does not have a custom comment range
+     * - It does not have synthetic leading or trailing comments
+     *
+     * If an outermost parenthesized expression is ignored, but the containing expression requires a parentheses around
+     * the expression to maintain precedence, a new parenthesized expression should be created automatically when
+     * the containing expression is created/updated.
+     */
+    bool isIgnorableParen(shared<Expression> node) {
+        return isParenthesizedExpression(node)
+               && nodeIsSynthesized(node)
+               && nodeIsSynthesized(getSourceMapRange(node))
+               && nodeIsSynthesized(getCommentRange(node))
+               && !some(getSyntheticLeadingComments(node))
+               && !some(getSyntheticTrailingComments(node));
+    }
+
+    shared<Expression> restoreOuterExpressions(sharedOpt<Expression> outerExpression, shared<Expression> innerExpression, int kinds) {
+        if (isOuterExpression(outerExpression, kinds) && !isIgnorableParen(outerExpression)) {
+            return updateOuterExpression(
+                    outerExpression,
+                    restoreOuterExpressions(getExpression(outerExpression), innerExpression)
+            );
+        }
+        return innerExpression;
+    }
+
 //        function restoreEnclosingLabel(node: Statement, outermostLabeledStatement: LabeledStatement | undefined, afterRestoreLabelCallback?: (node: LabeledStatement) => void): Statement {
 //            if (!outermostLabeledStatement) {
 //                return node;
@@ -5995,7 +6086,7 @@ namespace ts::factory {
 //        }
 //
 //        function createCallBinding(shared<Expression> expression, recordTempVariable: (temp: Identifier) => void, languageVersion?: ScriptTarget, cacheIdentifiers = false): CallBinding {
-//            auto callee = skipOuterExpressions(expression, OuterExpressionKinds.All);
+//            auto callee = skipOuterExpressions(expression, OuterExpressionKinds::All);
 //            let thisArg: Expression;
 //            let target: LeftHandSideExpression;
 //            if (isSuperProperty(callee)) {
@@ -6232,7 +6323,7 @@ namespace ts::factory {
 //         * @returns Count of how many directive statements were copied.
 //         */
 //        function copyStandardPrologue(source: readonly Statement[], target: Push<Statement>, statementOffset = 0, ensureUseStrict?: boolean): number {
-//            Debug.assert(target.length == 0, "Prologue directives should be at the first statement in the target statements array");
+//            Debug::asserts(target.length == 0, "Prologue directives should be at the first statement in the target statements array");
 //            let foundUseStrict = false;
 //            auto numStatements = source.length;
 //            while (statementOffset < numStatements) {
@@ -6299,7 +6390,7 @@ namespace ts::factory {
 //         * @param nodes The NodeArray.
 //         */
 //        function liftToBlock(nodes: readonly Node[]): Statement {
-//            Debug.assert(every(nodes, isStatementOrBlock), "Cannot lift nodes to a Block.");
+//            Debug::asserts(every(nodes, isStatementOrBlock), "Cannot lift nodes to a Block.");
 //            return singleOrUndefined(nodes) as Statement || createBlock(nodes as readonly Statement[]);
 //        }
 //
@@ -6357,7 +6448,7 @@ namespace ts::factory {
 //            auto rightHoistedFunctionsEnd = findSpanEnd(declarations, isHoistedFunction, rightStandardPrologueEnd);
 //            auto rightHoistedVariablesEnd = findSpanEnd(declarations, isHoistedVariableStatement, rightHoistedFunctionsEnd);
 //            auto rightCustomPrologueEnd = findSpanEnd(declarations, isCustomPrologue, rightHoistedVariablesEnd);
-//            Debug.assert(rightCustomPrologueEnd == declarations.length, "Expected declarations to be valid standard or custom prologues");
+//            Debug::asserts(rightCustomPrologueEnd == declarations.length, "Expected declarations to be valid standard or custom prologues");
 //
 //            // splice prologues from the right into the left. We do this in reverse order
 //            // so that we don't need to recompute the index on the left when we insert items.
@@ -6452,18 +6543,9 @@ namespace ts::factory {
 //
 //        function asEmbeddedStatement<T extends Node>(statement: T): T | EmptyStatement;
 //        function asEmbeddedStatement<T extends Node>(statement: T | undefined): T | EmptyStatement | undefined;
-//        function asEmbeddedStatement<T extends Node>(statement: T | undefined): T | EmptyStatement | undefined {
-//            return statement && isNotEmittedStatement(statement) ? setTextRange(setOriginalNode(createEmptyStatement(), statement), statement) : statement;
-//        }
+
 //    }
-//
-//    function updateWithoutOriginal<T extends Node>(updated: T, original: T): T {
-//        if (updated != original) {
-//            setTextRange(updated, original);
-//        }
-//        return updated;
-//    }
-//
+
 //    function updateWithOriginal<T extends Node>(updated: T, original: T): T {
 //        if (updated != original) {
 //            setOriginalNode(updated, original);
@@ -6658,14 +6740,14 @@ namespace ts::factory {
 //        let oldFileOfCurrentEmit: boolean | undefined;
 //
 //        if (!isString(textOrInputFiles)) {
-//            Debug.assert(mapPathOrType == "js" || mapPathOrType == "dts");
+//            Debug::asserts(mapPathOrType == "js" || mapPathOrType == "dts");
 //            fileName = (mapPathOrType == "js" ? textOrInputFiles.javascriptPath : textOrInputFiles.declarationPath) || "";
 //            sourceMapPath = mapPathOrType == "js" ? textOrInputFiles.javascriptMapPath : textOrInputFiles.declarationMapPath;
 //            getText = () => mapPathOrType == "js" ? textOrInputFiles.javascriptText : textOrInputFiles.declarationText;
 //            getSourceMapText = () => mapPathOrType == "js" ? textOrInputFiles.javascriptMapText : textOrInputFiles.declarationMapText;
 //            length = () => getText!().length;
 //            if (textOrInputFiles.buildInfo && textOrInputFiles.buildInfo.bundle) {
-//                Debug.assert(mapTextOrStripInternal == undefined || typeof mapTextOrStripInternal == "boolean");
+//                Debug::asserts(mapTextOrStripInternal == undefined || typeof mapTextOrStripInternal == "boolean");
 //                stripInternal = mapTextOrStripInternal;
 //                bundleFileInfo = mapPathOrType == "js" ? textOrInputFiles.buildInfo.bundle.js : textOrInputFiles.buildInfo.bundle.dts;
 //                oldFileOfCurrentEmit = textOrInputFiles.oldFileOfCurrentEmit;
@@ -6689,7 +6771,7 @@ namespace ts::factory {
 //            Object.defineProperty(node, "sourceMapText", { get: getSourceMapText });
 //        }
 //        else {
-//            Debug.assert(!oldFileOfCurrentEmit);
+//            Debug::asserts(!oldFileOfCurrentEmit);
 //            node->text = text ?? "";
 //            node->sourceMapText = sourceMapText;
 //        }
@@ -6925,45 +7007,6 @@ namespace ts::factory {
 //    }
 //
 //    // Utilities
-//
-//    export function setOriginalNode<T extends Node>(node: T, original: Node | undefined): T {
-//        node->original = original;
-//        if (original) {
-//            auto emitNode = original.emitNode;
-//            if (emitNode) node->emitNode = mergeEmitNode(emitNode, node->emitNode);
-//        }
-//        return node;
-//    }
-//
-//    function mergeEmitNode(sourceEmitNode: EmitNode, destEmitNode: EmitNode | undefined) {
-//        auto {
-//            flags,
-//            leadingComments,
-//            trailingComments,
-//            commentRange,
-//            sourceMapRange,
-//            tokenSourceMapRanges,
-//            constantValue,
-//            helpers,
-//            startsOnNewLine,
-//        } = sourceEmitNode;
-//        if (!destEmitNode) destEmitNode = {} as EmitNode;
-//        // We are using `.slice()` here in case `destEmitNode.leadingComments` is pushed to later.
-//        if (leadingComments) destEmitNode.leadingComments = addRange(leadingComments.slice(), destEmitNode.leadingComments);
-//        if (trailingComments) destEmitNode.trailingComments = addRange(trailingComments.slice(), destEmitNode.trailingComments);
-//        if (flags) destEmitNode.flags = flags & ~EmitFlags.Immutable;
-//        if (commentRange) destEmitNode.commentRange = commentRange;
-//        if (sourceMapRange) destEmitNode.sourceMapRange = sourceMapRange;
-//        if (tokenSourceMapRanges) destEmitNode.tokenSourceMapRanges = mergeTokenSourceMapRanges(tokenSourceMapRanges, destEmitNode.tokenSourceMapRanges!);
-//        if (constantValue != undefined) destEmitNode.constantValue = constantValue;
-//        if (helpers) {
-//            for (auto helper of helpers) {
-//                destEmitNode.helpers = appendIfUnique(destEmitNode.helpers, helper);
-//            }
-//        }
-//        if (startsOnNewLine != undefined) destEmitNode.startsOnNewLine = startsOnNewLine;
-//        return destEmitNode;
-//    }
 //
 //    function mergeTokenSourceMapRanges(sourceRanges: (TextRange | undefined)[], destRanges: (TextRange | undefined)[]) {
 //        if (!destRanges) destRanges = [];

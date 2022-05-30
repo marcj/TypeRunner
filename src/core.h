@@ -2,6 +2,7 @@
 
 #include <string>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <vector>
 #include <functional>
@@ -51,8 +52,8 @@ namespace ts {
     }
 
     /**
-     * shared_ptr has optional semantic already built-in, so we use it instead of std::optional,
-     * but instead of using shared_ptr directly, we use opt<T> to make it clear that it can be empty.
+     * shared_ptr has optional semantic already built-in, so we use it instead of std::optional<shared_ptr<>>,
+     * but instead of using shared_ptr directly, we use sharedOpt<T> to make it clear that it can be empty.
      */
     template<typename T>
     using sharedOpt = shared_ptr<T>;
@@ -76,7 +77,7 @@ namespace ts {
      * Returns the last element of an array if non-empty, `undefined` otherwise.
      */
     template<typename T>
-    optional<T> lastOrUndefined(const vector<T> &array) {
+    optional<T> lastOrUndefined(vector<T> &array) {
         if (array.empty()) return std::nullopt;
         return array.back();
     }
@@ -85,6 +86,14 @@ namespace ts {
     T defaultTo(optional<T> v, T def) {
         if (v) return *v;
         return def;
+    }
+
+    bool isTrue(optional<bool> b = {}) {
+        return b && *b;
+    }
+
+    bool isFalse(optional<bool> b = {}) {
+        return !b || !*b;
     }
 
     vector<string> charToStringVector(vector<const char *> chars) {
@@ -109,8 +118,15 @@ namespace ts {
     }
 
     template<typename T>
-    vector<T> slice(const vector<T> &v, int start) {
-        return vector<T>(v.begin() + start, v.end());
+    vector<T> slice(const vector<T> &v, int start = 0, int end = 0) {
+        if (!end) end = v.size();
+        return std::vector<T>(v.begin() + start, v.begin() + end);
+    }
+
+    template<typename T>
+    optional<vector<T>> slice(const optional<vector<T>> &v, int start = 0, int end = 0) {
+        if (!v) return std::nullopt;
+        return slice(*v, start, end);
     }
 
     string join(const vector<string> &vec, const char *delim) {
@@ -209,24 +225,24 @@ namespace ts {
         return some(optional(array), optional(predicate));
     }
 
-    template<typename T>
-    class LogicalOrReturnLast {
-    protected:
-        T value;
-    public:
-        LogicalOrReturnLast(T value): value(value) {}
-        operator T() { return value; }
-        LogicalOrReturnLast operator||(LogicalOrReturnLast other) {
-            if (value) return *this;
-
-            return other;
-        }
-        LogicalOrReturnLast operator||(T other) {
-            if (value) return *this;
-
-            return LogicalOrReturnLast(other);
-        }
-    };
+//    template<typename T>
+//    class LogicalOrReturnLast {
+//    protected:
+//        T value;
+//    public:
+//        LogicalOrReturnLast(T value): value(value) {}
+//        operator T() { return value; }
+//        LogicalOrReturnLast operator||(LogicalOrReturnLast other) {
+//            if (value) return *this;
+//
+//            return other;
+//        }
+//        LogicalOrReturnLast operator||(T other) {
+//            if (value) return *this;
+//
+//            return LogicalOrReturnLast(other);
+//        }
+//    };
 
     //template<typename T>
     //inline bool some(ts::NodeArray<T> array, std::function<bool(typename decltype(array)::value_type::value_type)> predicate) {
@@ -245,6 +261,11 @@ namespace ts {
     template<typename T>
     static void remove(vector<T> &vector, T item) {
         vector.erase(remove(vector.begin(), vector.end(), item), vector.end());
+    };
+
+    template<typename T>
+    static bool has(std::set<T> &s, T item) {
+        return s.find(item) != s.end();
     };
 
     template<typename T>

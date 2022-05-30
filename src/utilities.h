@@ -45,10 +45,46 @@ namespace ts {
         return nullptr;
     }
 
-    NodeArray& setTextRangePosEnd(NodeArray &range, int pos, int end) {
+    NodeArray &setTextRangePosEnd(NodeArray &range, int pos, int end) {
         range.pos = pos;
         range.end = end;
         return range;
+    }
+
+    /**
+     * Gets a custom text range to use when emitting source maps.
+     */
+    shared<SourceMapRange> getSourceMapRange(shared<Node> node) {
+        if (!node->emitNode) return node;
+        return node->emitNode->sourceMapRange;
+    }
+    /**
+     * Gets a custom text range to use when emitting comments.
+     */
+    shared<TextRange> getCommentRange(shared<Node> node) {
+        if (!node->emitNode) return node;
+        if (!node->emitNode->commentRange) return node;
+        return node->emitNode->commentRange;
+    }
+
+    optional<vector<SynthesizedComment>> getSyntheticLeadingComments(shared<Node> node) {
+        if (!node->emitNode) return nullopt;
+        return node->emitNode->leadingComments;
+    }
+
+    optional<vector<SynthesizedComment>> getSyntheticTrailingComments(shared<Node> node) {
+        if (!node->emitNode) return nullopt;
+        return node->emitNode->trailingComments;
+    }
+
+    bool positionIsSynthesized(int pos) {
+        // This is a fast way of testing the following conditions:
+        //  pos === undefined || pos === null || isNaN(pos) || pos < 0;
+        return !(pos >= 0);
+    }
+
+    bool nodeIsSynthesized(shared<TextRange> range) {
+        return positionIsSynthesized(range->pos) || positionIsSynthesized(range->end);
     }
 
     template<typename T>
@@ -566,7 +602,8 @@ namespace ts {
         }
     }
 
-    bool isOuterExpression(shared<Node> node, int kinds = (int) OuterExpressionKinds::All) {
+    bool isOuterExpression(sharedOpt<Node> node, int kinds = (int) OuterExpressionKinds::All) {
+        if (!node) return false;
         switch (node->kind) {
             case SyntaxKind::ParenthesizedExpression:
 //                if (kinds & (int)OuterExpressionKinds::ExcludeJSDocTypeAssertion && isJSDocTypeAssertion(node)) {
@@ -584,7 +621,8 @@ namespace ts {
         return false;
     }
 
-    shared<Expression> getExpression(shared<Node> node) {
+    sharedOpt<Expression> getExpression(sharedOpt<Node> node) {
+        if (!node) return nullptr;
         switch (node->kind) {
             case SyntaxKind::ParenthesizedExpression:
                 return node->to<ParenthesizedExpression>().expression;
@@ -801,12 +839,6 @@ namespace ts {
         return isLeftHandSideExpressionKind(skipPartiallyEmittedExpressions(node)->kind);
     }
 
-    bool positionIsSynthesized(int pos) {
-        // This is a fast way of testing the following conditions:
-        //  pos === undefined || pos === null || isNaN(pos) || pos < 0;
-        return !(pos >= 0);
-    }
-
     // Returns true if this node is missing from the actual source code. A 'missing' node is different
     // from 'undefined/defined'. When a node is undefined (which can happen for optional nodes
     // in the tree), it is definitely missing. However, a node may be defined, but still be
@@ -825,6 +857,10 @@ namespace ts {
         }
 
         return node->pos == node->end && node->pos >= 0 && node->kind != SyntaxKind::EndOfFileToken;
+    }
+
+    bool nodeIsPresent(sharedOpt<Node> node) {
+        return !nodeIsMissing(node);
     }
 
     string getTextOfNodeFromSourceText(string &sourceText, shared<Node> node, bool includeTrivia = false) {
@@ -899,5 +935,62 @@ namespace ts {
         }
     }
 
+    Comparison compareComparableValues(optional<double> a, optional<double> b) {
+        return a == b ? Comparison::EqualTo :
+               a == false ? Comparison::LessThan :
+               b == false ? Comparison::GreaterThan :
+               a < b ? Comparison::LessThan :
+               Comparison::GreaterThan;
+    }
+
+    Comparison compareComparableValues(optional<string> a, optional<string> b) {
+        if (!a) return Comparison::LessThan;
+        if (!b) return Comparison::GreaterThan;
+
+        return compareComparableValues(std::stod(*a), std::stod(*b));
+    }
+
+    /**
+     * Compare two numeric values for their order relative to each other.
+     * To compare strings, use any of the `compareStrings` functions.
+     */
+    Comparison compareValues(optional<double> a, optional<double> b) {
+        return compareComparableValues(a, b);
+    }
+
+    /**
+     * Gets the actual offset into an array for a relative offset. Negative offsets indicate a
+     * position offset from the end of the array.
+     */
+    template<typename T>
+    int toOffset(vector<T> array, int offset) {
+        return offset < 0 ? array.size() + offset : offset;
+    }
+
+    /**
+     * Appends a range of value to an array, returning the array.
+     *
+     * @param to The array to which `value` is to be appended. If `to` is `undefined`, a new array
+     * is created if `value` was appended.
+     * @param from The values to append to the array. If `from` is `undefined`, nothing is
+     * appended. If an element of `from` is `undefined`, that element is not appended.
+     * @param start The offset in `from` at which to start copying values.
+     * @param end The offset in `from` at which to stop copying values (non-inclusive).
+     */
+//    export function addRange<T>(to: T[], from: readonly T[] | undefined, start?: number, end?: number): T[];
+//    export function addRange<T>(to: T[] | undefined, from: readonly T[] | undefined, start?: number, end?: number): T[] | undefined;
+    template<typename T>
+    optional<vector<T>> addRange(optional<vector<T>> to, optional<vector<T>> from, int start = 0, int end = 0) {
+        if (!from || from->empty()) return to;
+        if (!to) return slice(from, start, end);
+        start = start == 0 ? 0 : toOffset(*from, start);
+        end = end == 0 ? from->size() : toOffset(*from, end);
+        for (int i = start; i < end && i < from->size(); i++) {
+//            if (!(bool) (*from)[i]) {
+            to->push_back((*from)[i]);
+//            }
+        }
+        return to;
+    }
 }
 
