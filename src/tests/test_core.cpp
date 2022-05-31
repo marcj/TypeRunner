@@ -345,10 +345,32 @@ TEST(core, startsWith) {
     EXPECT_EQ(startsWith("this/is/a/path", "this/"), true);
 }
 
-TEST(core, substrNegative) {
+TEST(core, substr) {
     string a = "abc";
+    EXPECT_EQ(substr(a, 0), "abc");
+    EXPECT_EQ(substr(a, 1), "bc");
+    EXPECT_EQ(substr(a, 0, 2), "ab");
+    EXPECT_EQ(substr(a, 1, 0), "");
+    EXPECT_EQ(substr(a, 1, 1), "b");
+    EXPECT_EQ(substr(a, 1, 2), "bc");
+    EXPECT_EQ(substr(a, 1, 3), "bc");
+    EXPECT_EQ(substr(a, 1, 5), "bc");
     EXPECT_EQ(substr(a, -1), "c");
-    EXPECT_EQ(substr(a, 0, -1), "ab");
+    EXPECT_EQ(substr(a, 0, -1), "");
+}
+
+TEST(core, substring) {
+    string a = "abc";
+    EXPECT_EQ(substring(a, 0), "abc");
+    EXPECT_EQ(substring(a, 1), "bc");
+    EXPECT_EQ(substring(a, 0, 2), "ab");
+    EXPECT_EQ(substring(a, 1, 2), "b");
+    EXPECT_EQ(substring(a, 1, 3), "bc");
+    EXPECT_EQ(substring(a, 1, 5), "bc");
+    EXPECT_EQ(substring(a, -1), "abc");
+    EXPECT_EQ(substring(a, 0, 0), "");
+    EXPECT_EQ(substring(a, 0, -1), "");
+    EXPECT_EQ(substring(a, 0, -2), "");
 }
 
 TEST(core, regex) {
@@ -371,6 +393,31 @@ T executeFn(function<T()> callback) {
     return callback();
 }
 
+class TestExec {
+public:
+    bool callback() {
+        return true;
+    }
+
+    bool executeFn(function<bool()> callback) {
+        return callback();
+    }
+
+    bool doIt() {
+        return executeFn([this]{ return callback(); });
+    }
+};
+
+TEST(core, stringView) {
+    std::string_view s = "abcdefgh";
+
+}
+
 TEST(core, passFn) {
-    auto a = executeFn<bool>(test);
+    TestExec test;
+
+    test.doIt();
+
+//
+//    auto a = executeFn<bool>([]{ return test(); });
 }

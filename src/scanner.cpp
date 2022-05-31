@@ -19,7 +19,7 @@ namespace ts {
         return false;
     }
 
-    bool isWhiteSpaceSingleLine(CharCode ch) {
+    bool isWhiteSpaceSingleLine(const CharCode &ch) {
         // Note: nextLine is in the Zs space, and should be considered to be a whitespace.
         // It is explicitly not a line-break as it isn't in the exact set specified by EcmaScript.
         return ch.code == CharacterCodes::space ||
@@ -43,25 +43,25 @@ namespace ts {
         auto start = pos;
         while (true) {
             if (pos >= end) {
-                result += substr(text, start, pos);
+                result += substring(text, start, pos);
                 tokenFlags |= TokenFlags::Unterminated;
 //            error(Diagnostics::Unterminated_string_literal);
                 break;
             }
             auto ch = charCodeAt(text, pos);
             if (ch.code == quote.code) {
-                result += substr(text, start, pos);
+                result += substring(text, start, pos);
                 pos++;
                 break;
             }
             if (ch.code == CharacterCodes::backslash && !jsxAttributeString) {
-                result += substr(text, start, pos);
+                result += substring(text, start, pos);
                 result += scanEscapeSequence();
                 start = pos;
                 continue;
             }
             if (isLineBreak(ch) && !jsxAttributeString) {
-                result += substr(text, start, pos);
+                result += substring(text, start, pos);
                 tokenFlags |= TokenFlags::Unterminated;
 //            error(Diagnostics::Unterminated_string_literal);
                 break;
@@ -71,11 +71,11 @@ namespace ts {
         return result;
     }
 
-    bool isDigit(CharCode ch) {
+    bool isDigit(const CharCode &ch) {
         return ch.code >= CharacterCodes::_0 && ch.code <= CharacterCodes::_9;
     }
 
-    bool isHexDigit(CharCode ch) {
+    bool isHexDigit(const CharCode &ch) {
         return isDigit(ch) || (ch.code >= CharacterCodes::A && ch.code <= CharacterCodes::F) ||
                (ch.code >= CharacterCodes::a && ch.code <= CharacterCodes::f);
     }
@@ -113,7 +113,7 @@ namespace ts {
                 break;
             }
             found++;
-            result.append(substr(text, pos, ch.length));
+            result.append(substring(text, pos, ch.length));
             pos++;
             isPreviousTokenSeparator = false;
         }
@@ -125,7 +125,7 @@ namespace ts {
         return result;
     }
 
-    bool isCodePoint(CharCode ch) {
+    bool isCodePoint(const CharCode &ch) {
         return ch.code <= 0x10FFFF;
     }
 
@@ -193,7 +193,7 @@ namespace ts {
                 if (isTaggedTemplate && pos < end && isDigit(charCodeAt(text, pos))) {
                     pos++;
                     tokenFlags |= TokenFlags::ContainsInvalidEscape;
-                    return substr(text, start, pos);
+                    return substring(text, start, pos);
                 }
                 return "\0";
             case CharacterCodes::b:
@@ -220,7 +220,7 @@ namespace ts {
                             charCodeAt(text, escapePos).code != CharacterCodes::openBrace) {
                             pos = escapePos;
                             tokenFlags |= TokenFlags::ContainsInvalidEscape;
-                            return substr(text, start, pos);
+                            return substring(text, start, pos);
                         }
                     }
                 }
@@ -231,7 +231,7 @@ namespace ts {
                     // '\u{'
                     if (isTaggedTemplate && !isHexDigit(charCodeAt(text, pos))) {
                         tokenFlags |= TokenFlags::ContainsInvalidEscape;
-                        return substr(text, start, pos);
+                        return substring(text, start, pos);
                     }
 
                     if (isTaggedTemplate) {
@@ -244,13 +244,13 @@ namespace ts {
                             // '\u{Not Code Point' or '\u{CodePoint'
                             if (charCodeAt(text, pos).code != CharacterCodes::closeBrace) {
                                 tokenFlags |= TokenFlags::ContainsInvalidEscape;
-                                return substr(text, start, pos);
+                                return substring(text, start, pos);
                             } else {
                                 pos = savePos;
                             }
                         } catch (invalid_argument &error) {
                             tokenFlags |= TokenFlags::ContainsInvalidEscape;
-                            return substr(text, start, pos);
+                            return substring(text, start, pos);
                         }
                     }
                     tokenFlags |= TokenFlags::ExtendedUnicodeEscape;
@@ -265,11 +265,11 @@ namespace ts {
                 if (isTaggedTemplate) {
                     if (!isHexDigit(charCodeAt(text, pos))) {
                         tokenFlags |= TokenFlags::ContainsInvalidEscape;
-                        return substr(text, start, pos);
+                        return substring(text, start, pos);
                     } else if (!isHexDigit(charCodeAt(text, pos + 1))) {
                         pos++;
                         tokenFlags |= TokenFlags::ContainsInvalidEscape;
-                        return substr(text, start, pos);
+                        return substring(text, start, pos);
                     }
                 }
                 // '\xDD'
@@ -301,7 +301,7 @@ namespace ts {
 
         while (true) {
             if (pos >= end) {
-                contents += substr(text, start, pos);
+                contents += substring(text, start, pos);
                 tokenFlags |= TokenFlags::Unterminated;
 //            error(Diagnostics::Unterminated_template_literal);
                 resultingToken = startedWithBacktick ? SyntaxKind::NoSubstitutionTemplateLiteral : SyntaxKind::TemplateTail;
@@ -312,7 +312,7 @@ namespace ts {
 
             // '`'
             if (currChar.code == CharacterCodes::backtick) {
-                contents += substr(text, start, pos);
+                contents += substring(text, start, pos);
                 pos++;
                 resultingToken = startedWithBacktick ? SyntaxKind::NoSubstitutionTemplateLiteral : SyntaxKind::TemplateTail;
                 break;
@@ -320,7 +320,7 @@ namespace ts {
 
             // '${'
             if (currChar.code == CharacterCodes::$ && pos + 1 < end && charCodeAt(text, pos + 1).code == CharacterCodes::openBrace) {
-                contents += substr(text, start, pos);
+                contents += substring(text, start, pos);
                 pos += 2;
                 resultingToken = startedWithBacktick ? SyntaxKind::TemplateHead : SyntaxKind::TemplateMiddle;
                 break;
@@ -328,7 +328,7 @@ namespace ts {
 
             // Escape character
             if (currChar.code == CharacterCodes::backslash) {
-                contents += substr(text, start, pos);
+                contents += substring(text, start, pos);
                 contents += scanEscapeSequence(isTaggedTemplate);
                 start = pos;
                 continue;
@@ -337,7 +337,7 @@ namespace ts {
             // Speculated ECMAScript 6 Spec 11.8.6.1:
             // <CR><LF> and <CR> LineTerminatorSequences are normalized to <LF> for Template Values
             if (currChar.code == CharacterCodes::carriageReturn) {
-                contents += substr(text, start, pos);
+                contents += substring(text, start, pos);
                 pos++;
 
                 if (pos < end && charCodeAt(text, pos).code == CharacterCodes::lineFeed) {
@@ -370,7 +370,7 @@ namespace ts {
                 if (allowSeparator) {
                     allowSeparator = false;
                     isPreviousTokenSeparator = true;
-                    result += substr(text, start, pos);
+                    result += substring(text, start, pos);
                 } else if (isPreviousTokenSeparator) {
 //                error(Diagnostics::Multiple_consecutive_numeric_separators_are_not_permitted, pos, 1);
                 } else {
@@ -391,7 +391,7 @@ namespace ts {
         if (charCodeAt(text, pos - 1).code == CharacterCodes::_) {
 //        error(Diagnostics::Numeric_separators_are_not_allowed_here, pos - 1, 1);
         }
-        return result + substr(text, start, pos);
+        return result + substring(text, start, pos);
     }
 
     map<string, SyntaxKind> textToKeyword{
@@ -588,20 +588,36 @@ namespace ts {
                lookupInUnicodeMap(code, unicodeES3IdentifierStart);
     }
 
-    bool isUnicodeIdentifierPart(CharCode ch, ScriptTarget languageVersion) {
+    bool isUnicodeIdentifierPart(const CharCode &ch, ScriptTarget languageVersion) {
         return languageVersion >= ScriptTarget::ES2015 ?
                lookupInUnicodeMap(ch, unicodeESNextIdentifierPart) :
                languageVersion == ScriptTarget::ES5 ? lookupInUnicodeMap(ch, unicodeES5IdentifierPart) :
                lookupInUnicodeMap(ch, unicodeES3IdentifierPart);
     }
 
-    bool isIdentifierStart(CharCode ch, ScriptTarget languageVersion) {
+    bool isIdentifierStart(const CharCode &ch, ScriptTarget languageVersion) {
         return (ch.code >= CharacterCodes::A && ch.code <= CharacterCodes::Z) || (ch.code >= CharacterCodes::a && ch.code <= CharacterCodes::z) ||
                ch.code == CharacterCodes::$ || ch.code == CharacterCodes::_ ||
                (ch.code > CharacterCodes::maxAsciiCharacter && isUnicodeIdentifierStart(ch, languageVersion));
     }
 
-    bool isIdentifierPart(CharCode ch, ScriptTarget languageVersion, LanguageVariant identifierVariant = LanguageVariant::Standard) {
+    /* @internal */
+    bool isIdentifierText(string name, ScriptTarget languageVersion, LanguageVariant identifierVariant) {
+        auto ch = charCodeAt(name, 0);
+        if (!isIdentifierStart(ch, languageVersion)) {
+            return false;
+        }
+
+        for (int i = ch.length; i < name.size(); i += ch.length) {
+            if (!isIdentifierPart(ch = charCodeAt(name, i), languageVersion, identifierVariant)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool isIdentifierPart(const CharCode &ch, ScriptTarget languageVersion, LanguageVariant identifierVariant) {
         return (ch.code >= CharacterCodes::A && ch.code <= CharacterCodes::Z) || (ch.code >= CharacterCodes::a && ch.code <= CharacterCodes::z) ||
                (ch.code >= CharacterCodes::_0 && ch.code <= CharacterCodes::_9) || ch.code == CharacterCodes::$ || ch.code == CharacterCodes::_ ||
                // "-" and ":" are valid in JSX Identifiers
@@ -619,12 +635,13 @@ namespace ts {
         return pos;
     }
 
-    bool isWhiteSpaceLike(CharCode ch) {
+    bool isWhiteSpaceLike(const CharCode &ch) {
         return isWhiteSpaceSingleLine(ch) || isLineBreak(ch);
     }
 
 /* @internal */
     int ts::skipTrivia(string &text, int pos, optional<bool> stopAfterLineBreak, optional<bool> stopAtComments, optional<bool> inJSDoc) {
+        ZoneScoped;
         if (positionIsSynthesized(pos)) {
             return pos;
         }
@@ -763,7 +780,7 @@ namespace ts {
                     break;
                 }
                 tokenFlags |= TokenFlags::UnicodeEscape;
-                result += substr(text, start, pos);
+                result += substring(text, start, pos);
                 result += fromCharCode(ch.code);
                 // Valid Unicode escape is always six characters
                 pos += 6;
@@ -772,7 +789,7 @@ namespace ts {
                 break;
             }
         }
-        result += substr(text, start, pos);
+        result += substring(text, start, pos);
         return result;
     }
 
@@ -809,9 +826,9 @@ namespace ts {
             // not a bigint, so can convert to number in simplified form
             // Number() may not support 0b or 0o, so use parseInt() instead
             auto numericValue = tokenFlags & TokenFlags::BinarySpecifier
-                                ? stoi(substr(tokenValue, 2), 0, 2) // skip "0b"
+                                ? stoi(substring(tokenValue, 2), 0, 2) // skip "0b"
                                 : tokenFlags & TokenFlags::OctalSpecifier
-                                  ? stoi(substr(tokenValue, 2), 0, 8) // skip "0o"
+                                  ? stoi(substring(tokenValue, 2), 0, 8) // skip "0o"
                                   : stoi(tokenValue);
             tokenValue = "" + std::to_string(numericValue);
             return SyntaxKind::NumericLiteral;
@@ -867,8 +884,8 @@ namespace ts {
                 }
             }
             // Do not include a trailing namespace separator in the token, since this is against the spec.
-            if (substr(tokenValue, -1) == ":") {
-                tokenValue = substr(tokenValue, 0, -1);
+            if (substring(tokenValue, -1) == ":") {
+                tokenValue = substring(tokenValue, 0, -1);
                 pos--;
             }
             return getIdentifierToken();
@@ -942,12 +959,12 @@ namespace ts {
             pos++;
         }
 
-        tokenValue = substr(text, startPos, pos);
+        tokenValue = substring(text, startPos, pos);
 
         return firstNonWhitespace == -1 ? SyntaxKind::JsxTextAllWhiteSpaces : SyntaxKind::JsxText;
     }
 
-    bool isLineBreak(CharCode ch) {
+    bool isLineBreak(const CharCode &ch) {
         // ES5 7.3:
         // The ECMAScript line terminator characters are listed in Table 3.
         //     Table 3: Line Terminator Characters
@@ -1002,7 +1019,7 @@ namespace ts {
             if (!finalFragment.size()) {
 //            error(Diagnostics::Digit_expected);
             } else {
-                scientificFragment = substr(text, end, preNumericPart) + finalFragment;
+                scientificFragment = substring(text, end, preNumericPart) + finalFragment;
                 scientificFragmentSet = true;
                 end = pos;
             }
@@ -1017,7 +1034,7 @@ namespace ts {
                 result += scientificFragment;
             }
         } else {
-            result = substr(text, start, end); // No need to use all the fragments; no _ removal needed
+            result = substring(text, start, end); // No need to use all the fragments; no _ removal needed
         }
 
         if (decimalFragmentSet || tokenFlags & TokenFlags::Scientific) {
@@ -1091,7 +1108,7 @@ namespace ts {
         if (isIdentifierStart(ch, languageVersion)) {
             pos += ch.length;
             while (pos < end && isIdentifierPart(ch = charCodeAt(text, pos), languageVersion)) pos += ch.length;
-            tokenValue = substr(text, tokenPos, pos);
+            tokenValue = substring(text, tokenPos, pos);
             if (ch.code == CharacterCodes::backslash) {
                 tokenValue += scanIdentifierParts();
             }
@@ -1276,7 +1293,7 @@ namespace ts {
 
                         commentDirectives = appendIfCommentDirective(
                                 commentDirectives,
-                                substr(text, tokenPos, pos),
+                                substring(text, tokenPos, pos),
                                 commentDirectiveRegExSingleLine,
                                 tokenPos
                         );
@@ -1313,7 +1330,7 @@ namespace ts {
                             }
                         }
 
-                        commentDirectives = appendIfCommentDirective(commentDirectives, substr(text, lastLineStart, pos),
+                        commentDirectives = appendIfCommentDirective(commentDirectives, substring(text, lastLineStart, pos),
                                                                      commentDirectiveRegExMultiLine, lastLineStart);
 
                         if (!commentClosed) {
@@ -1576,7 +1593,7 @@ namespace ts {
         return SyntaxKind::EndOfFileToken;
     }
 
-    bool Scanner::isOctalDigit(CharCode ch) {
+    bool Scanner::isOctalDigit(const CharCode &ch) {
         return ch.code >= CharacterCodes::_0 && ch.code <= CharacterCodes::_7;
     }
 
@@ -1585,40 +1602,7 @@ namespace ts {
         while (isOctalDigit(charCodeAt(text, pos))) {
             pos++;
         }
-        return stoi(substr(text, start, pos));
-    }
-
-    template<typename T>
-    T Scanner::lookAhead(function<T()> callback) {
-        return speculationHelper<T>(callback, /*isLookahead*/ true);
-    }
-
-    template<typename T>
-    T Scanner::tryScan(function<T()> callback) {
-        return speculationHelper<T>(callback, /*isLookahead*/ false);
-    }
-
-    template<typename T>
-    T Scanner::speculationHelper(function<T()> callback, bool isLookahead) {
-        auto savePos = pos;
-        auto saveStartPos = startPos;
-        auto saveTokenPos = tokenPos;
-        auto saveToken = token;
-        auto saveTokenValue = tokenValue;
-        auto saveTokenFlags = tokenFlags;
-        auto result = callback();
-
-        // If our callback returned something 'falsy' or we're just looking ahead,
-        // then unconditionally restore us to where we were.
-        if (!result || isLookahead) {
-            pos = savePos;
-            startPos = saveStartPos;
-            tokenPos = saveTokenPos;
-            token = saveToken;
-            tokenValue = saveTokenValue;
-            tokenFlags = saveTokenFlags;
-        }
-        return result;;
+        return stoi(substring(text, start, pos));
     }
 
     SyntaxKind Scanner::reScanJsxToken(bool allowMultilineJsxText) {
@@ -1693,7 +1677,7 @@ namespace ts {
                 p++;
             }
             pos = p;
-            tokenValue = substr(text, tokenPos, pos);
+            tokenValue = substring(text, tokenPos, pos);
             token = SyntaxKind::RegularExpressionLiteral;
         }
         return token;

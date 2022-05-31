@@ -11,7 +11,7 @@ namespace ts {
         return path.size() > extension.size() && endsWith(path, extension);
     }
 
-    bool fileExtensionIsOneOf(const string &path, vector<string> extensions) {
+    bool fileExtensionIsOneOf(const string &path, const vector<string> &extensions) {
         for (auto &extension: extensions) {
             if (fileExtensionIs(path, extension)) {
                 return true;
@@ -21,7 +21,7 @@ namespace ts {
         return false;
     }
 
-    bool fileExtensionIsOneOf(const string &path, vector<const char *> extensions) {
+    bool fileExtensionIsOneOf(const string &path, const vector<const char *> &extensions) {
         return fileExtensionIsOneOf(path, charToStringVector(extensions));
     }
 
@@ -33,12 +33,12 @@ namespace ts {
     }
 
     //// Path Parsing
-    bool isVolumeCharacter(CharCode charCode) {
+    bool isVolumeCharacter(const CharCode &charCode) {
         return (charCode.code >= CharacterCodes::a && charCode.code <= CharacterCodes::z) ||
                (charCode.code >= CharacterCodes::A && charCode.code <= CharacterCodes::Z);
     }
 
-    int getFileUrlVolumeSeparatorEnd(string url, int start) {
+    int getFileUrlVolumeSeparatorEnd(const string &url, int start) {
         auto ch0 = charCodeAt(url, start);
         if (ch0.code == CharacterCodes::colon) return start + 1;
         if (ch0.code == CharacterCodes::percent && charCodeAt(url, start + 1).code == CharacterCodes::_3) {
@@ -52,7 +52,7 @@ namespace ts {
      * Returns length of the root part of a path or URL (i.e. length of "/", "x:/", "//server/share/, file:///user/files").
      * If the root is part of a URL, the twos-complement of the root length is returned.
      */
-    int getEncodedRootLength(string path) {
+    int getEncodedRootLength(const string &path) {
         if (path.empty()) return 0;
         auto ch0 = charCodeAt(path, 0);
 
@@ -141,7 +141,7 @@ namespace ts {
     /**
      * Determines whether a charCode corresponds to `/` or `\`.
      */
-    bool isAnyDirectorySeparator(CharCode charCode) {
+    bool isAnyDirectorySeparator(const CharCode &charCode) {
         return charCode.code == CharacterCodes::slash || charCode.code == CharacterCodes::backslash;
     }
 
@@ -149,7 +149,7 @@ namespace ts {
         return path.size() > 0 && isAnyDirectorySeparator(charCodeAt(path, path.size() - 1));
     }
 
-    string ensureTrailingDirectorySeparator(string path) {
+    string ensureTrailingDirectorySeparator(const string &path) {
         if (! hasTrailingDirectorySeparator(path)) {
             return path + directorySeparator;
         }
@@ -175,21 +175,21 @@ namespace ts {
      * combinePaths("file:///path", "file:///to", "file.ext") === "file:///to/file.ext"
      * ```
      */
-    string combinePaths(string path, vector<string> paths) {
+    string combinePaths(string path, const vector<string> &paths) {
         if (! path.empty()) path = normalizeSlashes(path);
         for (auto &relativePath: paths) {
             if (relativePath.empty()) continue;
-            relativePath = normalizeSlashes(relativePath);
-            if (path.empty() || getRootLength(relativePath) != 0) {
-                path = relativePath;
+            auto p = normalizeSlashes(relativePath);
+            if (path.empty() || getRootLength(p) != 0) {
+                path = p;
             } else {
-                path = ensureTrailingDirectorySeparator(path) + relativePath;
+                path = ensureTrailingDirectorySeparator(path) + p;
             }
         }
         return path;
     }
 
-    vector<string> pathComponents(string path, int rootLength) {
+    vector<string> pathComponents(const string &path, int rootLength) {
         auto root = path.substr(0, rootLength);
         auto rest = split(path.substr(rootLength), directorySeparator);
         if (rest.size() && ! lastOrUndefined(rest)) rest.pop_back();
@@ -227,9 +227,9 @@ namespace ts {
      * getPathComponents("file:///") === ["file:///"]
      * getPathComponents("file://") === ["file://"]
      */
-    vector<string> getPathComponents(string path, const string &currentDirectory) {
-        path = combinePaths(currentDirectory, {path});
-        return pathComponents(path, getRootLength(path));
+    vector<string> getPathComponents(const string &path, const string &currentDirectory) {
+        auto p = combinePaths(currentDirectory, {path});
+        return pathComponents(p, getRootLength(p));
     }
 
     /**
@@ -275,21 +275,23 @@ namespace ts {
 
     string normalizePath(string &_path) {
         string path = normalizeSlashes(_path);
+        //todo: rework that to make it faster
+        return path;
         // Most paths don't require normalization
-        if (! regex_search(path, relativePathSegmentRegExp)) {
-            return path;
-        }
-        // Some paths only require cleanup of `/./` or leading `./`
-        auto simplified = replaceLeading(replaceAll(path, "/./", "/"), "./", "");
-        if (simplified != path) {
-            path = simplified;
-            if (! regex_search(path, relativePathSegmentRegExp)) {
-                return path;
-            }
-        }
-        // Other paths require full normalization
-        auto normalized = getPathFromPathComponents(reducePathComponents(getPathComponents(path)));
-        if (! normalized.empty() && hasTrailingDirectorySeparator(path)) return ensureTrailingDirectorySeparator(normalized);
-        return normalized;
+//        if (! regex_search(path, relativePathSegmentRegExp)) {
+//            return path;
+//        }
+//        // Some paths only require cleanup of `/./` or leading `./`
+//        auto simplified = replaceLeading(replaceAll(path, "/./", "/"), "./", "");
+//        if (simplified != path) {
+//            path = simplified;
+//            if (! regex_search(path, relativePathSegmentRegExp)) {
+//                return path;
+//            }
+//        }
+//        // Other paths require full normalization
+//        auto normalized = getPathFromPathComponents(reducePathComponents(getPathComponents(path)));
+//        if (! normalized.empty() && hasTrailingDirectorySeparator(path)) return ensureTrailingDirectorySeparator(normalized);
+//        return normalized;
     }
 }

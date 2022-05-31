@@ -57,10 +57,10 @@ namespace ts {
         return ModifierFlags::None;
     }
 
-    int modifiersToFlags(optional<NodeArray> modifiers) {
+    int modifiersToFlags(shared<NodeArray> modifiers) {
         int flags = (int) ModifierFlags::None;
         if (modifiers) {
-            for (auto &modifier: (*modifiers).list) {
+            for (auto &modifier: modifiers->list) {
                 flags |= (int) modifierToFlag(modifier->kind);
             }
         }
@@ -114,19 +114,17 @@ namespace ts {
     }
 
     shared<NodeUnion(PropertyName)> resolveNameToNode(const shared<Node> &node) {
-        auto a = dynamic_pointer_cast<Identifier>(node);
-
         switch (node->kind) {
             case SyntaxKind::Identifier:
-                return dynamic_pointer_cast<Identifier>(node);
+                return reinterpret_pointer_cast<Identifier>(node);
             case SyntaxKind::StringLiteral:
-                return dynamic_pointer_cast<StringLiteral>(node);
+                return reinterpret_pointer_cast<StringLiteral>(node);
             case SyntaxKind::NumericLiteral:
-                return dynamic_pointer_cast<NumericLiteral>(node);
+                return reinterpret_pointer_cast<NumericLiteral>(node);
             case SyntaxKind::ComputedPropertyName:
-                return dynamic_pointer_cast<ComputedPropertyName>(node);
+                return reinterpret_pointer_cast<ComputedPropertyName>(node);
             case SyntaxKind::PrivateIdentifier:
-                return dynamic_pointer_cast<PrivateIdentifier>(node);
+                return reinterpret_pointer_cast<PrivateIdentifier>(node);
         }
 
         throw runtime_error(format("resolveNamToNode with kind %d no valid name property", (int) node->kind));
@@ -141,7 +139,7 @@ namespace ts {
         return false;
     }
 
-    optional<NodeArray> getTypeParameters(shared<Node> node) {
+    sharedOpt<NodeArray> getTypeParameters(shared<Node> node) {
         switch (node->kind) {
             case SyntaxKind::Constructor:
                 return node->to<ConstructorDeclaration>().typeParameters;
@@ -188,9 +186,9 @@ namespace ts {
     string &getEscapedName(const shared<Node> &node) {
         switch (node->kind) {
             case SyntaxKind::Identifier:
-                return dynamic_pointer_cast<Identifier>(node)->escapedText;
+                return reinterpret_pointer_cast<Identifier>(node)->escapedText;
             case SyntaxKind::PrivateIdentifier:
-                return dynamic_pointer_cast<PrivateIdentifier>(node)->escapedText;
+                return reinterpret_pointer_cast<PrivateIdentifier>(node)->escapedText;
         }
 
         throw runtime_error(format("getEscapedName with kind %d no valid", (int) node->kind));
@@ -204,91 +202,90 @@ namespace ts {
         //[x] Check child of DeclarationStatement
         //[x] Check child of FunctionOrConstructorTypeNodeBase
 
-        if (auto v = dynamic_pointer_cast<PropertyAccessEntityNameExpression>(node)) {
-            return resolveNameToNode(v->name);
-        } else if (auto v = dynamic_pointer_cast<NamespaceDeclaration>(node)) {
-            return resolveNameToNode(v->name);
-        } else
-            switch (node->kind) {
-                case SyntaxKind::FunctionType:
-                    return resolveNameToNode(node->to<FunctionTypeNode>().name);
-                case SyntaxKind::ConstructorType:
-                    return resolveNameToNode(node->to<ConstructorTypeNode>().name);
-                case SyntaxKind::PropertyAccessExpression:
-                    return resolveNameToNode(node->to<PropertyAccessExpression>().name);
-                case SyntaxKind::MetaProperty:
-                    return resolveNameToNode(node->to<MetaProperty>().name);
-                case SyntaxKind::ShorthandPropertyAssignment:
-                    return resolveNameToNode(node->to<ShorthandPropertyAssignment>().name);
-                case SyntaxKind::Parameter:
-                    return resolveNameToNode(node->to<ParameterDeclaration>().name);
-                case SyntaxKind::MissingDeclaration:
-                    return resolveNameToNode(node->to<MissingDeclaration>().name);
-                case SyntaxKind::InterfaceDeclaration:
-                    return resolveNameToNode(node->to<InterfaceDeclaration>().name);
-                case SyntaxKind::ClassDeclaration:
-                    return resolveNameToNode(node->to<ClassDeclaration>().name);
-                case SyntaxKind::ClassExpression:
-                    return resolveNameToNode(node->to<ClassExpression>().name);
-                case SyntaxKind::TypeAliasDeclaration:
-                    return resolveNameToNode(node->to<TypeAliasDeclaration>().name);
-                case SyntaxKind::EnumDeclaration:
-                    return resolveNameToNode(node->to<EnumDeclaration>().name);
-                case SyntaxKind::EnumMember:
-                    return resolveNameToNode(node->to<EnumMember>().name);
-                case SyntaxKind::PropertySignature:
-                    return resolveNameToNode(node->to<PropertySignature>().name);
-                case SyntaxKind::ModuleDeclaration:
-                    return resolveNameToNode(node->to<ModuleDeclaration>().name);
-                case SyntaxKind::ImportEqualsDeclaration:
-                    return resolveNameToNode(node->to<ImportEqualsDeclaration>().name);
-                case SyntaxKind::NamespaceImport:
-                    return resolveNameToNode(node->to<NamespaceImport>().name);
-                case SyntaxKind::ImportSpecifier:
-                    return resolveNameToNode(node->to<ImportSpecifier>().name);
-                case SyntaxKind::AssertEntry:
-                    return resolveNameToNode(node->to<AssertEntry>().name);
-                case SyntaxKind::ImportClause:
-                    return resolveNameToNode(node->to<ImportClause>().name);
-                case SyntaxKind::NamespaceExport:
-                    return resolveNameToNode(node->to<NamespaceExport>().name);
-                case SyntaxKind::ExportSpecifier:
-                    return resolveNameToNode(node->to<ExportSpecifier>().name);
-                case SyntaxKind::ExportDeclaration:
-                    return resolveNameToNode(node->to<ExportDeclaration>().name);
-                case SyntaxKind::NamespaceExportDeclaration:
-                    return resolveNameToNode(node->to<NamespaceExportDeclaration>().name);
-                case SyntaxKind::MethodSignature:
-                    return resolveNameToNode(node->to<MethodSignature>().name);
-                case SyntaxKind::FunctionDeclaration:
-                    return resolveNameToNode(node->to<FunctionDeclaration>().name);
-                case SyntaxKind::MethodDeclaration:
-                    return resolveNameToNode(node->to<MethodDeclaration>().name);
-                case SyntaxKind::GetAccessor:
-                    return resolveNameToNode(node->to<GetAccessorDeclaration>().name);
-                case SyntaxKind::SetAccessor:
-                    return resolveNameToNode(node->to<SetAccessorDeclaration>().name);
-                case SyntaxKind::FunctionExpression:
-                    return resolveNameToNode(node->to<FunctionExpression>().name);
-                case SyntaxKind::NamedTupleMember:
-                    return resolveNameToNode(node->to<NamedTupleMember>().name);
-                case SyntaxKind::JsxAttribute:
-                    return resolveNameToNode(node->to<JsxAttribute>().name);
-                case SyntaxKind::TypeParameter:
-                    return resolveNameToNode(node->to<TypeParameterDeclaration>().name);
-                case SyntaxKind::BindingElement:
-                    return resolveNameToNode(node->to<BindingElement>().name);
-                case SyntaxKind::VariableDeclaration:
-                    return resolveNameToNode(node->to<VariableDeclaration>().name);
-                case SyntaxKind::IndexSignature:
-                    return resolveNameToNode(node->to<IndexSignatureDeclaration>().name);
-                case SyntaxKind::CallSignature:
-                    return resolveNameToNode(node->to<CallSignatureDeclaration>().name);
-                case SyntaxKind::ConstructSignature:
-                    return resolveNameToNode(node->to<ConstructSignatureDeclaration>().name);
-                case SyntaxKind::ExportAssignment:
-                    return resolveNameToNode(node->to<ExportAssignment>().name);
-            }
+        switch (node->kind) {
+            case SyntaxKind::FunctionType:
+                return resolveNameToNode(node->to<FunctionTypeNode>().name);
+            case SyntaxKind::ConstructorType:
+                return resolveNameToNode(node->to<ConstructorTypeNode>().name);
+            case SyntaxKind::PropertyAccessExpression:
+                return resolveNameToNode(node->to<PropertyAccessExpression>().name);
+            case SyntaxKind::MetaProperty:
+                return resolveNameToNode(node->to<MetaProperty>().name);
+            case SyntaxKind::ShorthandPropertyAssignment:
+                return resolveNameToNode(node->to<ShorthandPropertyAssignment>().name);
+            case SyntaxKind::Parameter:
+                return resolveNameToNode(node->to<ParameterDeclaration>().name);
+            case SyntaxKind::MissingDeclaration:
+                return resolveNameToNode(node->to<MissingDeclaration>().name);
+            case SyntaxKind::InterfaceDeclaration:
+                return resolveNameToNode(node->to<InterfaceDeclaration>().name);
+            case SyntaxKind::ClassDeclaration:
+                return resolveNameToNode(node->to<ClassDeclaration>().name);
+            case SyntaxKind::ClassExpression:
+                return resolveNameToNode(node->to<ClassExpression>().name);
+            case SyntaxKind::TypeAliasDeclaration:
+                return resolveNameToNode(node->to<TypeAliasDeclaration>().name);
+            case SyntaxKind::EnumDeclaration:
+                return resolveNameToNode(node->to<EnumDeclaration>().name);
+            case SyntaxKind::EnumMember:
+                return resolveNameToNode(node->to<EnumMember>().name);
+            case SyntaxKind::PropertySignature:
+                return resolveNameToNode(node->to<PropertySignature>().name);
+            case SyntaxKind::ModuleDeclaration:
+                return resolveNameToNode(node->to<ModuleDeclaration>().name);
+            case SyntaxKind::ImportEqualsDeclaration:
+                return resolveNameToNode(node->to<ImportEqualsDeclaration>().name);
+            case SyntaxKind::NamespaceImport:
+                return resolveNameToNode(node->to<NamespaceImport>().name);
+            case SyntaxKind::ImportSpecifier:
+                return resolveNameToNode(node->to<ImportSpecifier>().name);
+            case SyntaxKind::AssertEntry:
+                return resolveNameToNode(node->to<AssertEntry>().name);
+            case SyntaxKind::ImportClause:
+                return resolveNameToNode(node->to<ImportClause>().name);
+            case SyntaxKind::NamespaceExport:
+                return resolveNameToNode(node->to<NamespaceExport>().name);
+            case SyntaxKind::ExportSpecifier:
+                return resolveNameToNode(node->to<ExportSpecifier>().name);
+            case SyntaxKind::ExportDeclaration:
+                return resolveNameToNode(node->to<ExportDeclaration>().name);
+            case SyntaxKind::NamespaceExportDeclaration:
+                return resolveNameToNode(node->to<NamespaceExportDeclaration>().name);
+            case SyntaxKind::MethodSignature:
+                return resolveNameToNode(node->to<MethodSignature>().name);
+            case SyntaxKind::FunctionDeclaration:
+                return resolveNameToNode(node->to<FunctionDeclaration>().name);
+            case SyntaxKind::MethodDeclaration:
+                return resolveNameToNode(node->to<MethodDeclaration>().name);
+            case SyntaxKind::GetAccessor:
+                return resolveNameToNode(node->to<GetAccessorDeclaration>().name);
+            case SyntaxKind::SetAccessor:
+                return resolveNameToNode(node->to<SetAccessorDeclaration>().name);
+            case SyntaxKind::FunctionExpression:
+                return resolveNameToNode(node->to<FunctionExpression>().name);
+            case SyntaxKind::NamedTupleMember:
+                return resolveNameToNode(node->to<NamedTupleMember>().name);
+            case SyntaxKind::JsxAttribute:
+                return resolveNameToNode(node->to<JsxAttribute>().name);
+            case SyntaxKind::TypeParameter:
+                return resolveNameToNode(node->to<TypeParameterDeclaration>().name);
+            case SyntaxKind::BindingElement:
+                return resolveNameToNode(node->to<BindingElement>().name);
+            case SyntaxKind::VariableDeclaration:
+                return resolveNameToNode(node->to<VariableDeclaration>().name);
+            case SyntaxKind::IndexSignature:
+                return resolveNameToNode(node->to<IndexSignatureDeclaration>().name);
+            case SyntaxKind::CallSignature:
+                return resolveNameToNode(node->to<CallSignatureDeclaration>().name);
+            case SyntaxKind::ConstructSignature:
+                return resolveNameToNode(node->to<ConstructSignatureDeclaration>().name);
+            case SyntaxKind::ExportAssignment:
+                return resolveNameToNode(node->to<ExportAssignment>().name);
+            default:
+                if (auto v = dynamic_pointer_cast<PropertyAccessEntityNameExpression>(node)) {
+                    return resolveNameToNode(v->name);
+                }
+        }
 
         return nullptr;
     }

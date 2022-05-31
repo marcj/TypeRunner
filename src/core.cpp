@@ -11,15 +11,30 @@ namespace ts::Debug {
 }
 
 namespace ts {
-    string substr(const string &str, int start, int length) {
+    string substr(const string &str, int start, optional<int> len) {
+        if (start <= 0 && len && len < 0) return "";
+        if (!len || *len < 0 || len > str.size()) *len = str.size();
         if (start < 0) start += str.length();
-        if (length < 0) length = str.length() + length - start;
-        if (length < 0) return "";
-        return str.substr(start, length);
+        return str.substr(start, *len);
     }
-    string substr(const string &str, int start) {
-        return substr(str, start, str.length());
+
+    //compatible with JavaScript's String.substring
+    string substring(const string &str, int start, optional<int> end) {
+        if (start < 0) start = 0;
+        int len = str.size();
+        if (end) {
+            if (*end < start) {
+                len = start - *end;
+                start = *end;
+            } else {
+                len = *end - start;
+            }
+        }
+        if (len < 0) len = 0;
+        if (start > str.size()) start = str.size();
+        return str.substr(start, len);
     }
+
     string replaceLeading(const string &text, const string &from, const string &to) {
         if (0 == text.find(from)) {
             string str = text;

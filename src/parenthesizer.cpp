@@ -8,12 +8,12 @@
 namespace ts {
 
     template<typename T>
-    NodeArray sameMap(optional<NodeArray> array, function<shared<T>(shared<T>, int)> callback) {
-        NodeArray result;
+    shared<NodeArray> sameMap(const sharedOpt<NodeArray> &array, const function<shared<T>(shared<T>, int)> &callback) {
+        auto result = make_shared<NodeArray>();
         if (array) {
             auto i = 0;
             for (auto &v: array->list) {
-                result.list.push_back(callback(dynamic_pointer_cast<T>(v), i++));
+                result->list.push_back(callback(reinterpret_pointer_cast<T>(v), i++));
             }
         }
         return result;
@@ -33,7 +33,7 @@ namespace ts {
         return condition;
     }
 
-    optional<NodeArray> Parenthesizer::parenthesizeTypeArguments(optional<NodeArray> typeArguments) {
+    sharedOpt<NodeArray> Parenthesizer::parenthesizeTypeArguments(sharedOpt<NodeArray> typeArguments) {
         if (typeArguments && (*typeArguments).empty()) {
             auto m = sameMap<TypeNode>(typeArguments, CALLBACK(parenthesizeOrdinalTypeArgument));
             return factory->createNodeArray(m);
@@ -50,7 +50,7 @@ namespace ts {
                : branch;
     }
     
-    NodeArray Parenthesizer::parenthesizeElementTypesOfTupleType(NodeArray types) {
+    shared<NodeArray> Parenthesizer::parenthesizeElementTypesOfTupleType(shared<NodeArray> types) {
         return factory->createNodeArray(sameMap<TypeNode>(types, CALLBACK(parenthesizeElementTypeOfTupleType)));
     }
     
@@ -58,7 +58,7 @@ namespace ts {
         return isFunctionOrConstructorTypeNode(node) && getTypeParameters(node) ? factory->createParenthesizedType(node) : node;
     }
 
-    NodeArray Parenthesizer::parenthesizeConstituentTypesOfIntersectionType(NodeArray members) {
+    shared<NodeArray> Parenthesizer::parenthesizeConstituentTypesOfIntersectionType(shared<NodeArray> members) {
         return factory->createNodeArray(sameMap<TypeNode>(members, CALLBACK(parenthesizeConstituentTypeOfIntersectionType)));
     }
 
@@ -110,7 +110,7 @@ namespace ts {
         if (isLeftHandSideExpression(emittedExpression)
             && (emittedExpression->kind != SyntaxKind::NewExpression || emittedExpression->to<NewExpression>().arguments)) {
             // TODO(rbuckton): Verify whether this assertion holds.
-            return dynamic_pointer_cast<LeftHandSideExpression>(expression);
+            return reinterpret_pointer_cast<LeftHandSideExpression>(expression);
         }
 
         // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
@@ -130,7 +130,7 @@ namespace ts {
             case SyntaxKind::NewExpression:
                 return !leftmostExpr->to<NewExpression>().arguments
                        ? factory->createParenthesizedExpression(expression)
-                       : dynamic_pointer_cast<LeftHandSideExpression>(expression); // TODO(rbuckton): Verify this assertion holds
+                       : reinterpret_pointer_cast<LeftHandSideExpression>(expression); // TODO(rbuckton): Verify this assertion holds
         }
 
         return parenthesizeLeftSideOfAccess(expression);
@@ -138,12 +138,12 @@ namespace ts {
 
     shared<LeftHandSideExpression> Parenthesizer::parenthesizeOperandOfPostfixUnary(shared<Expression> operand) {
         // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
-        return isLeftHandSideExpression(operand) ? dynamic_pointer_cast<LeftHandSideExpression>(operand) : setTextRange(factory->createParenthesizedExpression(operand), operand);
+        return isLeftHandSideExpression(operand) ? reinterpret_pointer_cast<LeftHandSideExpression>(operand) : setTextRange(factory->createParenthesizedExpression(operand), operand);
     }
 
     shared<UnaryExpression> Parenthesizer::parenthesizeOperandOfPrefixUnary(shared<Expression> operand) {
         // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
-        return isUnaryExpression(operand) ? dynamic_pointer_cast<UnaryExpression>(operand) : setTextRange(factory->createParenthesizedExpression(operand), operand);
+        return isUnaryExpression(operand) ? reinterpret_pointer_cast<UnaryExpression>(operand) : setTextRange(factory->createParenthesizedExpression(operand), operand);
     }
 
     shared<Expression> Parenthesizer::parenthesizeExpressionForDisallowedComma(shared<Expression> expression, int) {
@@ -154,9 +154,9 @@ namespace ts {
         return expressionPrecedence > commaPrecedence ? expression : setTextRange(factory->createParenthesizedExpression(expression), expression);
     }
 
-    NodeArray Parenthesizer::parenthesizeExpressionsOfCommaDelimitedList(NodeArray elements) {
+    shared<NodeArray> Parenthesizer::parenthesizeExpressionsOfCommaDelimitedList(shared<NodeArray> elements) {
         auto result = sameMap<Expression>(elements, CALLBACK(parenthesizeExpressionForDisallowedComma));
-        return setTextRange(factory->createNodeArray(result, elements.hasTrailingComma), elements);
+        return setTextRange(factory->createNodeArray(result, elements->hasTrailingComma), elements);
     }
 
     shared<Expression> Parenthesizer::parenthesizeExpressionOfExpressionStatement(shared<Expression> expression) {
@@ -189,7 +189,7 @@ namespace ts {
 //    function parenthesizeConciseBodyOfArrowFunction(body: ConciseBody): ConciseBody;
     shared<Node> Parenthesizer::parenthesizeConciseBodyOfArrowFunction(shared<Node> body) {
         if (isBlock(body)) return body;
-        auto e = dynamic_pointer_cast<Expression>(body);
+        auto e = reinterpret_pointer_cast<Expression>(body);
         if (isCommaSequence(body) || getLeftmostExpression(e, /*stopAtCallExpressions*/ false)->kind == SyntaxKind::ObjectLiteralExpression) {
             // TODO(rbuckton): Verifiy whether `setTextRange` is needed.
             return setTextRange(factory->createParenthesizedExpression(e), body);
@@ -241,7 +241,7 @@ namespace ts {
         return parenthesizeCheckTypeOfConditionalType(type);
     }
 
-    NodeArray Parenthesizer::parenthesizeConstituentTypesOfUnionType(NodeArray members) {
+    shared<NodeArray> Parenthesizer::parenthesizeConstituentTypesOfUnionType(shared<NodeArray> members) {
         return factory->createNodeArray(sameMap<TypeNode>(members, CALLBACK(parenthesizeConstituentTypeOfUnionType)));
     }
 }

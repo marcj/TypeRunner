@@ -40,9 +40,11 @@ namespace ts {
         return const_hash(s);
     }
 
-    string substr(const string &str, int start, int length);
+    //compatible with JavaScript's String.substr
+    string substr(const string &str, int start, optional<int> len = {});
 
-    string substr(const string &str, int start);
+    //compatible with JavaScript's String.substring
+    string substring(const string &str, int start, optional<int> end = {});
 
     /**
      * shared_ptr has optional semantic already built-in, so we use it instead of std::optional<shared_ptr<>>,
@@ -157,6 +159,7 @@ namespace ts {
         }
         return false;
     }
+
     template<typename T>
     inline bool some(optional<vector<T>> array) {
         return array && !array->empty();
@@ -223,7 +226,10 @@ namespace ts {
 
     template<typename K, typename T>
     inline optional<T> set(unordered_map<K, T> &m, K key, T v) {
-        m[key] = v;
+//        m.insert_or_assign(key, v);
+        std::cout << "set map: " << key << ", " << v << "\n";
+//        m.insert({key, v});
+//        m[key] = v;
     }
 
     template<typename T, typename U>

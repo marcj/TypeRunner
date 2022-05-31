@@ -270,7 +270,7 @@ namespace ts {
 
         shared <Expression> parenthesizeExpressionForDisallowedComma(shared <Expression> expression, int = 0);
 
-        NodeArray parenthesizeExpressionsOfCommaDelimitedList(NodeArray elements);
+        shared<NodeArray> parenthesizeExpressionsOfCommaDelimitedList(shared<NodeArray> elements);
 
         shared <Expression> parenthesizeExpressionOfExpressionStatement(shared <Expression> expression);
 
@@ -300,7 +300,7 @@ namespace ts {
         // - A union type constituent has the same precedence as the check type of a conditional type
         shared <TypeNode> parenthesizeConstituentTypeOfUnionType(shared <TypeNode> type, int = 0);
 
-        NodeArray parenthesizeConstituentTypesOfUnionType(NodeArray members);
+        shared <NodeArray> parenthesizeConstituentTypesOfUnionType(shared <NodeArray> members);
 
         // IntersectionType[Extends] :
         //     `&`? TypeOperator[?Extends]
@@ -309,7 +309,7 @@ namespace ts {
         // - An intersection type constituent does not allow function, constructor, conditional, or union types (they must be parenthesized)
         shared <TypeNode> parenthesizeConstituentTypeOfIntersectionType(shared <TypeNode> type, int = 0);
 
-        NodeArray parenthesizeConstituentTypesOfIntersectionType(NodeArray members);
+        shared<NodeArray> parenthesizeConstituentTypesOfIntersectionType(shared<NodeArray> members);
 
         // TypeOperator[Extends] :
         //     PostfixType
@@ -372,7 +372,7 @@ namespace ts {
         // RestType :
         //     `...` Type[~Extends]
         //
-        NodeArray parenthesizeElementTypesOfTupleType(NodeArray types);
+        shared <NodeArray> parenthesizeElementTypesOfTupleType(shared <NodeArray> types);
 
 //    function hasJSDocPostfixQuestion(shared<TypeNode> type | NamedTupleMember): boolean {
 //        if (isJSDocNullableType(type)) return type.postfix;
@@ -417,6 +417,6 @@ namespace ts {
             return i == 0 ? parenthesizeLeadingTypeArgument(node) : node;
         }
 
-        optional<NodeArray> parenthesizeTypeArguments(optional<NodeArray> typeArguments);
+        sharedOpt<NodeArray> parenthesizeTypeArguments(sharedOpt<NodeArray> typeArguments);
     };
 }

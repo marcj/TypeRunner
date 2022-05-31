@@ -25,7 +25,7 @@ namespace ts {
 
     ModifierFlags modifierToFlag(SyntaxKind token);
 
-    int modifiersToFlags(optional<NodeArray> modifiers);
+    int modifiersToFlags(sharedOpt<NodeArray> modifiers);
 
     /**
      * Gets the ModifierFlags for syntactic modifiers on the provided node. The modifier flags cache on the node is ignored.
@@ -48,7 +48,7 @@ namespace ts {
 
     bool isFunctionOrConstructorTypeNode(shared<Node> node);
 
-    optional<NodeArray> getTypeParameters(shared<Node> node);
+    sharedOpt<NodeArray> getTypeParameters(shared<Node> node);
 
     shared<NodeUnion(JsxTagNameExpression)> getTagName(shared<NodeUnion(JsxOpeningElement, JsxOpeningFragment)> node);
 

@@ -3,12 +3,19 @@ project(typescript)
 
 set(CMAKE_CXX_STANDARD 20)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -O2")
+# enable for profiling
+#add_definitions(-DTRACY_ENABLE)
+
+include_directories(libs/tracy/)
+
 list(APPEND CMAKE_MODULE_PATH libs/)
 
 #add_definitions(-DTRACY_ENABLE)
 #include_directories(libs/tracy/)
 
+add_subdirectory(libs/tracy)
+
+link_libraries(Tracy::TracyClient)
 add_subdirectory(src)
 
 include_directories(libs)

@@ -11,16 +11,20 @@ namespace ts {
     }
 
     optional<DiagnosticWithDetachedLocation> Parser::parseErrorAtPosition(int start, int length, const DiagnosticMessage &message, DiagnosticArg arg) {
-        // Mark that we've encountered an error.  We'll set an appropriate bit on the next
-        // node we finish so that it can't be reused incrementally.
-        parseErrorBeforeNextFinishedNode = true;
+        ZoneScoped;
 
+        auto lastError = lastOrUndefined(parseDiagnostics);
         // Don't report another error if it would just be at the same position as the last error.
-        if (!parseDiagnostics.empty() || start != parseDiagnostics.back().start) {
+        if (!lastError || start != lastError->start) {
             auto d = createDetachedDiagnostic(fileName, start, length, message, {arg});
             parseDiagnostics.push_back(d);
             return d;
         }
+
+        // Mark that we've encountered an error.  We'll set an appropriate bit on the next
+        // node we finish so that it can't be reused incrementally.
+        parseErrorBeforeNextFinishedNode = true;
+
         return nullopt;
     }
 

@@ -18,45 +18,45 @@ namespace ts {
         return propagateChildFlags(std::move(node)) & ~(int) TransformFlags::ContainsPossibleTopLevelAwait;
     }
 
-    int Factory::propagateChildrenFlags(optional<NodeArray> children) {
+    int Factory::propagateChildrenFlags(sharedOpt<NodeArray> children) {
         return children ? children->transformFlags : (int) TransformFlags::None;
     }
 
-    void Factory::aggregateChildrenFlags(NodeArray &children) {
+    void Factory::aggregateChildrenFlags(shared<NodeArray> &children) {
         int subtreeFlags = (int) TransformFlags::None;
-        for (auto &child: children.list) {
+        for (auto &child: children->list) {
             subtreeFlags |= propagateChildFlags(child);
         }
-        children.transformFlags = subtreeFlags;
+        children->transformFlags = subtreeFlags;
     }
 
-    NodeArray Factory::createNodeArray(optional<NodeArray> elements, optional<bool> hasTrailingComma) {
+    shared<NodeArray> Factory::createNodeArray(sharedOpt<NodeArray> elements, optional<bool> hasTrailingComma) {
         if (elements) {
             if (!hasTrailingComma || elements->hasTrailingComma == hasTrailingComma) {
                 // Ensure the transform flags have been aggregated for this NodeArray
                 if (elements->transformFlags == (int) types::TransformFlags::None) {
-                    aggregateChildrenFlags(*elements);
+                    aggregateChildrenFlags(elements);
                 }
 //                Debug.attachNodeArrayDebugInfo(elements);
-                return *elements;
+                return elements;
             }
         }
 
         // This *was* a `NodeArray`, but the `hasTrailingComma` option differs. Recreate the
         // array with the same elements, text range, and transform flags but with the updated
         // value for `hasTrailingComma`
-        NodeArray array;
-        if (elements) array = *elements;
-        array.pos = elements->pos;
-        array.end = elements->end;
-        array.hasTrailingComma = *hasTrailingComma;
-        array.transformFlags = elements->transformFlags;
+        auto array = make_shared<NodeArray>();
+        if (elements) array = elements;
+        array->pos = elements->pos;
+        array->end = elements->end;
+        array->hasTrailingComma = *hasTrailingComma;
+        array->transformFlags = elements->transformFlags;
 //            Debug.attachNodeArrayDebugInfo(array);
         return array;
     }
 
-    optional<NodeArray> Factory::asNodeArray(optional<NodeArray> array) {
-        return array;
+    sharedOpt<NodeArray> Factory::asNodeArray(sharedOpt<NodeArray> elements) {
+        return elements;
     }
 
     // @api
@@ -154,11 +154,11 @@ namespace ts {
 //        }
 
     void Factory::setName(shared<Identifier> &lName, shared<Node> rName) {
-        lName = dynamic_pointer_cast<Identifier>(rName);
+        lName = reinterpret_pointer_cast<Identifier>(rName);
     }
 
     void Factory::setName(shared<PrivateIdentifier> &lName, shared<Node> rName) {
-        lName = dynamic_pointer_cast<PrivateIdentifier>(rName);
+        lName = reinterpret_pointer_cast<PrivateIdentifier>(rName);
     }
 
     void Factory::setName(shared<Node> &lName, shared<Node> rName) {
@@ -246,11 +246,11 @@ namespace ts {
     }
 
     // @api
-    shared<Identifier> Factory::createIdentifier(string text, optional<NodeArray> typeArguments, optional<SyntaxKind> originalKeywordKind) {
+    shared<Identifier> Factory::createIdentifier(string text, sharedOpt<NodeArray> typeArguments, optional<SyntaxKind> originalKeywordKind) {
         auto node = createBaseIdentifier(std::move(text), originalKeywordKind);
         if (typeArguments) {
             // NOTE: we do not use `setChildren` here because typeArguments in an identifier do not contribute to transformations
-            node->typeArguments = createNodeArray(*typeArguments);
+            node->typeArguments = createNodeArray(typeArguments);
         }
         if (node->originalKeywordKind == SyntaxKind::AwaitKeyword) {
             node->transformFlags |= (int) TransformFlags::ContainsPossibleTopLevelAwait;
@@ -352,7 +352,7 @@ namespace ts {
     shared<QualifiedName> Factory::createQualifiedName(shared<Node> left, NameType right) {
         auto node = createBaseNode<QualifiedName>(SyntaxKind::QualifiedName);
         node->left = left;
-        node->right = dynamic_pointer_cast<Identifier>(asName(right));
+        node->right = reinterpret_pointer_cast<Identifier>(asName(right));
         node->transformFlags |=
                 propagateChildFlags(node->left) |
                 propagateIdentifierNameFlags(node->right);
@@ -390,22 +390,22 @@ namespace ts {
 //        //
 //
 //        // @api
-//        function createTypeParameterDeclaration(optional<NodeArray> modifiers, name: string | Identifier, constraint?: TypeNode, defaultType?: TypeNode): TypeParameterDeclaration;
+//        function createTypeParameterDeclaration(sharedOpt<NodeArray> modifiers, name: string | Identifier, constraint?: TypeNode, defaultType?: TypeNode): TypeParameterDeclaration;
 //        /** @deprecated */
 //        function createTypeParameterDeclaration(name: string | Identifier, constraint?: TypeNode, defaultType?: TypeNode): TypeParameterDeclaration;
    shared<TypeParameterDeclaration> Factory::createTypeParameterDeclaration(
-            optional<variant<NodeArray, shared<Node>, string>> modifiersOrName,
+            optional<variant<shared<NodeArray>, shared<Node>, string>> modifiersOrName,
             optional<variant<shared<TypeNode>, shared<Identifier>, string>> nameOrConstraint,
             sharedOpt<TypeNode> constraintOrDefault,
             sharedOpt<TypeNode> defaultType
     ) {
         NameType name = "";
-        optional<NodeArray> modifiers;
+        sharedOpt<NodeArray> modifiers;
         sharedOpt<TypeNode> constraint = constraintOrDefault;
 
         if (modifiersOrName) {
-            if (holds_alternative<NodeArray>(*modifiersOrName)) {
-                modifiers = get<NodeArray>(*modifiersOrName);
+            if (holds_alternative<shared<NodeArray>>(*modifiersOrName)) {
+                modifiers = get<shared<NodeArray>>(*modifiersOrName);
             } else if (holds_alternative<string>(*modifiersOrName)) {
                 name = get<string>(*modifiersOrName);
             } else if (holds_alternative<shared<Node>>(*modifiersOrName)) {
@@ -435,7 +435,7 @@ namespace ts {
 //            }
         auto node = createBaseNamedDeclaration<TypeParameterDeclaration>(
                 SyntaxKind::TypeParameter,
-                /*decorators*/ {},
+                /*decorators*/ nullptr,
                 modifiers,
                 name
         );
@@ -446,7 +446,7 @@ namespace ts {
     }
 
 //        // @api
-//        function updateTypeParameterDeclaration(node: TypeParameterDeclaration, optional<NodeArray> modifiers, name: Identifier, constraint: TypeNode | undefined, defaultsharedOpt<TypeNode> type): TypeParameterDeclaration;
+//        function updateTypeParameterDeclaration(node: TypeParameterDeclaration, sharedOpt<NodeArray> modifiers, name: Identifier, constraint: TypeNode | undefined, defaultsharedOpt<TypeNode> type): TypeParameterDeclaration;
 //        /** @deprecated */
 //        function updateTypeParameterDeclaration(node: TypeParameterDeclaration, name: Identifier, constraint: TypeNode | undefined, defaultsharedOpt<TypeNode> type): TypeParameterDeclaration;
 //        function updateTypeParameterDeclaration(node: TypeParameterDeclaration, modifiersOrName: readonly Modifier[] | Identifier | undefined, nameOrConstraint: Identifier | TypeNode | undefined, constraintOrDefault: TypeNode | undefined, defaultType?: TypeNode | undefined) {
@@ -473,8 +473,8 @@ namespace ts {
 
     // @api
     shared<ParameterDeclaration> Factory::createParameterDeclaration(
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
             sharedOpt<DotDotDotToken> dotDotDotToken,
             NameType name,
             sharedOpt<QuestionToken> questionToken,
@@ -507,8 +507,8 @@ namespace ts {
 //        // @api
 //        function updateParameterDeclaration(
 //            node: ParameterDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            dotDotDotToken: DotDotDotToken | undefined,
 //            name: string | BindingName,
 //            sharedOpt<QuestionToken> questionToken,
@@ -550,14 +550,14 @@ namespace ts {
 
     // @api
     shared<PropertySignature> Factory::createPropertySignature(
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> modifiers,
             NameType name,
             sharedOpt<QuestionToken> questionToken,
             sharedOpt<TypeNode> type
     ) {
         auto node = createBaseNamedDeclaration<PropertySignature>(
                 SyntaxKind::PropertySignature,
-                /*decorators*/ {},
+                /*decorators*/ nullptr,
                 modifiers,
                 name
         );
@@ -570,7 +570,7 @@ namespace ts {
 //        // @api
 //        function updatePropertySignature(
 //            node: PropertySignature,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> modifiers,
 //            name: PropertyName,
 //            sharedOpt<QuestionToken> questionToken,
 //            sharedOpt<TypeNode> type
@@ -585,8 +585,8 @@ namespace ts {
 
     // @api
     shared<PropertyDeclaration> Factory::createPropertyDeclaration(
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
             NameType name,
             sharedOpt<Node> questionOrExclamationToken,
             sharedOpt<TypeNode> type,
@@ -600,8 +600,8 @@ namespace ts {
                 type,
                 initializer
         );
-        node->questionToken = questionOrExclamationToken && isQuestionToken(questionOrExclamationToken) ? dynamic_pointer_cast<QuestionToken>(questionOrExclamationToken) : nullptr;
-        node->exclamationToken = questionOrExclamationToken && isExclamationToken(questionOrExclamationToken) ? dynamic_pointer_cast<ExclamationToken>(questionOrExclamationToken) : nullptr;
+        node->questionToken = questionOrExclamationToken && isQuestionToken(questionOrExclamationToken) ? reinterpret_pointer_cast<QuestionToken>(questionOrExclamationToken) : nullptr;
+        node->exclamationToken = questionOrExclamationToken && isExclamationToken(questionOrExclamationToken) ? reinterpret_pointer_cast<ExclamationToken>(questionOrExclamationToken) : nullptr;
         node->transformFlags |=
                 propagateChildFlags(node->questionToken) |
                 propagateChildFlags(node->exclamationToken) |
@@ -618,8 +618,8 @@ namespace ts {
 //        // @api
 //        function updatePropertyDeclaration(
 //            node: PropertyDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            NameType name,
 //            questionOrExclamationToken: QuestionToken | ExclamationToken | undefined,
 //            sharedOpt<TypeNode> type,
@@ -638,16 +638,16 @@ namespace ts {
 //
     // @api
     shared<MethodSignature> Factory::createMethodSignature(
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> modifiers,
             NameType name,
             sharedOpt<QuestionToken> questionToken,
-            optional<NodeArray> typeParameters,
-            NodeArray parameters,
+            sharedOpt<NodeArray> typeParameters,
+            shared<NodeArray> parameters,
             sharedOpt<TypeNode> type
     ) {
         auto node = createBaseSignatureDeclaration<MethodSignature>(
                 SyntaxKind::MethodSignature,
-                /*decorators*/ {},
+                /*decorators*/ nullptr,
                 modifiers,
                 name,
                 typeParameters,
@@ -662,7 +662,7 @@ namespace ts {
 //        // @api
 //        function updateMethodSignature(
 //            node: MethodSignature,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> modifiers,
 //            name: PropertyName,
 //            sharedOpt<QuestionToken> questionToken,
 //            typeParameters: NodeArray<TypeParameterDeclaration> | undefined,
@@ -681,13 +681,13 @@ namespace ts {
 //
     // @api
     shared<MethodDeclaration> Factory::createMethodDeclaration(
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
             sharedOpt<AsteriskToken> asteriskToken,
             NameType name,
             sharedOpt<QuestionToken> questionToken,
-            optional<NodeArray> typeParameters,
-            NodeArray parameters,
+            sharedOpt<NodeArray> typeParameters,
+            shared<NodeArray> parameters,
             sharedOpt<TypeNode> type,
             sharedOpt<Block> body
     ) {
@@ -725,13 +725,13 @@ namespace ts {
 //        // @api
 //        function updateMethodDeclaration(
 //            node: MethodDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            sharedOpt<AsteriskToken> asteriskToken,
 //            name: PropertyName,
 //            sharedOpt<QuestionToken> questionToken,
-//            optional<NodeArray> typeParameters,
-//            NodeArray parameters,
+//            sharedOpt<NodeArray> typeParameters,
+//            shared<NodeArray> parameters,
 //            sharedOpt<TypeNode> type,
 //           sharedOpt<Block> body
 //        ) {
@@ -750,8 +750,8 @@ namespace ts {
 //
     // @api
     shared<ClassStaticBlockDeclaration> Factory::createClassStaticBlockDeclaration(
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
             shared<Block> body
     ) {
         auto node = createBaseNamedDeclaration<ClassStaticBlockDeclaration>(
@@ -768,8 +768,8 @@ namespace ts {
 //        // @api
 //        function updateClassStaticBlockDeclaration(
 //            node: ClassStaticBlockDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            shared<Block> block
 //        ): ClassStaticBlockDeclaration {
 //            return node->decorators != decorators
@@ -781,9 +781,9 @@ namespace ts {
 
     // @api
     shared<ConstructorDeclaration> Factory::createConstructorDeclaration(
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
-            NodeArray parameters,
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
+            shared<NodeArray> parameters,
             sharedOpt<Block> body
     ) {
         auto node = createBaseFunctionLikeDeclaration<ConstructorDeclaration>(
@@ -803,9 +803,9 @@ namespace ts {
 //        // @api
 //        function updateConstructorDeclaration(
 //            node: ConstructorDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
-//            NodeArray parameters,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
+//            shared<NodeArray> parameters,
 //           sharedOpt<Block> body
 //        ) {
 //            return node->decorators != decorators
@@ -818,10 +818,10 @@ namespace ts {
 //
     // @api
     shared<GetAccessorDeclaration> Factory::createGetAccessorDeclaration(
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
             NameType name,
-            NodeArray parameters,
+            shared<NodeArray> parameters,
             sharedOpt<TypeNode> type,
             sharedOpt<Block> body
     ) {
@@ -840,10 +840,10 @@ namespace ts {
 //        // @api
 //        function updateGetAccessorDeclaration(
 //            node: GetAccessorDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: PropertyName,
-//            NodeArray parameters,
+//            shared<NodeArray> parameters,
 //            sharedOpt<TypeNode> type,
 //           sharedOpt<Block> body
 //        ) {
@@ -859,10 +859,10 @@ namespace ts {
 
     // @api
     shared<SetAccessorDeclaration> Factory::createSetAccessorDeclaration(
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
             NameType name,
-            NodeArray parameters,
+            shared<NodeArray> parameters,
             sharedOpt<Block> body
     ) {
         return createBaseFunctionLikeDeclaration<SetAccessorDeclaration>(
@@ -880,10 +880,10 @@ namespace ts {
 //        // @api
 //        function updateSetAccessorDeclaration(
 //            node: SetAccessorDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: PropertyName,
-//            NodeArray parameters,
+//            shared<NodeArray> parameters,
 //           sharedOpt<Block> body
 //        ) {
 //            return node->decorators != decorators
@@ -897,14 +897,14 @@ namespace ts {
 //
     // @api
     shared<CallSignatureDeclaration> Factory::createCallSignature(
-            optional<NodeTypeArray(TypeParameterDeclaration)> typeParameters,
-            NodeTypeArray(ParameterDeclaration) parameters,
+            sharedOpt<NodeTypeArray(TypeParameterDeclaration)> typeParameters,
+            shared<NodeTypeArray(ParameterDeclaration)> parameters,
             sharedOpt<TypeNode> type
     ) {
         auto node = createBaseSignatureDeclaration<CallSignatureDeclaration>(
                 SyntaxKind::CallSignature,
-                /*decorators*/ {},
-                /*modifiers*/ {},
+                /*decorators*/ nullptr,
+                /*modifiers*/ nullptr,
                 /*name*/ {},
                 typeParameters,
                 parameters,
@@ -930,14 +930,14 @@ namespace ts {
 //
     // @api
     shared<ConstructSignatureDeclaration> Factory::createConstructSignature(
-            optional<NodeArray> typeParameters,
-            NodeArray parameters,
+            sharedOpt<NodeArray> typeParameters,
+            shared<NodeArray> parameters,
             sharedOpt<TypeNode> type
     ) {
         auto node = createBaseSignatureDeclaration<ConstructSignatureDeclaration>(
                 SyntaxKind::ConstructSignature,
-                /*decorators*/ {},
-                /*modifiers*/ {},
+                /*decorators*/ nullptr,
+                /*modifiers*/ nullptr,
                 /*name*/ {},
                 typeParameters,
                 parameters,
@@ -963,9 +963,9 @@ namespace ts {
 //
     // @api
     shared<IndexSignatureDeclaration> Factory::createIndexSignature(
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
-            NodeArray parameters,
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
+            shared<NodeArray> parameters,
             sharedOpt<TypeNode> type
     ) {
         auto node = createBaseSignatureDeclaration<IndexSignatureDeclaration>(
@@ -984,9 +984,9 @@ namespace ts {
 //        // @api
 //        function updateIndexSignature(
 //            node: IndexSignatureDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
-//            NodeArray parameters,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
+//            shared<NodeArray> parameters,
 //            shared<TypeNode> type
 //        ) {
 //            return node->parameters != parameters
@@ -1043,7 +1043,7 @@ namespace ts {
 //        }
 
     // @api
-    shared<TypeReferenceNode> Factory::createTypeReferenceNode(NameType typeName, optional<NodeArray> typeArguments) {
+    shared<TypeReferenceNode> Factory::createTypeReferenceNode(NameType typeName, sharedOpt<NodeArray> typeArguments) {
         auto node = createBaseNode<TypeReferenceNode>(SyntaxKind::TypeReference);
         node->typeName = asName(typeName);
         if (typeArguments) node->typeArguments = parenthesizer.parenthesizeTypeArguments(createNodeArray(typeArguments));
@@ -1061,14 +1061,14 @@ namespace ts {
 
     // @api
     shared<FunctionTypeNode> Factory::createFunctionTypeNode(
-            optional<NodeArray> typeParameters,
-            NodeArray parameters,
+            sharedOpt<NodeArray> typeParameters,
+            shared<NodeArray> parameters,
             sharedOpt<TypeNode> type
     ) {
         auto node = createBaseSignatureDeclaration<FunctionTypeNode>(
                 SyntaxKind::FunctionType,
-                /*decorators*/ {},
-                /*modifiers*/ {},
+                /*decorators*/ nullptr,
+                /*modifiers*/ nullptr,
                 /*name*/ {},
                 typeParameters,
                 parameters,
@@ -1100,14 +1100,14 @@ namespace ts {
 //        }
 
     shared<ConstructorTypeNode> Factory::createConstructorTypeNode1(
-            optional<NodeArray> modifiers,
-            optional<NodeArray> typeParameters,
-            NodeArray parameters,
+            sharedOpt<NodeArray> modifiers,
+            sharedOpt<NodeArray> typeParameters,
+            shared<NodeArray> parameters,
             sharedOpt<TypeNode> type
     ) {
         auto node = createBaseSignatureDeclaration<ConstructorTypeNode>(
                 SyntaxKind::ConstructorType,
-                /*decorators*/ {},
+                /*decorators*/ nullptr,
                 modifiers,
                 /*name*/ {},
                 typeParameters,
@@ -1120,11 +1120,11 @@ namespace ts {
 
 //        /** @deprecated */
 //        function createConstructorTypeNode2(
-//            optional<NodeArray> typeParameters,
-//            NodeArray parameters,
+//            sharedOpt<NodeArray> typeParameters,
+//            shared<NodeArray> parameters,
 //            sharedOpt<TypeNode> type
 //        ): ConstructorTypeNode {
-//            return createConstructorTypeNode1(/*modifiers*/ {}, typeParameters, parameters, type);
+//            return createConstructorTypeNode1(/*modifiers*/ nullptr, typeParameters, parameters, type);
 //        }
 //
 //        // @api
@@ -1136,7 +1136,7 @@ namespace ts {
 //
 //        function updateConstructorTypeNode1(
 //            node: ConstructorTypeNode,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> modifiers,
 //            typeParameters: NodeArray<TypeParameterDeclaration> | undefined,
 //            parameters: NodeArray<ParameterDeclaration>,
 //            sharedOpt<TypeNode> type
@@ -1160,7 +1160,7 @@ namespace ts {
 //        }
 //
     // @api
-    shared<TypeQueryNode> Factory::createTypeQueryNode(shared<NodeUnion(EntityName)> exprName, optional<NodeArray> typeArguments) {
+    shared<TypeQueryNode> Factory::createTypeQueryNode(shared<NodeUnion(EntityName)> exprName, sharedOpt<NodeArray> typeArguments) {
         auto node = createBaseNode<TypeQueryNode>(SyntaxKind::TypeQuery);
         node->exprName = exprName;
         if (typeArguments) node->typeArguments = parenthesizer.parenthesizeTypeArguments(typeArguments);
@@ -1177,7 +1177,7 @@ namespace ts {
 //        }
 //
     // @api
-    shared<TypeLiteralNode> Factory::createTypeLiteralNode(optional<NodeArray> members) {
+    shared<TypeLiteralNode> Factory::createTypeLiteralNode(sharedOpt<NodeArray> members) {
         auto node = createBaseNode<TypeLiteralNode>(SyntaxKind::TypeLiteral);
         node->members = createNodeArray(members);
         node->transformFlags = (int) TransformFlags::ContainsTypeScript;
@@ -1207,7 +1207,7 @@ namespace ts {
 //        }
 //
     // @api
-    shared<TupleTypeNode> Factory::createTupleTypeNode(NodeArray elements) {
+    shared<TupleTypeNode> Factory::createTupleTypeNode(shared<NodeArray> elements) {
         auto node = createBaseNode<TupleTypeNode>(SyntaxKind::TupleType);
         node->elements = createNodeArray(parenthesizer.parenthesizeElementTypesOfTupleType(elements));
         node->transformFlags = (int) TransformFlags::ContainsTypeScript;
@@ -1279,7 +1279,7 @@ namespace ts {
 //        }
 
     // @api
-    shared<UnionTypeNode> Factory::createUnionTypeNode(NodeArray types) {
+    shared<UnionTypeNode> Factory::createUnionTypeNode(shared<NodeArray> types) {
         return createUnionOrIntersectionTypeNode<UnionTypeNode>(SyntaxKind::UnionType, types, CALLBACK(parenthesizer.parenthesizeConstituentTypesOfUnionType));
     }
 
@@ -1289,7 +1289,7 @@ namespace ts {
 //        }
 
     // @api
-    shared<IntersectionTypeNode> Factory::createIntersectionTypeNode(NodeArray types) {
+    shared<IntersectionTypeNode> Factory::createIntersectionTypeNode(shared<NodeArray> types) {
         return createUnionOrIntersectionTypeNode<IntersectionTypeNode>(SyntaxKind::IntersectionType, types, CALLBACK(parenthesizer.parenthesizeConstituentTypesOfIntersectionType));
     }
 
@@ -1335,7 +1335,7 @@ namespace ts {
 //        }
 
     // @api
-    shared<TemplateLiteralTypeNode> Factory::createTemplateLiteralType(shared<TemplateHead> head, NodeArray templateSpans) {
+    shared<TemplateLiteralTypeNode> Factory::createTemplateLiteralType(shared<TemplateHead> head, shared<NodeArray> templateSpans) {
         auto node = createBaseNode<TemplateLiteralTypeNode>(SyntaxKind::TemplateLiteralType);
         node->head = head;
         node->templateSpans = createNodeArray(templateSpans);
@@ -1357,13 +1357,13 @@ namespace ts {
     shared<ImportTypeNode> Factory::createImportTypeNode(
             shared<TypeNode> argument,
             optional<variant<shared<NodeUnion(EntityName)>, shared<ImportTypeAssertionContainer>>> qualifierOrAssertions,
-            optional<variant<shared<NodeUnion(EntityName)>, NodeArray>> typeArgumentsOrQualifier,
-            optional<variant<bool, NodeArray>> isTypeOfOrTypeArguments,
+            optional<variant<shared<NodeUnion(EntityName)>, shared<NodeArray>>> typeArgumentsOrQualifier,
+            optional<variant<bool, shared<NodeArray>>> isTypeOfOrTypeArguments,
             optional<bool> isTypeOf
     ) {
         sharedOpt<ImportTypeAssertionContainer> assertion;
         sharedOpt<NodeUnion(EntityName)> qualifier;
-        optional<NodeArray> typeArguments;
+        sharedOpt<NodeArray> typeArguments;
         if (qualifierOrAssertions) {
             if (holds_alternative<shared<ImportTypeAssertionContainer>>(*qualifierOrAssertions)) {
                 assertion = get<shared<ImportTypeAssertionContainer>>(*qualifierOrAssertions);
@@ -1373,16 +1373,16 @@ namespace ts {
         }
 
         if (typeArgumentsOrQualifier) {
-            if (holds_alternative<NodeArray>(*typeArgumentsOrQualifier)) {
-                typeArguments = get<NodeArray>(*typeArgumentsOrQualifier);
+            if (holds_alternative<shared<NodeArray>>(*typeArgumentsOrQualifier)) {
+                typeArguments = get<shared<NodeArray>>(*typeArgumentsOrQualifier);
             } else if (holds_alternative<shared<NodeUnion(EntityName)>>(*typeArgumentsOrQualifier)) {
                 qualifier = get<shared<NodeUnion(EntityName)>>(*typeArgumentsOrQualifier);
             }
         }
 
         if (isTypeOfOrTypeArguments) {
-            if (holds_alternative<NodeArray>(*isTypeOfOrTypeArguments)) {
-                typeArguments = get<NodeArray>(*isTypeOfOrTypeArguments);
+            if (holds_alternative<shared<NodeArray>>(*isTypeOfOrTypeArguments)) {
+                typeArguments = get<shared<NodeArray>>(*isTypeOfOrTypeArguments);
             } else if (holds_alternative<bool>(*isTypeOfOrTypeArguments)) {
                 isTypeOf = get<bool>(*isTypeOfOrTypeArguments);
             }
@@ -1398,15 +1398,15 @@ namespace ts {
         node->argument = argument;
         node->assertions = assertion;
         node->qualifier = qualifier;
-        if (typeArguments) node->typeArguments = parenthesizer.parenthesizeTypeArguments(*typeArguments);
+        if (typeArguments) node->typeArguments = parenthesizer.parenthesizeTypeArguments(typeArguments);
         node->isTypeOf = isTrue(isTypeOf);
         node->transformFlags = (int) TransformFlags::ContainsTypeScript;
         return node;
     }
 
 //        // @api
-//        function updateImportTypeNode(node: ImportTypeNode, argument: TypeNode, qualifier: EntityName | undefined, optional<NodeArray> typeArguments, isTypeOf?: boolean | undefined): ImportTypeNode;
-//        function updateImportTypeNode(node: ImportTypeNode, argument: TypeNode, assertions: ImportTypeAssertionContainer | undefined, qualifier: EntityName | undefined, optional<NodeArray> typeArguments, isTypeOf?: boolean | undefined): ImportTypeNode;
+//        function updateImportTypeNode(node: ImportTypeNode, argument: TypeNode, qualifier: EntityName | undefined, sharedOpt<NodeArray> typeArguments, isTypeOf?: boolean | undefined): ImportTypeNode;
+//        function updateImportTypeNode(node: ImportTypeNode, argument: TypeNode, assertions: ImportTypeAssertionContainer | undefined, qualifier: EntityName | undefined, sharedOpt<NodeArray> typeArguments, isTypeOf?: boolean | undefined): ImportTypeNode;
 //        function updateImportTypeNode(
 //            node: ImportTypeNode,
 //            argument: TypeNode,
@@ -1494,7 +1494,7 @@ namespace ts {
             sharedOpt<TypeNode> nameType,
             sharedOpt<Node> questionToken, //: QuestionToken | PlusToken | MinusToken | undefined,
             sharedOpt<TypeNode> type,
-            optional<NodeArray> members
+            sharedOpt<NodeArray> members
     ) {
         auto node = createBaseNode<MappedTypeNode>(SyntaxKind::MappedType);
         node->readonlyToken = readonlyToken;
@@ -1508,7 +1508,7 @@ namespace ts {
     }
 
 //        // @api
-//        function updateMappedTypeNode(node: MappedTypeNode, readonlyToken: ReadonlyKeyword | PlusToken | MinusToken | undefined, typeParameter: TypeParameterDeclaration, namesharedOpt<TypeNode> type, questionToken: QuestionToken | PlusToken | MinusToken | undefined, sharedOpt<TypeNode> type, optional<NodeArray> members): MappedTypeNode {
+//        function updateMappedTypeNode(node: MappedTypeNode, readonlyToken: ReadonlyKeyword | PlusToken | MinusToken | undefined, typeParameter: TypeParameterDeclaration, namesharedOpt<TypeNode> type, questionToken: QuestionToken | PlusToken | MinusToken | undefined, sharedOpt<TypeNode> type, sharedOpt<NodeArray> members): MappedTypeNode {
 //            return node->readonlyToken != readonlyToken
 //                || node->typeParameter != typeParameter
 //                || node->nameType != nameType
@@ -1539,7 +1539,7 @@ namespace ts {
 //        //
 //
     // @api
-    shared<ObjectBindingPattern> Factory::createObjectBindingPattern(NodeArray elements) {
+    shared<ObjectBindingPattern> Factory::createObjectBindingPattern(shared<NodeArray> elements) {
         auto node = createBaseNode<ObjectBindingPattern>(SyntaxKind::ObjectBindingPattern);
         node->elements = createNodeArray(elements);
         node->transformFlags |=
@@ -1562,7 +1562,7 @@ namespace ts {
 //        }
 //
     // @api
-    shared<ArrayBindingPattern> Factory::createArrayBindingPattern(NodeArray elements) {
+    shared<ArrayBindingPattern> Factory::createArrayBindingPattern(shared<NodeArray> elements) {
         auto node = createBaseNode<ArrayBindingPattern>(SyntaxKind::ArrayBindingPattern);
         node->elements = createNodeArray(elements);
         node->transformFlags |=
@@ -1588,8 +1588,8 @@ namespace ts {
     ) {
         auto node = createBaseBindingLikeDeclaration<BindingElement>(
                 SyntaxKind::BindingElement,
-                /*decorators*/ {},
-                /*modifiers*/ {},
+                /*decorators*/ nullptr,
+                /*modifiers*/ nullptr,
                 name,
                 initializer ? parenthesizer.parenthesizeExpressionForDisallowedComma(initializer) : nullptr
         );
@@ -1620,7 +1620,7 @@ namespace ts {
 //        //
 
     // @api
-    shared<ArrayLiteralExpression> Factory::createArrayLiteralExpression(optional<NodeArray> elements, bool multiLine) {
+    shared<ArrayLiteralExpression> Factory::createArrayLiteralExpression(sharedOpt<NodeArray> elements, bool multiLine) {
         auto node = createBaseExpression<ArrayLiteralExpression>(SyntaxKind::ArrayLiteralExpression);
         // Ensure we add a trailing comma for something like `[NumericLiteral(1), NumericLiteral(2), OmittedExpresion]` so that
         // we end up with `[1, 2, ,]` instead of `[1, 2, ]` otherwise the `OmittedExpression` will just end up being treated like
@@ -1641,7 +1641,7 @@ namespace ts {
 //        }
 
     // @api
-    shared<ObjectLiteralExpression> Factory::createObjectLiteralExpression(optional<NodeArray> properties, bool multiLine) {
+    shared<ObjectLiteralExpression> Factory::createObjectLiteralExpression(sharedOpt<NodeArray> properties, bool multiLine) {
         auto node = createBaseExpression<ObjectLiteralExpression>(SyntaxKind::ObjectLiteralExpression);
         node->properties = createNodeArray(properties);
         node->multiLine = multiLine;
@@ -1774,7 +1774,7 @@ namespace ts {
 //        }
 //
     // @api
-    shared<CallExpression> Factory::createCallExpression(shared<Expression> expression, optional<NodeArray> typeArguments, optional<NodeArray> argumentsArray) {
+    shared<CallExpression> Factory::createCallExpression(shared<Expression> expression, sharedOpt<NodeArray> typeArguments, sharedOpt<NodeArray> argumentsArray) {
         auto node = createBaseExpression<CallExpression>(SyntaxKind::CallExpression);
         node->expression = parenthesizer.parenthesizeLeftSideOfAccess(expression);
         node->typeArguments = asNodeArray(typeArguments);
@@ -1795,7 +1795,7 @@ namespace ts {
     }
 
     // @api
-    shared<CallChain> Factory::createCallChain(shared<Expression> expression, sharedOpt<QuestionDotToken> questionDotToken, optional<NodeArray> typeArguments, optional<NodeArray> argumentsArray) {
+    shared<CallChain> Factory::createCallChain(shared<Expression> expression, sharedOpt<QuestionDotToken> questionDotToken, sharedOpt<NodeArray> typeArguments, sharedOpt<NodeArray> argumentsArray) {
         auto node = createBaseExpression<CallChain>(SyntaxKind::CallExpression);
         node->flags |= (int) NodeFlags::OptionalChain;
         node->expression = parenthesizer.parenthesizeLeftSideOfAccess(expression);
@@ -1818,7 +1818,7 @@ namespace ts {
     }
 
     // @api
-    shared<CallChain> Factory::updateCallChain(shared<CallChain> node, shared<Expression> expression, sharedOpt<QuestionDotToken> questionDotToken, optional<NodeArray> typeArguments, NodeArray argumentsArray) {
+    shared<CallChain> Factory::updateCallChain(shared<CallChain> node, shared<Expression> expression, sharedOpt<QuestionDotToken> questionDotToken, sharedOpt<NodeArray> typeArguments, shared<NodeArray> argumentsArray) {
         Debug::asserts(!!(node->flags & (int) NodeFlags::OptionalChain), "Cannot update a CallExpression using updateCallChain. Use updateCall instead.");
         return node->expression != expression
                || node->questionDotToken != questionDotToken
@@ -1829,7 +1829,7 @@ namespace ts {
     }
 
     // @api
-    shared<CallExpression> Factory::updateCallExpression(shared<CallExpression> node, shared<Expression> expression, optional<NodeArray> typeArguments, NodeArray argumentsArray) {
+    shared<CallExpression> Factory::updateCallExpression(shared<CallExpression> node, shared<Expression> expression, sharedOpt<NodeArray> typeArguments, shared<NodeArray> argumentsArray) {
         if (isCallChain(node)) {
             return updateCallChain(node, expression, node->questionDotToken, typeArguments, argumentsArray);
         }
@@ -1841,11 +1841,11 @@ namespace ts {
     }
 
     // @api
-    shared<NewExpression> Factory::createNewExpression(shared<Expression> expression, optional<NodeArray> typeArguments, optional<NodeArray> argumentsArray) {
+    shared<NewExpression> Factory::createNewExpression(shared<Expression> expression, sharedOpt<NodeArray> typeArguments, sharedOpt<NodeArray> argumentsArray) {
         auto node = createBaseExpression<NewExpression>(SyntaxKind::NewExpression);
         node->expression = parenthesizer.parenthesizeExpressionOfNew(expression);
         node->typeArguments = asNodeArray(typeArguments);
-        if (argumentsArray) node->arguments = parenthesizer.parenthesizeExpressionsOfCommaDelimitedList(*argumentsArray);
+        if (argumentsArray) node->arguments = parenthesizer.parenthesizeExpressionsOfCommaDelimitedList(argumentsArray);
         node->transformFlags |=
                 propagateChildFlags(node->expression) |
                 propagateChildrenFlags(node->typeArguments) |
@@ -1858,7 +1858,7 @@ namespace ts {
     }
 
 //        // @api
-//        function updateNewExpression(node: NewExpression, shared<Expression> expression, optional<NodeArray> typeArguments, optional<NodeArray> argumentsArray) {
+//        function updateNewExpression(node: NewExpression, shared<Expression> expression, sharedOpt<NodeArray> typeArguments, sharedOpt<NodeArray> argumentsArray) {
 //            return node->expression != expression
 //                || node->typeArguments != typeArguments
 //                || node->arguments != argumentsArray
@@ -1867,7 +1867,7 @@ namespace ts {
 //        }
 
     // @api
-    shared<TaggedTemplateExpression> Factory::createTaggedTemplateExpression(shared<Expression> tag, optional<NodeArray> typeArguments, shared<NodeUnion(TemplateLiteral)> templateLiteral) {
+    shared<TaggedTemplateExpression> Factory::createTaggedTemplateExpression(shared<Expression> tag, sharedOpt<NodeArray> typeArguments, shared<NodeUnion(TemplateLiteral)> templateLiteral) {
         auto node = createBaseExpression<TaggedTemplateExpression>(SyntaxKind::TaggedTemplateExpression);
         node->tag = parenthesizer.parenthesizeLeftSideOfAccess(tag);
         node->typeArguments = asNodeArray(typeArguments);
@@ -1887,7 +1887,7 @@ namespace ts {
     }
 //
 //        // @api
-//        function updateTaggedTemplateExpression(node: TaggedTemplateExpression, tag: Expression, optional<NodeArray> typeArguments, template: TemplateLiteral) {
+//        function updateTaggedTemplateExpression(node: TaggedTemplateExpression, tag: Expression, sharedOpt<NodeArray> typeArguments, template: TemplateLiteral) {
 //            return node->tag != tag
 //                || node->typeArguments != typeArguments
 //                || node->template != template
@@ -1932,17 +1932,17 @@ namespace ts {
 
     // @api
     shared<FunctionExpression> Factory::createFunctionExpression(
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> modifiers,
             sharedOpt<AsteriskToken> asteriskToken,
             NameType name,
-            optional<NodeArray> typeParameters,
-            optional<NodeArray> parameters,
+            sharedOpt<NodeArray> typeParameters,
+            sharedOpt<NodeArray> parameters,
             sharedOpt<TypeNode> type,
             shared<Block> body
     ) {
         auto node = createBaseFunctionLikeDeclaration<FunctionExpression>(
                 SyntaxKind::FunctionExpression,
-                /*decorators*/ {},
+                /*decorators*/ nullptr,
                 modifiers,
                 name,
                 typeParameters,
@@ -1970,11 +1970,11 @@ namespace ts {
 //        // @api
 //        function updateFunctionExpression(
 //            node: FunctionExpression,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> modifiers,
 //            sharedOpt<AsteriskToken> asteriskToken,
 //            name: Identifier | undefined,
-//            optional<NodeArray> typeParameters,
-//            NodeArray parameters,
+//            sharedOpt<NodeArray> typeParameters,
+//            shared<NodeArray> parameters,
 //            sharedOpt<TypeNode> type,
 //            shared<Block> block
 //        ) {
@@ -1990,16 +1990,16 @@ namespace ts {
 //        }
     // @api
     shared<ArrowFunction> Factory::createArrowFunction(
-            optional<NodeArray> modifiers,
-            optional<NodeArray> typeParameters,
-            NodeArray parameters,
+            sharedOpt<NodeArray> modifiers,
+            sharedOpt<NodeArray> typeParameters,
+            shared<NodeArray> parameters,
             sharedOpt<TypeNode> type,
             sharedOpt<EqualsGreaterThanToken> equalsGreaterThanToken,
             shared<NodeUnion(ConciseBody)> body
     ) {
         auto node = createBaseFunctionLikeDeclaration<ArrowFunction>(
                 SyntaxKind::ArrowFunction,
-                /*decorators*/ {},
+                /*decorators*/ nullptr,
                 modifiers,
                 /*name*/ {},
                 typeParameters,
@@ -2020,9 +2020,9 @@ namespace ts {
 //        // @api
 //        function updateArrowFunction(
 //            node: ArrowFunction,
-//            optional<NodeArray> modifiers,
-//            optional<NodeArray> typeParameters,
-//            NodeArray parameters,
+//            sharedOpt<NodeArray> modifiers,
+//            sharedOpt<NodeArray> typeParameters,
+//            shared<NodeArray> parameters,
 //            sharedOpt<TypeNode> type,
 //            equalsGreaterThanToken: EqualsGreaterThanToken,
 //            body: ConciseBody
@@ -2253,7 +2253,7 @@ namespace ts {
 //        }
 
     // @api
-    shared<TemplateExpression> Factory::createTemplateExpression(shared<TemplateHead> head, NodeArray templateSpans) {
+    shared<TemplateExpression> Factory::createTemplateExpression(shared<TemplateHead> head, shared<NodeArray> templateSpans) {
         auto node = createBaseExpression<TemplateExpression>(SyntaxKind::TemplateExpression);
         node->head = head;
         node->templateSpans = createNodeArray(templateSpans);
@@ -2358,12 +2358,12 @@ namespace ts {
 
     // @api
    shared<ClassExpression> Factory::createClassExpression(
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
             NameType name,
-            optional<NodeArray> typeParameters,
-            optional<NodeArray> heritageClauses,
-            NodeArray members
+            sharedOpt<NodeArray> typeParameters,
+            sharedOpt<NodeArray> heritageClauses,
+            shared<NodeArray> members
     ) {
         auto node = createBaseClassLikeDeclaration<ClassExpression>(
                 SyntaxKind::ClassExpression,
@@ -2381,12 +2381,12 @@ namespace ts {
 //        // @api
 //        function updateClassExpression(
 //            node: ClassExpression,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: Identifier | undefined,
-//            optional<NodeArray> typeParameters,
-//            optional<NodeArray> heritageClauses,
-//            NodeArray members
+//            sharedOpt<NodeArray> typeParameters,
+//            sharedOpt<NodeArray> heritageClauses,
+//            shared<NodeArray> members
 //        ) {
 //            return node->decorators != decorators
 //                || node->modifiers != modifiers
@@ -2404,7 +2404,7 @@ namespace ts {
     }
 
     // @api
-    shared<ExpressionWithTypeArguments> Factory::createExpressionWithTypeArguments(shared<Expression> expression, optional<NodeArray> typeArguments) {
+    shared<ExpressionWithTypeArguments> Factory::createExpressionWithTypeArguments(shared<Expression> expression, sharedOpt<NodeArray> typeArguments) {
         auto node = createBaseNode<ExpressionWithTypeArguments>(SyntaxKind::ExpressionWithTypeArguments);
         node->expression = parenthesizer.parenthesizeLeftSideOfAccess(expression);
         if (typeArguments) node->typeArguments = parenthesizer.parenthesizeTypeArguments(typeArguments);
@@ -2416,7 +2416,7 @@ namespace ts {
     }
 
 //        // @api
-//        function updateExpressionWithTypeArguments(node: ExpressionWithTypeArguments, shared<Expression> expression, optional<NodeArray> typeArguments) {
+//        function updateExpressionWithTypeArguments(node: ExpressionWithTypeArguments, shared<Expression> expression, sharedOpt<NodeArray> typeArguments) {
 //            return node->expression != expression
 //                || node->typeArguments != typeArguments
 //                ? update(createExpressionWithTypeArguments(expression, typeArguments), node)
@@ -2544,7 +2544,7 @@ namespace ts {
     //
 
     // @api
-    shared<Block> Factory::createBlock(NodeArray statements, bool multiLine) {
+    shared<Block> Factory::createBlock(shared<NodeArray> statements, bool multiLine) {
         auto node = createBaseNode<Block>(SyntaxKind::Block);
         node->statements = createNodeArray(statements);
         node->multiLine = multiLine;
@@ -2553,7 +2553,7 @@ namespace ts {
     }
 
     // @api
-   shared<VariableDeclarationList> Factory::createVariableDeclarationList(NodeArray declarations, int flags) {
+   shared<VariableDeclarationList> Factory::createVariableDeclarationList(shared<NodeArray> declarations, int flags) {
         auto node = createBaseNode<VariableDeclarationList>(SyntaxKind::VariableDeclarationList);
         node->flags |= flags & (int) NodeFlags::BlockScoped;
         node->declarations = declarations;
@@ -2580,8 +2580,8 @@ namespace ts {
 //        }
 
     // @api
-   shared<VariableStatement> Factory::createVariableStatement(optional<NodeArray> modifiers, variant<shared<VariableDeclarationList>, vector<shared<VariableDeclaration>>> declarationList) {
-        auto node = createBaseDeclaration<VariableStatement>(SyntaxKind::VariableStatement, /*decorators*/ {}, modifiers);
+   shared<VariableStatement> Factory::createVariableStatement(sharedOpt<NodeArray> modifiers, variant<shared<VariableDeclarationList>, vector<shared<VariableDeclaration>>> declarationList) {
+        auto node = createBaseDeclaration<VariableStatement>(SyntaxKind::VariableStatement, /*decorators*/ nullptr, modifiers);
 
         if (holds_alternative<shared<VariableDeclarationList>>(declarationList)) {
             node->declarationList = get<shared<VariableDeclarationList>>(declarationList);
@@ -2597,7 +2597,7 @@ namespace ts {
     }
 
 //        // @api
-//        function updateVariableStatement(node: VariableStatement, optional<NodeArray> modifiers, declarationList: VariableDeclarationList) {
+//        function updateVariableStatement(node: VariableStatement, sharedOpt<NodeArray> modifiers, declarationList: VariableDeclarationList) {
 //            return node->modifiers != modifiers
 //                || node->declarationList != declarationList
 //                ? update(createVariableStatement(modifiers, declarationList), node)
@@ -2933,8 +2933,8 @@ namespace ts {
    shared<VariableDeclaration> Factory::createVariableDeclaration(NameType name, sharedOpt<ExclamationToken> exclamationToken, sharedOpt<TypeNode> type, sharedOpt<Expression> initializer) {
         auto node = createBaseVariableLikeDeclaration<VariableDeclaration>(
                 SyntaxKind::VariableDeclaration,
-                /*decorators*/ {},
-                /*modifiers*/ {},
+                /*decorators*/ nullptr,
+                /*modifiers*/ nullptr,
                 name,
                 type,
                 initializer ? parenthesizer.parenthesizeExpressionForDisallowedComma(initializer) : nullptr
@@ -2967,12 +2967,12 @@ namespace ts {
 
     // @api
    shared<FunctionDeclaration> Factory::createFunctionDeclaration(
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
             sharedOpt<AsteriskToken> asteriskToken,
             NameType name,
-            optional<NodeArray> typeParameters,
-            NodeArray parameters,
+            sharedOpt<NodeArray> typeParameters,
+            shared<NodeArray> parameters,
             sharedOpt<TypeNode> type,
             sharedOpt<Block> body
     ) {
@@ -3009,12 +3009,12 @@ namespace ts {
 //        // @api
 //        function updateFunctionDeclaration(
 //            node: FunctionDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            sharedOpt<AsteriskToken> asteriskToken,
 //            name: Identifier | undefined,
-//            optional<NodeArray> typeParameters,
-//            NodeArray parameters,
+//            sharedOpt<NodeArray> typeParameters,
+//            shared<NodeArray> parameters,
 //            sharedOpt<TypeNode> type,
 //           sharedOpt<Block> body
 //        ) {
@@ -3032,12 +3032,12 @@ namespace ts {
 //
     // @api
    shared<ClassDeclaration> Factory::createClassDeclaration(
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
             NameType name,
-            optional<NodeArray> typeParameters,
-            optional<NodeArray> heritageClauses,
-            NodeArray members
+            sharedOpt<NodeArray> typeParameters,
+            sharedOpt<NodeArray> heritageClauses,
+            shared<NodeArray> members
     ) {
         auto node = createBaseClassLikeDeclaration<ClassDeclaration>(
                 SyntaxKind::ClassDeclaration,
@@ -3062,12 +3062,12 @@ namespace ts {
 //        // @api
 //        function updateClassDeclaration(
 //            node: ClassDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: Identifier | undefined,
-//            optional<NodeArray> typeParameters,
-//            optional<NodeArray> heritageClauses,
-//            NodeArray members
+//            sharedOpt<NodeArray> typeParameters,
+//            sharedOpt<NodeArray> heritageClauses,
+//            shared<NodeArray> members
 //        ) {
 //            return node->decorators != decorators
 //                || node->modifiers != modifiers
@@ -3081,11 +3081,11 @@ namespace ts {
 //
 //        // @api
 //        function createInterfaceDeclaration(
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: string | Identifier,
-//            optional<NodeArray> typeParameters,
-//            optional<NodeArray> heritageClauses,
+//            sharedOpt<NodeArray> typeParameters,
+//            sharedOpt<NodeArray> heritageClauses,
 //            members: readonly TypeElement[]
 //        ) {
 //            auto node = createBaseInterfaceOrClassLikeDeclaration<InterfaceDeclaration>(
@@ -3104,11 +3104,11 @@ namespace ts {
 //        // @api
 //        function updateInterfaceDeclaration(
 //            node: InterfaceDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: Identifier,
-//            optional<NodeArray> typeParameters,
-//            optional<NodeArray> heritageClauses,
+//            sharedOpt<NodeArray> typeParameters,
+//            sharedOpt<NodeArray> heritageClauses,
 //            members: readonly TypeElement[]
 //        ) {
 //            return node->decorators != decorators
@@ -3123,10 +3123,10 @@ namespace ts {
 //
 //        // @api
 //        function createTypeAliasDeclaration(
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: string | Identifier,
-//            optional<NodeArray> typeParameters,
+//            sharedOpt<NodeArray> typeParameters,
 //            shared<TypeNode> type
 //        ) {
 //            auto node = createBaseGenericNamedDeclaration<TypeAliasDeclaration>(
@@ -3144,10 +3144,10 @@ namespace ts {
 //        // @api
 //        function updateTypeAliasDeclaration(
 //            node: TypeAliasDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: Identifier,
-//            optional<NodeArray> typeParameters,
+//            sharedOpt<NodeArray> typeParameters,
 //            shared<TypeNode> type
 //        ) {
 //            return node->decorators != decorators
@@ -3161,8 +3161,8 @@ namespace ts {
 //
 //        // @api
 //        function createEnumDeclaration(
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: string | Identifier,
 //            members: readonly EnumMember[]
 //        ) {
@@ -3183,8 +3183,8 @@ namespace ts {
 //        // @api
 //        function updateEnumDeclaration(
 //            node: EnumDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: Identifier,
 //            members: readonly EnumMember[]) {
 //            return node->decorators != decorators
@@ -3197,8 +3197,8 @@ namespace ts {
 //
 //        // @api
 //        function createModuleDeclaration(
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: ModuleName,
 //            body: ModuleBody | undefined,
 //            flags = NodeFlags::None
@@ -3227,8 +3227,8 @@ namespace ts {
 //        // @api
 //        function updateModuleDeclaration(
 //            node: ModuleDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            name: ModuleName,
 //            body: ModuleBody | undefined
 //        ) {
@@ -3274,8 +3274,8 @@ namespace ts {
 //        function createNamespaceExportDeclaration(name: string | Identifier) {
 //            auto node = createBaseNamedDeclaration<NamespaceExportDeclaration>(
 //                SyntaxKind::NamespaceExportDeclaration,
-//                /*decorators*/ {},
-//                /*modifiers*/ {},
+//                /*decorators*/ nullptr,
+//                /*modifiers*/ nullptr,
 //                name
 //            );
 //            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
@@ -3291,8 +3291,8 @@ namespace ts {
 //
 //        // @api
 //        function createImportEqualsDeclaration(
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            isTypeOnly: boolean,
 //            name: string | Identifier,
 //            moduleReference: ModuleReference
@@ -3314,8 +3314,8 @@ namespace ts {
 //        // @api
 //        function updateImportEqualsDeclaration(
 //            node: ImportEqualsDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            isTypeOnly: boolean,
 //            name: Identifier,
 //            moduleReference: ModuleReference
@@ -3331,8 +3331,8 @@ namespace ts {
 //
 //        // @api
 //        function createImportDeclaration(
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            importClause: ImportClause | undefined,
 //            moduleSpecifier: Expression,
 //            assertClause: AssertClause | undefined
@@ -3355,8 +3355,8 @@ namespace ts {
 //        // @api
 //        function updateImportDeclaration(
 //            node: ImportDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            importClause: ImportClause | undefined,
 //            moduleSpecifier: Expression,
 //            assertClause: AssertClause | undefined
@@ -3396,7 +3396,7 @@ namespace ts {
 //        }
 //
     // @api
-   shared<AssertClause> Factory::createAssertClause(NodeArray elements, bool multiLine) {
+   shared<AssertClause> Factory::createAssertClause(shared<NodeArray> elements, bool multiLine) {
         auto node = createBaseNode<AssertClause>(SyntaxKind::AssertClause);
         node->elements = createNodeArray(elements);
         node->multiLine = multiLine;
@@ -3519,8 +3519,8 @@ namespace ts {
 //
 //        // @api
 //        function createExportAssignment(
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            isExportEquals: boolean | undefined,
 //            shared<Expression> expression
 //        ) {
@@ -3541,8 +3541,8 @@ namespace ts {
 //        // @api
 //        function updateExportAssignment(
 //            node: ExportAssignment,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            shared<Expression> expression
 //        ) {
 //            return node->decorators != decorators
@@ -3554,8 +3554,8 @@ namespace ts {
 //
 //        // @api
 //        function createExportDeclaration(
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            isTypeOnly: boolean,
 //            exportClause: NamedExportBindings | undefined,
 //            moduleSpecifier?: Expression,
@@ -3580,8 +3580,8 @@ namespace ts {
 //        // @api
 //        function updateExportDeclaration(
 //            node: ExportDeclaration,
-//            optional<NodeArray> decorators,
-//            optional<NodeArray> modifiers,
+//            sharedOpt<NodeArray> decorators,
+//            sharedOpt<NodeArray> modifiers,
 //            isTypeOnly: boolean,
 //            exportClause: NamedExportBindings | undefined,
 //            moduleSpecifier: Expression | undefined,
@@ -3639,7 +3639,7 @@ namespace ts {
     shared<MissingDeclaration> Factory::createMissingDeclaration() {
         auto node = createBaseDeclaration<MissingDeclaration>(
                 SyntaxKind::MissingDeclaration,
-                /*decorators*/ {},
+                /*decorators*/ nullptr,
                 /*modifiers*/ {}
         );
         return node;
@@ -3718,11 +3718,11 @@ namespace ts {
 //        }
 //
 //        // @api
-//        function createJSDocFunctionType(NodeArray parameters, sharedOpt<TypeNode> type): JSDocFunctionType {
+//        function createJSDocFunctionType(shared<NodeArray> parameters, sharedOpt<TypeNode> type): JSDocFunctionType {
 //            auto node = createBaseSignatureDeclaration<JSDocFunctionType>(
 //                SyntaxKind::JSDocFunctionType,
-//                /*decorators*/ {},
-//                /*modifiers*/ {},
+//                /*decorators*/ nullptr,
+//                /*modifiers*/ nullptr,
 //                /*name*/ {},
 //                /*typeParameters*/ {},
 //                parameters,
@@ -3732,7 +3732,7 @@ namespace ts {
 //        }
 //
 //        // @api
-//        function updateJSDocFunctionType(node: JSDocFunctionType, NodeArray parameters, sharedOpt<TypeNode> type): JSDocFunctionType {
+//        function updateJSDocFunctionType(node: JSDocFunctionType, shared<NodeArray> parameters, sharedOpt<TypeNode> type): JSDocFunctionType {
 //            return node->parameters != parameters
 //                || node->type != type
 //                ? update(createJSDocFunctionType(parameters, type), node)
@@ -4129,7 +4129,7 @@ namespace ts {
 //        //
 //
 // @api
-    shared<JsxElement> Factory::createJsxElement(shared<JsxOpeningElement> openingElement, NodeArray children, shared<JsxClosingElement> closingElement) {
+    shared<JsxElement> Factory::createJsxElement(shared<JsxOpeningElement> openingElement, shared<NodeArray> children, shared<JsxClosingElement> closingElement) {
         auto node = createBaseNode<JsxElement>(SyntaxKind::JsxElement);
         node->openingElement = openingElement;
         node->children = createNodeArray(children);
@@ -4152,7 +4152,7 @@ namespace ts {
 //        }
 
 // @api
-    shared<JsxSelfClosingElement> Factory::createJsxSelfClosingElement(shared<NodeUnion(JsxTagNameExpression)> tagName, optional<NodeArray> typeArguments, shared<JsxAttributes> attributes) {
+    shared<JsxSelfClosingElement> Factory::createJsxSelfClosingElement(shared<NodeUnion(JsxTagNameExpression)> tagName, sharedOpt<NodeArray> typeArguments, shared<JsxAttributes> attributes) {
         auto node = createBaseNode<JsxSelfClosingElement>(SyntaxKind::JsxSelfClosingElement);
         node->tagName = tagName;
         node->typeArguments = asNodeArray(typeArguments);
@@ -4169,7 +4169,7 @@ namespace ts {
     }
 //
 //        // @api
-//        function updateJsxSelfClosingElement(node: JsxSelfClosingElement, tagName: JsxTagNameExpression, optional<NodeArray> typeArguments, attributes: JsxAttributes) {
+//        function updateJsxSelfClosingElement(node: JsxSelfClosingElement, tagName: JsxTagNameExpression, sharedOpt<NodeArray> typeArguments, attributes: JsxAttributes) {
 //            return node->tagName != tagName
 //                || node->typeArguments != typeArguments
 //                || node->attributes != attributes
@@ -4178,7 +4178,7 @@ namespace ts {
 //        }
 //
 // @api
-    shared<JsxOpeningElement> Factory::createJsxOpeningElement(shared<NodeUnion(JsxTagNameExpression)> tagName, optional<NodeArray> typeArguments, shared<JsxAttributes> attributes) {
+    shared<JsxOpeningElement> Factory::createJsxOpeningElement(shared<NodeUnion(JsxTagNameExpression)> tagName, sharedOpt<NodeArray> typeArguments, shared<JsxAttributes> attributes) {
         auto node = createBaseNode<JsxOpeningElement>(SyntaxKind::JsxOpeningElement);
         node->tagName = tagName;
         node->typeArguments = asNodeArray(typeArguments);
@@ -4195,7 +4195,7 @@ namespace ts {
     }
 //
 //        // @api
-//        function updateJsxOpeningElement(node: JsxOpeningElement, tagName: JsxTagNameExpression, optional<NodeArray> typeArguments, attributes: JsxAttributes) {
+//        function updateJsxOpeningElement(node: JsxOpeningElement, tagName: JsxTagNameExpression, sharedOpt<NodeArray> typeArguments, attributes: JsxAttributes) {
 //            return node->tagName != tagName
 //                || node->typeArguments != typeArguments
 //                || node->attributes != attributes
@@ -4221,7 +4221,7 @@ namespace ts {
 //        }
 
 // @api
-    shared<JsxFragment> Factory::createJsxFragment(shared<JsxOpeningFragment> openingFragment, NodeArray children, shared<JsxClosingFragment> closingFragment) {
+    shared<JsxFragment> Factory::createJsxFragment(shared<JsxOpeningFragment> openingFragment, shared<NodeArray> children, shared<JsxClosingFragment> closingFragment) {
         auto node = createBaseNode<JsxFragment>(SyntaxKind::JsxFragment);
         node->openingFragment = openingFragment;
         node->children = createNodeArray(children);
@@ -4287,7 +4287,7 @@ namespace ts {
 //        }
 //
 // @api
-    shared<JsxAttributes> Factory::createJsxAttributes(NodeArray properties) {
+    shared<JsxAttributes> Factory::createJsxAttributes(shared<NodeArray> properties) {
         auto node = createBaseNode<JsxAttributes>(SyntaxKind::JsxAttributes);
         node->properties = createNodeArray(properties);
         node->transformFlags |=
@@ -4378,7 +4378,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<HeritageClause> Factory::createHeritageClause(SyntaxKind token, NodeArray types) {
+   shared<HeritageClause> Factory::createHeritageClause(SyntaxKind token, shared<NodeArray> types) {
         auto node = createBaseNode<HeritageClause>(SyntaxKind::HeritageClause);
         node->token = token;
         node->types = createNodeArray(types);
@@ -4439,8 +4439,8 @@ namespace ts {
    shared<PropertyAssignment> Factory::createPropertyAssignment(NameType name, shared<Expression> initializer) {
         auto node = createBaseNamedDeclaration<PropertyAssignment>(
                 SyntaxKind::PropertyAssignment,
-                /*decorators*/ {},
-                /*modifiers*/ {},
+                /*decorators*/ nullptr,
+                /*modifiers*/ nullptr,
                 name
         );
         node->initializer = parenthesizer.parenthesizeExpressionForDisallowedComma(initializer);
@@ -4471,8 +4471,8 @@ namespace ts {
    shared<ShorthandPropertyAssignment> Factory::createShorthandPropertyAssignment(NameType name, sharedOpt<Expression> objectAssignmentInitializer) {
         auto node = createBaseNamedDeclaration<ShorthandPropertyAssignment>(
                 SyntaxKind::ShorthandPropertyAssignment,
-                /*decorators*/ {},
-                /*modifiers*/ {},
+                /*decorators*/ nullptr,
+                /*modifiers*/ nullptr,
                 name
         );
         node->objectAssignmentInitializer = objectAssignmentInitializer ? parenthesizer.parenthesizeExpressionForDisallowedComma(objectAssignmentInitializer) : nullptr;
@@ -4859,7 +4859,7 @@ namespace ts {
 //        function createImmediatelyInvokedFunctionExpression(statements: readonly Statement[], param?: ParameterDeclaration, paramValue?: Expression) {
 //            return createCallExpression(
 //                createFunctionExpression(
-//                    /*modifiers*/ {},
+//                    /*modifiers*/ nullptr,
 //                    /*asteriskToken*/ {},
 //                    /*name*/ {},
 //                    /*typeParameters*/ {},
@@ -4877,7 +4877,7 @@ namespace ts {
 //        function createImmediatelyInvokedArrowFunction(statements: readonly Statement[], param?: ParameterDeclaration, paramValue?: Expression) {
 //            return createCallExpression(
 //                createArrowFunction(
-//                    /*modifiers*/ {},
+//                    /*modifiers*/ nullptr,
 //                    /*typeParameters*/ {},
 //                    /*parameters*/ param ? [param] : [],
 //                    /*type*/ {},
@@ -4895,16 +4895,16 @@ namespace ts {
 //
 //        function createExportDefault(shared<Expression> expression) {
 //            return createExportAssignment(
-//                /*decorators*/ {},
-//                /*modifiers*/ {},
+//                /*decorators*/ nullptr,
+//                /*modifiers*/ nullptr,
 //                /*isExportEquals*/ false,
 //                expression);
 //        }
 //
 //        function createExternalModuleExport(exportName: Identifier) {
 //            return createExportDeclaration(
-//                /*decorators*/ {},
-//                /*modifiers*/ {},
+//                /*decorators*/ nullptr,
+//                /*modifiers*/ nullptr,
 //                /*isTypeOnly*/ false,
 //                createNamedExports([
 //                    createExportSpecifier(/*isTypeOnly*/ false, /*propertyName*/ {}, exportName)
@@ -5162,12 +5162,12 @@ namespace ts {
 //                createParenthesizedExpression(
 //                    createObjectLiteralExpression([
 //                        createSetAccessorDeclaration(
-//                            /*decorators*/ {},
-//                            /*modifiers*/ {},
+//                            /*decorators*/ nullptr,
+//                            /*modifiers*/ nullptr,
 //                            "value",
 //                            [createParameterDeclaration(
-//                                /*decorators*/ {},
-//                                /*modifiers*/ {},
+//                                /*decorators*/ nullptr,
+//                                /*modifiers*/ nullptr,
 //                                /*dotDotDotToken*/ {},
 //                                paramName,
 //                                /*questionToken*/ {},
@@ -5387,7 +5387,7 @@ namespace ts {
 //        }
 //
 //        /**
-//         * Lifts a NodeArray containing only Statement nodes to a block.
+//         * Lifts a shared<NodeArray> containing only Statement nodes to a block.
 //         *
 //         * @param nodes The NodeArray.
 //         */

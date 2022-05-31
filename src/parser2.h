@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Tracy.hpp"
 #include <functional>
 #include <variant>
 #include <optional>
@@ -97,7 +98,7 @@ namespace ts {
 ////    /* @internal */
 ////    export const parseNodeFactory = createNodeFactory(NodeFactoryFlags.NoParenthesizerRules, parseBaseNodeFactory);
 
-    sharedOpt<Node> visitNode(function<sharedOpt<Node>(shared<Node>)> cbNode, sharedOpt<Node> node) {
+    inline sharedOpt<Node> visitNode(const function<sharedOpt<Node>(shared<Node>)> &cbNode, const sharedOpt<Node> &node) {
         if (node) cbNode(node);
         return nullptr;
     }
@@ -106,14 +107,20 @@ namespace ts {
 //        return cbNode(node);
 //    }
 
-    sharedOpt<Node> visitNodes(
-            function<sharedOpt<Node>(shared<Node>)> cbNode,
-            optional<function<sharedOpt<Node>(NodeArray)>> cbNodes,
-            optional<NodeArray> nodes
+    inline sharedOpt<Node> noop(const shared<NodeArray> &) {
+        return nullptr;
+    };
+
+    inline sharedOpt<Node> forEachChild(const shared<Node> &node, const function<sharedOpt<Node>(shared<Node>)> &cbNode, const function<sharedOpt<Node>(shared<NodeArray>)> &cbNodes = noop);
+
+    inline sharedOpt<Node> visitNodes(
+            const function<sharedOpt<Node>(shared<Node>)> &cbNode,
+            const function<sharedOpt<Node>(shared<NodeArray>)> &cbNodes = noop,
+            const sharedOpt<NodeArray> &nodes = nullptr
     ) {
         if (nodes) {
             if (cbNodes) {
-                return (*cbNodes)(*nodes);
+                return cbNodes(nodes);
             }
             for (auto node: nodes->list) {
                 auto result = cbNode(node);
@@ -130,10 +137,10 @@ namespace ts {
      * returns a truthy value, then returns that value.
      * If no such value is found, the callback is applied to each element of array and undefined is returned.
      */
-    sharedOpt<Node> forEach(optional<NodeArray> array, function<sharedOpt<Node>(shared<Node> element, int index)> callback) {
+    inline sharedOpt<Node> forEach(const sharedOpt<NodeArray> &array, const function<sharedOpt<Node>(shared<Node> element, int index)> &callback) {
         if (array) {
             for (int i = 0; i < array->list.size(); i++) {
-                auto result = callback((*array).list[i], i);
+                auto result = callback(array->list[i], i);
                 if (result) {
                     return result;
                 }
@@ -147,7 +154,7 @@ namespace ts {
 //     * returns a truthy value, then returns that value.
 //     * If no such value is found, the callback is applied to each element of array and undefined is returned.
 //     */
-//    bool forEach(optional<NodeArray> array, function<bool(shared<Node> element, int index)> callback) {
+//    bool forEach(sharedOpt<NodeArray>  array, function<bool(shared<Node> element, int index)> callback) {
 //        if (array) {
 //            for (int i = 0; i < array->list.size(); i ++) {
 //                auto result = callback((*array).list[i], i);
@@ -159,29 +166,30 @@ namespace ts {
 //        return false;
 //    }
 
-    bool some(optional<NodeArray> array, optional<function<bool(shared<Node> value)>> predicate) {
+//    inline bool some(const sharedOpt<NodeArray> &array) {
+//        if (array) {
+//            return array->list.size() > 0;
+//        }
+//        return false;
+//    }
+
+    inline bool some(const sharedOpt<NodeArray> &array, const function<bool(shared<Node> value)> &predicate) {
         if (array) {
-            if (predicate) {
-                for (auto &v: array->list) {
-                    if ((*predicate)(v)) {
-                        return true;
-                    }
+            for (auto &v: array->list) {
+                if (predicate(v)) {
+                    return true;
                 }
-            } else {
-                return array->list.size() > 0;
             }
         }
         return false;
     }
 
-    sharedOpt<Node> forEachChild(const shared<Node> &node, function<sharedOpt<Node>(shared<Node>)> cbNode, optional<function<sharedOpt<Node>(NodeArray)>> cbNodes = nullopt);
-
     /** Do not use hasModifier inside the parser; it relies on parent pointers. Use this instead. */
-    bool hasModifierOfKind(const shared<Node> &node, SyntaxKind kind) {
-        return some(node->modifiers, [kind](auto m) { return m->kind == kind; });
+    inline bool hasModifierOfKind(const shared<Node> &node, SyntaxKind kind) {
+        return some<Node>(node->modifiers, [kind](auto m) { return m->kind == kind; });
     }
 
-    sharedOpt<Node> isAnExternalModuleIndicatorNode(shared<Node> node, int) {
+    inline sharedOpt<Node> isAnExternalModuleIndicatorNode(shared<Node> node, int) {
         if (hasModifierOfKind(node, SyntaxKind::ExportKeyword)
             || (node->is<ImportEqualsDeclaration>() && isExternalModuleReference(node->to<ImportEqualsDeclaration>().moduleReference))
             || isImportDeclaration(node)
@@ -191,7 +199,7 @@ namespace ts {
         return nullptr;
     }
 
-    bool isImportMeta(const shared<Node> &node) {
+    inline bool isImportMeta(const shared<Node> &node) {
         if (isMetaProperty(node)) {
             auto meta = node->to<MetaProperty>();
             return meta.keywordToken == SyntaxKind::ImportKeyword && meta.name->to<Identifier>().escapedText == "meta";
@@ -199,19 +207,19 @@ namespace ts {
         return false;
     }
 
-    sharedOpt<Node> walkTreeForImportMeta(const shared<Node> &node) {
+    inline sharedOpt<Node> walkTreeForImportMeta(const shared<Node> &node) {
         if (isImportMeta(node)) return node;
-        return forEachChild(node, walkTreeForImportMeta, nullopt);
+        return forEachChild(node, walkTreeForImportMeta);
     }
 
-    sharedOpt<Node> getImportMetaIfNecessary(const shared<SourceFile> &sourceFile) {
+    inline sharedOpt<Node> getImportMetaIfNecessary(const shared<SourceFile> &sourceFile) {
         return sourceFile->flags & (int) NodeFlags::PossiblyContainsImportMeta ?
                walkTreeForImportMeta(sourceFile) :
                nullptr;
     }
 
     /*@internal*/
-    sharedOpt<Node> isFileProbablyExternalModule(const shared<SourceFile> &sourceFile) {
+    inline sharedOpt<Node> isFileProbablyExternalModule(const shared<SourceFile> &sourceFile) {
         // Try to use the first top-level import/export when available, then
         // fall back to looking for an 'import.meta' somewhere in the tree if necessary.
         auto r = forEach(sourceFile->statements, isAnExternalModuleIndicatorNode);
@@ -219,7 +227,6 @@ namespace ts {
 
         return getImportMetaIfNecessary(sourceFile);
     }
-
     /**
      * Invokes a callback for each child of the given node. The 'cbNode' callback is invoked for all child nodes
      * stored in properties. If a 'cbNodes' callback is specified, it is invoked for embedded arrays; otherwise,
@@ -233,85 +240,85 @@ namespace ts {
      * @remarks `forEachChild` must visit the children of a node in the order
      * that they appear in the source code. The language service depends on this property to locate nodes by position.
      */
-    sharedOpt<Node> forEachChild(Node &node, function<sharedOpt<Node>(shared<Node>)> cbNode, optional<function<sharedOpt<Node>(NodeArray)>> cbNodes) {
-        if (node.kind <= SyntaxKind::LastToken) {
+    inline sharedOpt<Node> forEachChild(const shared<Node> &node, const function<sharedOpt<Node>(shared<Node>)> &cbNode, const function<sharedOpt<Node>(shared<NodeArray>)> &cbNodes) {
+        if (node->kind <= SyntaxKind::LastToken) {
             return nullptr;
         }
-        switch (node.kind) {
+        switch (node->kind) {
             case SyntaxKind::QualifiedName:
                 //short-circuit evaluation is always boolean ... not last value in c++
-                return visitNode(cbNode, node.to<QualifiedName>().left) ||
-                       visitNode(cbNode, node.to<QualifiedName>().right);
+                return visitNode(cbNode, node->to<QualifiedName>().left) ||
+                       visitNode(cbNode, node->to<QualifiedName>().right);
             case SyntaxKind::TypeParameter:
-                return visitNodes(cbNode, cbNodes, node.to<TypeParameterDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<TypeParameterDeclaration>().name) ||
-                       visitNode(cbNode, node.to<TypeParameterDeclaration>().constraint) ||
-                       visitNode(cbNode, node.to<TypeParameterDeclaration>().defaultType) ||
-                       visitNode(cbNode, node.to<TypeParameterDeclaration>().expression);
+                return visitNodes(cbNode, cbNodes, node->to<TypeParameterDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<TypeParameterDeclaration>().name) ||
+                       visitNode(cbNode, node->to<TypeParameterDeclaration>().constraint) ||
+                       visitNode(cbNode, node->to<TypeParameterDeclaration>().defaultType) ||
+                       visitNode(cbNode, node->to<TypeParameterDeclaration>().expression);
             case SyntaxKind::ShorthandPropertyAssignment:
-                return visitNodes(cbNode, cbNodes, node.to<ShorthandPropertyAssignment>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<ShorthandPropertyAssignment>().modifiers) ||
-                       visitNode(cbNode, node.to<ShorthandPropertyAssignment>().name) ||
-                       visitNode(cbNode, node.to<ShorthandPropertyAssignment>().questionToken) ||
-                       visitNode(cbNode, node.to<ShorthandPropertyAssignment>().exclamationToken) ||
-                       visitNode(cbNode, node.to<ShorthandPropertyAssignment>().equalsToken) ||
-                       visitNode(cbNode, node.to<ShorthandPropertyAssignment>().objectAssignmentInitializer);
+                return visitNodes(cbNode, cbNodes, node->to<ShorthandPropertyAssignment>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<ShorthandPropertyAssignment>().modifiers) ||
+                       visitNode(cbNode, node->to<ShorthandPropertyAssignment>().name) ||
+                       visitNode(cbNode, node->to<ShorthandPropertyAssignment>().questionToken) ||
+                       visitNode(cbNode, node->to<ShorthandPropertyAssignment>().exclamationToken) ||
+                       visitNode(cbNode, node->to<ShorthandPropertyAssignment>().equalsToken) ||
+                       visitNode(cbNode, node->to<ShorthandPropertyAssignment>().objectAssignmentInitializer);
             case SyntaxKind::SpreadAssignment:
-                return visitNode(cbNode, node.to<SpreadAssignment>().expression);
+                return visitNode(cbNode, node->to<SpreadAssignment>().expression);
             case SyntaxKind::Parameter:
-                return visitNodes(cbNode, cbNodes, node.to<ParameterDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<ParameterDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<ParameterDeclaration>().dotDotDotToken) ||
-                       visitNode(cbNode, node.to<ParameterDeclaration>().name) ||
-                       visitNode(cbNode, node.to<ParameterDeclaration>().questionToken) ||
-                       visitNode(cbNode, node.to<ParameterDeclaration>().type) ||
-                       visitNode(cbNode, node.to<ParameterDeclaration>().initializer);
+                return visitNodes(cbNode, cbNodes, node->to<ParameterDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<ParameterDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<ParameterDeclaration>().dotDotDotToken) ||
+                       visitNode(cbNode, node->to<ParameterDeclaration>().name) ||
+                       visitNode(cbNode, node->to<ParameterDeclaration>().questionToken) ||
+                       visitNode(cbNode, node->to<ParameterDeclaration>().type) ||
+                       visitNode(cbNode, node->to<ParameterDeclaration>().initializer);
             case SyntaxKind::PropertyDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<PropertyDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<PropertyDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<PropertyDeclaration>().name) ||
-                       visitNode(cbNode, node.to<PropertyDeclaration>().questionToken) ||
-                       visitNode(cbNode, node.to<PropertyDeclaration>().exclamationToken) ||
-                       visitNode(cbNode, node.to<PropertyDeclaration>().type) ||
-                       visitNode(cbNode, node.to<PropertyDeclaration>().initializer);
+                return visitNodes(cbNode, cbNodes, node->to<PropertyDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<PropertyDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<PropertyDeclaration>().name) ||
+                       visitNode(cbNode, node->to<PropertyDeclaration>().questionToken) ||
+                       visitNode(cbNode, node->to<PropertyDeclaration>().exclamationToken) ||
+                       visitNode(cbNode, node->to<PropertyDeclaration>().type) ||
+                       visitNode(cbNode, node->to<PropertyDeclaration>().initializer);
             case SyntaxKind::PropertySignature:
-                return visitNodes(cbNode, cbNodes, node.to<PropertySignature>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<PropertySignature>().modifiers) ||
-                       visitNode(cbNode, node.to<PropertySignature>().name) ||
-                       visitNode(cbNode, node.to<PropertySignature>().questionToken) ||
-                       visitNode(cbNode, node.to<PropertySignature>().type) ||
-                       visitNode(cbNode, node.to<PropertySignature>().initializer);
+                return visitNodes(cbNode, cbNodes, node->to<PropertySignature>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<PropertySignature>().modifiers) ||
+                       visitNode(cbNode, node->to<PropertySignature>().name) ||
+                       visitNode(cbNode, node->to<PropertySignature>().questionToken) ||
+                       visitNode(cbNode, node->to<PropertySignature>().type) ||
+                       visitNode(cbNode, node->to<PropertySignature>().initializer);
             case SyntaxKind::PropertyAssignment:
-                return visitNodes(cbNode, cbNodes, node.to<PropertyAssignment>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<PropertyAssignment>().modifiers) ||
-                       visitNode(cbNode, node.to<PropertyAssignment>().name) ||
-                       visitNode(cbNode, node.to<PropertyAssignment>().questionToken) ||
-                       visitNode(cbNode, node.to<PropertyAssignment>().initializer);
+                return visitNodes(cbNode, cbNodes, node->to<PropertyAssignment>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<PropertyAssignment>().modifiers) ||
+                       visitNode(cbNode, node->to<PropertyAssignment>().name) ||
+                       visitNode(cbNode, node->to<PropertyAssignment>().questionToken) ||
+                       visitNode(cbNode, node->to<PropertyAssignment>().initializer);
             case SyntaxKind::VariableDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<VariableDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<VariableDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<VariableDeclaration>().name) ||
-                       visitNode(cbNode, node.to<VariableDeclaration>().exclamationToken) ||
-                       visitNode(cbNode, node.to<VariableDeclaration>().type) ||
-                       visitNode(cbNode, node.to<VariableDeclaration>().initializer);
+                return visitNodes(cbNode, cbNodes, node->to<VariableDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<VariableDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<VariableDeclaration>().name) ||
+                       visitNode(cbNode, node->to<VariableDeclaration>().exclamationToken) ||
+                       visitNode(cbNode, node->to<VariableDeclaration>().type) ||
+                       visitNode(cbNode, node->to<VariableDeclaration>().initializer);
             case SyntaxKind::BindingElement: {
-                return visitNodes(cbNode, cbNodes, node.to<BindingElement>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<BindingElement>().modifiers) ||
-                       visitNode(cbNode, node.to<BindingElement>().dotDotDotToken) ||
-                       visitNode(cbNode, node.to<BindingElement>().propertyName) ||
-                       visitNode(cbNode, node.to<BindingElement>().name) ||
-                       visitNode(cbNode, node.to<BindingElement>().initializer);
+                return visitNodes(cbNode, cbNodes, node->to<BindingElement>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<BindingElement>().modifiers) ||
+                       visitNode(cbNode, node->to<BindingElement>().dotDotDotToken) ||
+                       visitNode(cbNode, node->to<BindingElement>().propertyName) ||
+                       visitNode(cbNode, node->to<BindingElement>().name) ||
+                       visitNode(cbNode, node->to<BindingElement>().initializer);
             }
             case SyntaxKind::FunctionType:
             case SyntaxKind::ConstructorType:
             case SyntaxKind::CallSignature:
             case SyntaxKind::ConstructSignature:
             case SyntaxKind::IndexSignature:
-                return visitNodes(cbNode, cbNodes, node.decorators) ||
-                       visitNodes(cbNode, cbNodes, node.modifiers) ||
-                       visitNodes(cbNode, cbNodes, node.to<IndexSignatureDeclaration>().typeParameters) ||
-                       visitNodes(cbNode, cbNodes, node.to<IndexSignatureDeclaration>().parameters) ||
-                       visitNode(cbNode, node.to<IndexSignatureDeclaration>().type);
+                return visitNodes(cbNode, cbNodes, node->decorators) ||
+                       visitNodes(cbNode, cbNodes, node->modifiers) ||
+                       visitNodes(cbNode, cbNodes, node->to<IndexSignatureDeclaration>().typeParameters) ||
+                       visitNodes(cbNode, cbNodes, node->to<IndexSignatureDeclaration>().parameters) ||
+                       visitNode(cbNode, node->to<IndexSignatureDeclaration>().type);
             case SyntaxKind::MethodDeclaration:
             case SyntaxKind::MethodSignature:
             case SyntaxKind::Constructor:
@@ -320,358 +327,358 @@ namespace ts {
             case SyntaxKind::FunctionExpression:
             case SyntaxKind::FunctionDeclaration:
             case SyntaxKind::ArrowFunction: {
-                if (auto b = visitNodes(cbNode, cbNodes, node.decorators)) return b;
+                if (auto b = visitNodes(cbNode, cbNodes, node->decorators)) return b;
 
-                return visitNodes(cbNode, cbNodes, node.decorators) ||
-                       visitNodes(cbNode, cbNodes, node.modifiers) ||
-                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().asteriskToken) ||
-                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().name) ||
-                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().questionToken) ||
-                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().exclamationToken) ||
-                       visitNodes(cbNode, cbNodes, node.cast<FunctionLikeDeclarationBase>().typeParameters) ||
-                       visitNodes(cbNode, cbNodes, node.cast<FunctionLikeDeclarationBase>().parameters) ||
-                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().type) ||
-                       (node.kind == SyntaxKind::ArrowFunction ? visitNode(cbNode, node.to<ArrowFunction>().equalsGreaterThanToken) : shared<Node>(nullptr)) ||
-                       visitNode(cbNode, node.cast<FunctionLikeDeclarationBase>().body);
+                return visitNodes(cbNode, cbNodes, node->decorators) ||
+                       visitNodes(cbNode, cbNodes, node->modifiers) ||
+                       visitNode(cbNode, node->cast<FunctionLikeDeclarationBase>().asteriskToken) ||
+                       visitNode(cbNode, node->cast<FunctionLikeDeclarationBase>().name) ||
+                       visitNode(cbNode, node->cast<FunctionLikeDeclarationBase>().questionToken) ||
+                       visitNode(cbNode, node->cast<FunctionLikeDeclarationBase>().exclamationToken) ||
+                       visitNodes(cbNode, cbNodes, node->cast<FunctionLikeDeclarationBase>().typeParameters) ||
+                       visitNodes(cbNode, cbNodes, node->cast<FunctionLikeDeclarationBase>().parameters) ||
+                       visitNode(cbNode, node->cast<FunctionLikeDeclarationBase>().type) ||
+                       (node->kind == SyntaxKind::ArrowFunction ? visitNode(cbNode, node->to<ArrowFunction>().equalsGreaterThanToken) : shared<Node>(nullptr)) ||
+                       visitNode(cbNode, node->cast<FunctionLikeDeclarationBase>().body);
             }
             case SyntaxKind::ClassStaticBlockDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<ClassStaticBlockDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<ClassStaticBlockDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<ClassStaticBlockDeclaration>().body);
+                return visitNodes(cbNode, cbNodes, node->to<ClassStaticBlockDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<ClassStaticBlockDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<ClassStaticBlockDeclaration>().body);
             case SyntaxKind::TypeReference:
-                return visitNode(cbNode, node.to<TypeReferenceNode>().typeName) ||
-                       visitNodes(cbNode, cbNodes, node.to<TypeReferenceNode>().typeArguments);
+                return visitNode(cbNode, node->to<TypeReferenceNode>().typeName) ||
+                       visitNodes(cbNode, cbNodes, node->to<TypeReferenceNode>().typeArguments);
             case SyntaxKind::TypePredicate:
-                return visitNode(cbNode, node.to<TypePredicateNode>().assertsModifier) ||
-                       visitNode(cbNode, node.to<TypePredicateNode>().parameterName) ||
-                       visitNode(cbNode, node.to<TypePredicateNode>().type);
+                return visitNode(cbNode, node->to<TypePredicateNode>().assertsModifier) ||
+                       visitNode(cbNode, node->to<TypePredicateNode>().parameterName) ||
+                       visitNode(cbNode, node->to<TypePredicateNode>().type);
             case SyntaxKind::TypeQuery:
-                return visitNode(cbNode, node.to<TypeQueryNode>().exprName) ||
-                       visitNodes(cbNode, cbNodes, node.to<TypeQueryNode>().typeArguments);
+                return visitNode(cbNode, node->to<TypeQueryNode>().exprName) ||
+                       visitNodes(cbNode, cbNodes, node->to<TypeQueryNode>().typeArguments);
             case SyntaxKind::TypeLiteral:
-                return visitNodes(cbNode, cbNodes, node.to<TypeLiteralNode>().members);
+                return visitNodes(cbNode, cbNodes, node->to<TypeLiteralNode>().members);
             case SyntaxKind::ArrayType:
-                return visitNode(cbNode, node.to<ArrayTypeNode>().elementType);
+                return visitNode(cbNode, node->to<ArrayTypeNode>().elementType);
             case SyntaxKind::TupleType:
-                return visitNodes(cbNode, cbNodes, node.to<TupleTypeNode>().elements);
+                return visitNodes(cbNode, cbNodes, node->to<TupleTypeNode>().elements);
             case SyntaxKind::UnionType:
-                return visitNodes(cbNode, cbNodes, node.to<UnionTypeNode>().types);
+                return visitNodes(cbNode, cbNodes, node->to<UnionTypeNode>().types);
             case SyntaxKind::IntersectionType:
-                return visitNodes(cbNode, cbNodes, node.to<IntersectionTypeNode>().types);
+                return visitNodes(cbNode, cbNodes, node->to<IntersectionTypeNode>().types);
             case SyntaxKind::ConditionalType:
-                return visitNode(cbNode, node.to<ConditionalTypeNode>().checkType) ||
-                       visitNode(cbNode, node.to<ConditionalTypeNode>().extendsType) ||
-                       visitNode(cbNode, node.to<ConditionalTypeNode>().trueType) ||
-                       visitNode(cbNode, node.to<ConditionalTypeNode>().falseType);
+                return visitNode(cbNode, node->to<ConditionalTypeNode>().checkType) ||
+                       visitNode(cbNode, node->to<ConditionalTypeNode>().extendsType) ||
+                       visitNode(cbNode, node->to<ConditionalTypeNode>().trueType) ||
+                       visitNode(cbNode, node->to<ConditionalTypeNode>().falseType);
             case SyntaxKind::InferType:
-                return visitNode(cbNode, node.to<InferTypeNode>().typeParameter);
+                return visitNode(cbNode, node->to<InferTypeNode>().typeParameter);
             case SyntaxKind::ImportType:
-                return visitNode(cbNode, node.to<ImportTypeNode>().argument) ||
-                       visitNode(cbNode, node.to<ImportTypeNode>().assertions) ||
-                       visitNode(cbNode, node.to<ImportTypeNode>().qualifier) ||
-                       visitNodes(cbNode, cbNodes, node.to<ImportTypeNode>().typeArguments);
+                return visitNode(cbNode, node->to<ImportTypeNode>().argument) ||
+                       visitNode(cbNode, node->to<ImportTypeNode>().assertions) ||
+                       visitNode(cbNode, node->to<ImportTypeNode>().qualifier) ||
+                       visitNodes(cbNode, cbNodes, node->to<ImportTypeNode>().typeArguments);
             case SyntaxKind::ImportTypeAssertionContainer:
-                return visitNode(cbNode, node.to<ImportTypeAssertionContainer>().assertClause);
+                return visitNode(cbNode, node->to<ImportTypeAssertionContainer>().assertClause);
             case SyntaxKind::ParenthesizedType:
-                return visitNode(cbNode, node.to<ParenthesizedTypeNode>().type);
+                return visitNode(cbNode, node->to<ParenthesizedTypeNode>().type);
             case SyntaxKind::TypeOperator:
-                return visitNode(cbNode, node.to<TypeOperatorNode>().type);
+                return visitNode(cbNode, node->to<TypeOperatorNode>().type);
             case SyntaxKind::IndexedAccessType:
-                return visitNode(cbNode, node.to<IndexedAccessTypeNode>().objectType) ||
-                       visitNode(cbNode, node.to<IndexedAccessTypeNode>().indexType);
+                return visitNode(cbNode, node->to<IndexedAccessTypeNode>().objectType) ||
+                       visitNode(cbNode, node->to<IndexedAccessTypeNode>().indexType);
             case SyntaxKind::MappedType:
-                return visitNode(cbNode, node.to<MappedTypeNode>().readonlyToken) ||
-                       visitNode(cbNode, node.to<MappedTypeNode>().typeParameter) ||
-                       visitNode(cbNode, node.to<MappedTypeNode>().nameType) ||
-                       visitNode(cbNode, node.to<MappedTypeNode>().questionToken) ||
-                       visitNode(cbNode, node.to<MappedTypeNode>().type) ||
-                       visitNodes(cbNode, cbNodes, node.to<MappedTypeNode>().members);
+                return visitNode(cbNode, node->to<MappedTypeNode>().readonlyToken) ||
+                       visitNode(cbNode, node->to<MappedTypeNode>().typeParameter) ||
+                       visitNode(cbNode, node->to<MappedTypeNode>().nameType) ||
+                       visitNode(cbNode, node->to<MappedTypeNode>().questionToken) ||
+                       visitNode(cbNode, node->to<MappedTypeNode>().type) ||
+                       visitNodes(cbNode, cbNodes, node->to<MappedTypeNode>().members);
             case SyntaxKind::LiteralType:
-                return visitNode(cbNode, node.to<LiteralTypeNode>().literal);
+                return visitNode(cbNode, node->to<LiteralTypeNode>().literal);
             case SyntaxKind::NamedTupleMember:
-                return visitNode(cbNode, node.to<NamedTupleMember>().dotDotDotToken) ||
-                       visitNode(cbNode, node.to<NamedTupleMember>().name) ||
-                       visitNode(cbNode, node.to<NamedTupleMember>().questionToken) ||
-                       visitNode(cbNode, node.to<NamedTupleMember>().type);
+                return visitNode(cbNode, node->to<NamedTupleMember>().dotDotDotToken) ||
+                       visitNode(cbNode, node->to<NamedTupleMember>().name) ||
+                       visitNode(cbNode, node->to<NamedTupleMember>().questionToken) ||
+                       visitNode(cbNode, node->to<NamedTupleMember>().type);
             case SyntaxKind::ObjectBindingPattern:
-                return visitNodes(cbNode, cbNodes, node.to<ObjectBindingPattern>().elements);
+                return visitNodes(cbNode, cbNodes, node->to<ObjectBindingPattern>().elements);
             case SyntaxKind::ArrayBindingPattern:
-                return visitNodes(cbNode, cbNodes, node.to<ArrayBindingPattern>().elements);
+                return visitNodes(cbNode, cbNodes, node->to<ArrayBindingPattern>().elements);
             case SyntaxKind::ArrayLiteralExpression:
-                return visitNodes(cbNode, cbNodes, node.to<ArrayLiteralExpression>().elements);
+                return visitNodes(cbNode, cbNodes, node->to<ArrayLiteralExpression>().elements);
             case SyntaxKind::ObjectLiteralExpression:
-                return visitNodes(cbNode, cbNodes, node.to<ObjectLiteralExpression>().properties);
+                return visitNodes(cbNode, cbNodes, node->to<ObjectLiteralExpression>().properties);
             case SyntaxKind::PropertyAccessExpression:
-                return visitNode(cbNode, node.to<PropertyAccessExpression>().expression) ||
-                       visitNode(cbNode, node.to<PropertyAccessExpression>().questionDotToken) ||
-                       visitNode(cbNode, node.to<PropertyAccessExpression>().name);
+                return visitNode(cbNode, node->to<PropertyAccessExpression>().expression) ||
+                       visitNode(cbNode, node->to<PropertyAccessExpression>().questionDotToken) ||
+                       visitNode(cbNode, node->to<PropertyAccessExpression>().name);
             case SyntaxKind::ElementAccessExpression:
-                return visitNode(cbNode, node.to<ElementAccessExpression>().expression) ||
-                       visitNode(cbNode, node.to<ElementAccessExpression>().questionDotToken) ||
-                       visitNode(cbNode, node.to<ElementAccessExpression>().argumentExpression);
+                return visitNode(cbNode, node->to<ElementAccessExpression>().expression) ||
+                       visitNode(cbNode, node->to<ElementAccessExpression>().questionDotToken) ||
+                       visitNode(cbNode, node->to<ElementAccessExpression>().argumentExpression);
             case SyntaxKind::CallExpression:
             case SyntaxKind::NewExpression:
-                return visitNode(cbNode, node.to<CallExpression>().expression) ||
-                       visitNode(cbNode, node.to<CallExpression>().questionDotToken) ||
-                       visitNodes(cbNode, cbNodes, node.to<CallExpression>().typeArguments) ||
-                       visitNodes(cbNode, cbNodes, node.to<CallExpression>().arguments);
+                return visitNode(cbNode, node->to<CallExpression>().expression) ||
+                       visitNode(cbNode, node->to<CallExpression>().questionDotToken) ||
+                       visitNodes(cbNode, cbNodes, node->to<CallExpression>().typeArguments) ||
+                       visitNodes(cbNode, cbNodes, node->to<CallExpression>().arguments);
             case SyntaxKind::TaggedTemplateExpression:
-                return visitNode(cbNode, node.to<TaggedTemplateExpression>().tag) ||
-                       visitNode(cbNode, node.to<TaggedTemplateExpression>().questionDotToken) ||
-                       visitNodes(cbNode, cbNodes, node.to<TaggedTemplateExpression>().typeArguments) ||
-                       visitNode(cbNode, node.to<TaggedTemplateExpression>().templateLiteral);
+                return visitNode(cbNode, node->to<TaggedTemplateExpression>().tag) ||
+                       visitNode(cbNode, node->to<TaggedTemplateExpression>().questionDotToken) ||
+                       visitNodes(cbNode, cbNodes, node->to<TaggedTemplateExpression>().typeArguments) ||
+                       visitNode(cbNode, node->to<TaggedTemplateExpression>().templateLiteral);
             case SyntaxKind::TypeAssertionExpression:
-                return visitNode(cbNode, node.to<TypeAssertion>().type) ||
-                       visitNode(cbNode, node.to<TypeAssertion>().expression);
+                return visitNode(cbNode, node->to<TypeAssertion>().type) ||
+                       visitNode(cbNode, node->to<TypeAssertion>().expression);
             case SyntaxKind::ParenthesizedExpression:
-                return visitNode(cbNode, node.to<ParenthesizedExpression>().expression);
+                return visitNode(cbNode, node->to<ParenthesizedExpression>().expression);
             case SyntaxKind::DeleteExpression:
-                return visitNode(cbNode, node.to<DeleteExpression>().expression);
+                return visitNode(cbNode, node->to<DeleteExpression>().expression);
             case SyntaxKind::TypeOfExpression:
-                return visitNode(cbNode, node.to<TypeOfExpression>().expression);
+                return visitNode(cbNode, node->to<TypeOfExpression>().expression);
             case SyntaxKind::VoidExpression:
-                return visitNode(cbNode, node.to<VoidExpression>().expression);
+                return visitNode(cbNode, node->to<VoidExpression>().expression);
             case SyntaxKind::PrefixUnaryExpression:
-                return visitNode(cbNode, node.to<PrefixUnaryExpression>().operand);
+                return visitNode(cbNode, node->to<PrefixUnaryExpression>().operand);
             case SyntaxKind::YieldExpression:
-                return visitNode(cbNode, node.to<YieldExpression>().asteriskToken) ||
-                       visitNode(cbNode, node.to<YieldExpression>().expression);
+                return visitNode(cbNode, node->to<YieldExpression>().asteriskToken) ||
+                       visitNode(cbNode, node->to<YieldExpression>().expression);
             case SyntaxKind::AwaitExpression:
-                return visitNode(cbNode, node.to<AwaitExpression>().expression);
+                return visitNode(cbNode, node->to<AwaitExpression>().expression);
             case SyntaxKind::PostfixUnaryExpression:
-                return visitNode(cbNode, node.to<PostfixUnaryExpression>().operand);
+                return visitNode(cbNode, node->to<PostfixUnaryExpression>().operand);
             case SyntaxKind::BinaryExpression:
-                return visitNode(cbNode, node.to<BinaryExpression>().left) ||
-                       visitNode(cbNode, node.to<BinaryExpression>().operatorToken) ||
-                       visitNode(cbNode, node.to<BinaryExpression>().right);
+                return visitNode(cbNode, node->to<BinaryExpression>().left) ||
+                       visitNode(cbNode, node->to<BinaryExpression>().operatorToken) ||
+                       visitNode(cbNode, node->to<BinaryExpression>().right);
             case SyntaxKind::AsExpression:
-                return visitNode(cbNode, node.to<AsExpression>().expression) ||
-                       visitNode(cbNode, node.to<AsExpression>().type);
+                return visitNode(cbNode, node->to<AsExpression>().expression) ||
+                       visitNode(cbNode, node->to<AsExpression>().type);
             case SyntaxKind::NonNullExpression:
-                return visitNode(cbNode, node.to<NonNullExpression>().expression);
+                return visitNode(cbNode, node->to<NonNullExpression>().expression);
             case SyntaxKind::MetaProperty:
-                return visitNode(cbNode, node.to<MetaProperty>().name);
+                return visitNode(cbNode, node->to<MetaProperty>().name);
             case SyntaxKind::ConditionalExpression:
-                return visitNode(cbNode, node.to<ConditionalExpression>().condition) ||
-                       visitNode(cbNode, node.to<ConditionalExpression>().questionToken) ||
-                       visitNode(cbNode, node.to<ConditionalExpression>().whenTrue) ||
-                       visitNode(cbNode, node.to<ConditionalExpression>().colonToken) ||
-                       visitNode(cbNode, node.to<ConditionalExpression>().whenFalse);
+                return visitNode(cbNode, node->to<ConditionalExpression>().condition) ||
+                       visitNode(cbNode, node->to<ConditionalExpression>().questionToken) ||
+                       visitNode(cbNode, node->to<ConditionalExpression>().whenTrue) ||
+                       visitNode(cbNode, node->to<ConditionalExpression>().colonToken) ||
+                       visitNode(cbNode, node->to<ConditionalExpression>().whenFalse);
             case SyntaxKind::SpreadElement:
-                return visitNode(cbNode, node.to<SpreadElement>().expression);
+                return visitNode(cbNode, node->to<SpreadElement>().expression);
             case SyntaxKind::Block:
             case SyntaxKind::ModuleBlock:
-                return visitNodes(cbNode, cbNodes, node.to<Block>().statements);
+                return visitNodes(cbNode, cbNodes, node->to<Block>().statements);
             case SyntaxKind::SourceFile:
-                return visitNodes(cbNode, cbNodes, node.to<SourceFile>().statements) ||
-                       visitNode(cbNode, node.to<SourceFile>().endOfFileToken);
+                return visitNodes(cbNode, cbNodes, node->to<SourceFile>().statements) ||
+                       visitNode(cbNode, node->to<SourceFile>().endOfFileToken);
             case SyntaxKind::VariableStatement:
-                return visitNodes(cbNode, cbNodes, node.to<VariableStatement>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<VariableStatement>().modifiers) ||
-                       visitNode(cbNode, node.to<VariableStatement>().declarationList);
+                return visitNodes(cbNode, cbNodes, node->to<VariableStatement>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<VariableStatement>().modifiers) ||
+                       visitNode(cbNode, node->to<VariableStatement>().declarationList);
             case SyntaxKind::VariableDeclarationList:
-                return visitNodes(cbNode, cbNodes, node.to<VariableDeclarationList>().declarations);
+                return visitNodes(cbNode, cbNodes, node->to<VariableDeclarationList>().declarations);
             case SyntaxKind::ExpressionStatement:
-                return visitNode(cbNode, node.to<ExpressionStatement>().expression);
+                return visitNode(cbNode, node->to<ExpressionStatement>().expression);
             case SyntaxKind::IfStatement:
-                return visitNode(cbNode, node.to<IfStatement>().expression) ||
-                       visitNode(cbNode, node.to<IfStatement>().thenStatement) ||
-                       visitNode(cbNode, node.to<IfStatement>().elseStatement);
+                return visitNode(cbNode, node->to<IfStatement>().expression) ||
+                       visitNode(cbNode, node->to<IfStatement>().thenStatement) ||
+                       visitNode(cbNode, node->to<IfStatement>().elseStatement);
             case SyntaxKind::DoStatement:
-                return visitNode(cbNode, node.to<DoStatement>().statement) ||
-                       visitNode(cbNode, node.to<DoStatement>().expression);
+                return visitNode(cbNode, node->to<DoStatement>().statement) ||
+                       visitNode(cbNode, node->to<DoStatement>().expression);
             case SyntaxKind::WhileStatement:
-                return visitNode(cbNode, node.to<WhileStatement>().expression) ||
-                       visitNode(cbNode, node.to<WhileStatement>().statement);
+                return visitNode(cbNode, node->to<WhileStatement>().expression) ||
+                       visitNode(cbNode, node->to<WhileStatement>().statement);
             case SyntaxKind::ForStatement:
-                return visitNode(cbNode, node.to<ForStatement>().initializer) ||
-                       visitNode(cbNode, node.to<ForStatement>().condition) ||
-                       visitNode(cbNode, node.to<ForStatement>().incrementor) ||
-                       visitNode(cbNode, node.to<ForStatement>().statement);
+                return visitNode(cbNode, node->to<ForStatement>().initializer) ||
+                       visitNode(cbNode, node->to<ForStatement>().condition) ||
+                       visitNode(cbNode, node->to<ForStatement>().incrementor) ||
+                       visitNode(cbNode, node->to<ForStatement>().statement);
             case SyntaxKind::ForInStatement:
-                return visitNode(cbNode, node.to<ForInStatement>().initializer) ||
-                       visitNode(cbNode, node.to<ForInStatement>().expression) ||
-                       visitNode(cbNode, node.to<ForInStatement>().statement);
+                return visitNode(cbNode, node->to<ForInStatement>().initializer) ||
+                       visitNode(cbNode, node->to<ForInStatement>().expression) ||
+                       visitNode(cbNode, node->to<ForInStatement>().statement);
             case SyntaxKind::ForOfStatement:
-                return visitNode(cbNode, node.to<ForOfStatement>().awaitModifier) ||
-                       visitNode(cbNode, node.to<ForOfStatement>().initializer) ||
-                       visitNode(cbNode, node.to<ForOfStatement>().expression) ||
-                       visitNode(cbNode, node.to<ForOfStatement>().statement);
+                return visitNode(cbNode, node->to<ForOfStatement>().awaitModifier) ||
+                       visitNode(cbNode, node->to<ForOfStatement>().initializer) ||
+                       visitNode(cbNode, node->to<ForOfStatement>().expression) ||
+                       visitNode(cbNode, node->to<ForOfStatement>().statement);
             case SyntaxKind::ContinueStatement:
-                return visitNode(cbNode, node.to<ContinueStatement>().label);
+                return visitNode(cbNode, node->to<ContinueStatement>().label);
             case SyntaxKind::BreakStatement:
-                return visitNode(cbNode, node.to<BreakStatement>().label);
+                return visitNode(cbNode, node->to<BreakStatement>().label);
             case SyntaxKind::ReturnStatement:
-                return visitNode(cbNode, node.to<ReturnStatement>().expression);
+                return visitNode(cbNode, node->to<ReturnStatement>().expression);
             case SyntaxKind::WithStatement:
-                return visitNode(cbNode, node.to<WithStatement>().expression) ||
-                       visitNode(cbNode, node.to<WithStatement>().statement);
+                return visitNode(cbNode, node->to<WithStatement>().expression) ||
+                       visitNode(cbNode, node->to<WithStatement>().statement);
             case SyntaxKind::SwitchStatement:
-                return visitNode(cbNode, node.to<SwitchStatement>().expression) ||
-                       visitNode(cbNode, node.to<SwitchStatement>().caseBlock);
+                return visitNode(cbNode, node->to<SwitchStatement>().expression) ||
+                       visitNode(cbNode, node->to<SwitchStatement>().caseBlock);
             case SyntaxKind::CaseBlock:
-                return visitNodes(cbNode, cbNodes, node.to<CaseBlock>().clauses);
+                return visitNodes(cbNode, cbNodes, node->to<CaseBlock>().clauses);
             case SyntaxKind::CaseClause:
-                return visitNode(cbNode, node.to<CaseClause>().expression) ||
-                       visitNodes(cbNode, cbNodes, node.to<CaseClause>().statements);
+                return visitNode(cbNode, node->to<CaseClause>().expression) ||
+                       visitNodes(cbNode, cbNodes, node->to<CaseClause>().statements);
             case SyntaxKind::DefaultClause:
-                return visitNodes(cbNode, cbNodes, node.to<DefaultClause>().statements);
+                return visitNodes(cbNode, cbNodes, node->to<DefaultClause>().statements);
             case SyntaxKind::LabeledStatement:
-                return visitNode(cbNode, node.to<LabeledStatement>().label) ||
-                       visitNode(cbNode, node.to<LabeledStatement>().statement);
+                return visitNode(cbNode, node->to<LabeledStatement>().label) ||
+                       visitNode(cbNode, node->to<LabeledStatement>().statement);
             case SyntaxKind::ThrowStatement:
-                return visitNode(cbNode, node.to<ThrowStatement>().expression);
+                return visitNode(cbNode, node->to<ThrowStatement>().expression);
             case SyntaxKind::TryStatement:
-                return visitNode(cbNode, node.to<TryStatement>().tryBlock) ||
-                       visitNode(cbNode, node.to<TryStatement>().catchClause) ||
-                       visitNode(cbNode, node.to<TryStatement>().finallyBlock);
+                return visitNode(cbNode, node->to<TryStatement>().tryBlock) ||
+                       visitNode(cbNode, node->to<TryStatement>().catchClause) ||
+                       visitNode(cbNode, node->to<TryStatement>().finallyBlock);
             case SyntaxKind::CatchClause:
-                return visitNode(cbNode, node.to<CatchClause>().variableDeclaration) ||
-                       visitNode(cbNode, node.to<CatchClause>().block);
+                return visitNode(cbNode, node->to<CatchClause>().variableDeclaration) ||
+                       visitNode(cbNode, node->to<CatchClause>().block);
             case SyntaxKind::Decorator:
-                return visitNode(cbNode, node.to<Decorator>().expression);
+                return visitNode(cbNode, node->to<Decorator>().expression);
             case SyntaxKind::ClassDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<ClassDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<ClassDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<ClassDeclaration>().name) ||
-                       visitNodes(cbNode, cbNodes, node.to<ClassDeclaration>().typeParameters) ||
-                       visitNodes(cbNode, cbNodes, node.to<ClassDeclaration>().heritageClauses) ||
-                       visitNodes(cbNode, cbNodes, node.to<ClassDeclaration>().members);
+                return visitNodes(cbNode, cbNodes, node->to<ClassDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<ClassDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<ClassDeclaration>().name) ||
+                       visitNodes(cbNode, cbNodes, node->to<ClassDeclaration>().typeParameters) ||
+                       visitNodes(cbNode, cbNodes, node->to<ClassDeclaration>().heritageClauses) ||
+                       visitNodes(cbNode, cbNodes, node->to<ClassDeclaration>().members);
             case SyntaxKind::ClassExpression:
-                return visitNodes(cbNode, cbNodes, node.to<ClassExpression>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<ClassExpression>().modifiers) ||
-                       visitNode(cbNode, node.to<ClassExpression>().name) ||
-                       visitNodes(cbNode, cbNodes, node.to<ClassExpression>().typeParameters) ||
-                       visitNodes(cbNode, cbNodes, node.to<ClassExpression>().heritageClauses) ||
-                       visitNodes(cbNode, cbNodes, node.to<ClassExpression>().members);
+                return visitNodes(cbNode, cbNodes, node->to<ClassExpression>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<ClassExpression>().modifiers) ||
+                       visitNode(cbNode, node->to<ClassExpression>().name) ||
+                       visitNodes(cbNode, cbNodes, node->to<ClassExpression>().typeParameters) ||
+                       visitNodes(cbNode, cbNodes, node->to<ClassExpression>().heritageClauses) ||
+                       visitNodes(cbNode, cbNodes, node->to<ClassExpression>().members);
             case SyntaxKind::InterfaceDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<InterfaceDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<InterfaceDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<InterfaceDeclaration>().name) ||
-                       visitNodes(cbNode, cbNodes, node.to<InterfaceDeclaration>().typeParameters) ||
-                       visitNodes(cbNode, cbNodes, node.to<ClassDeclaration>().heritageClauses) ||
-                       visitNodes(cbNode, cbNodes, node.to<InterfaceDeclaration>().members);
+                return visitNodes(cbNode, cbNodes, node->to<InterfaceDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<InterfaceDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<InterfaceDeclaration>().name) ||
+                       visitNodes(cbNode, cbNodes, node->to<InterfaceDeclaration>().typeParameters) ||
+                       visitNodes(cbNode, cbNodes, node->to<ClassDeclaration>().heritageClauses) ||
+                       visitNodes(cbNode, cbNodes, node->to<InterfaceDeclaration>().members);
             case SyntaxKind::TypeAliasDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<TypeAliasDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<TypeAliasDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<TypeAliasDeclaration>().name) ||
-                       visitNodes(cbNode, cbNodes, node.to<TypeAliasDeclaration>().typeParameters) ||
-                       visitNode(cbNode, node.to<TypeAliasDeclaration>().type);
+                return visitNodes(cbNode, cbNodes, node->to<TypeAliasDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<TypeAliasDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<TypeAliasDeclaration>().name) ||
+                       visitNodes(cbNode, cbNodes, node->to<TypeAliasDeclaration>().typeParameters) ||
+                       visitNode(cbNode, node->to<TypeAliasDeclaration>().type);
             case SyntaxKind::EnumDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<EnumDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<EnumDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<EnumDeclaration>().name) ||
-                       visitNodes(cbNode, cbNodes, node.to<EnumDeclaration>().members);
+                return visitNodes(cbNode, cbNodes, node->to<EnumDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<EnumDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<EnumDeclaration>().name) ||
+                       visitNodes(cbNode, cbNodes, node->to<EnumDeclaration>().members);
             case SyntaxKind::EnumMember:
-                return visitNode(cbNode, node.to<EnumMember>().name) ||
-                       visitNode(cbNode, node.to<EnumMember>().initializer);
+                return visitNode(cbNode, node->to<EnumMember>().name) ||
+                       visitNode(cbNode, node->to<EnumMember>().initializer);
             case SyntaxKind::ModuleDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<ModuleDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<ModuleDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<ModuleDeclaration>().name) ||
-                       visitNode(cbNode, node.to<ModuleDeclaration>().body);
+                return visitNodes(cbNode, cbNodes, node->to<ModuleDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<ModuleDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<ModuleDeclaration>().name) ||
+                       visitNode(cbNode, node->to<ModuleDeclaration>().body);
             case SyntaxKind::ImportEqualsDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<ImportEqualsDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<ImportEqualsDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<ImportEqualsDeclaration>().name) ||
-                       visitNode(cbNode, node.to<ImportEqualsDeclaration>().moduleReference);
+                return visitNodes(cbNode, cbNodes, node->to<ImportEqualsDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<ImportEqualsDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<ImportEqualsDeclaration>().name) ||
+                       visitNode(cbNode, node->to<ImportEqualsDeclaration>().moduleReference);
             case SyntaxKind::ImportDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<ImportDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<ImportDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<ImportDeclaration>().importClause) ||
-                       visitNode(cbNode, node.to<ImportDeclaration>().moduleSpecifier) ||
-                       visitNode(cbNode, node.to<ImportDeclaration>().assertClause);
+                return visitNodes(cbNode, cbNodes, node->to<ImportDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<ImportDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<ImportDeclaration>().importClause) ||
+                       visitNode(cbNode, node->to<ImportDeclaration>().moduleSpecifier) ||
+                       visitNode(cbNode, node->to<ImportDeclaration>().assertClause);
             case SyntaxKind::ImportClause:
-                return visitNode(cbNode, node.to<ImportClause>().name) ||
-                       visitNode(cbNode, node.to<ImportClause>().namedBindings);
+                return visitNode(cbNode, node->to<ImportClause>().name) ||
+                       visitNode(cbNode, node->to<ImportClause>().namedBindings);
             case SyntaxKind::AssertClause:
-                return visitNodes(cbNode, cbNodes, node.to<AssertClause>().elements);
+                return visitNodes(cbNode, cbNodes, node->to<AssertClause>().elements);
             case SyntaxKind::AssertEntry:
-                return visitNode(cbNode, node.to<AssertEntry>().name) ||
-                       visitNode(cbNode, node.to<AssertEntry>().value);
+                return visitNode(cbNode, node->to<AssertEntry>().name) ||
+                       visitNode(cbNode, node->to<AssertEntry>().value);
             case SyntaxKind::NamespaceExportDeclaration:
-                return visitNode(cbNode, node.to<NamespaceExportDeclaration>().name);
+                return visitNode(cbNode, node->to<NamespaceExportDeclaration>().name);
             case SyntaxKind::NamespaceImport:
-                return visitNode(cbNode, node.to<NamespaceImport>().name);
+                return visitNode(cbNode, node->to<NamespaceImport>().name);
             case SyntaxKind::NamespaceExport:
-                return visitNode(cbNode, node.to<NamespaceExport>().name);
+                return visitNode(cbNode, node->to<NamespaceExport>().name);
             case SyntaxKind::NamedImports:
-                return visitNodes(cbNode, cbNodes, node.to<NamedImports>().elements);
+                return visitNodes(cbNode, cbNodes, node->to<NamedImports>().elements);
             case SyntaxKind::NamedExports:
-                return visitNodes(cbNode, cbNodes, node.to<NamedExports>().elements);
+                return visitNodes(cbNode, cbNodes, node->to<NamedExports>().elements);
             case SyntaxKind::ExportDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<ExportDeclaration>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<ExportDeclaration>().modifiers) ||
-                       visitNode(cbNode, node.to<ExportDeclaration>().exportClause) ||
-                       visitNode(cbNode, node.to<ExportDeclaration>().moduleSpecifier) ||
-                       visitNode(cbNode, node.to<ExportDeclaration>().assertClause);
+                return visitNodes(cbNode, cbNodes, node->to<ExportDeclaration>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<ExportDeclaration>().modifiers) ||
+                       visitNode(cbNode, node->to<ExportDeclaration>().exportClause) ||
+                       visitNode(cbNode, node->to<ExportDeclaration>().moduleSpecifier) ||
+                       visitNode(cbNode, node->to<ExportDeclaration>().assertClause);
             case SyntaxKind::ImportSpecifier:
-                return visitNode(cbNode, node.to<ImportSpecifier>().propertyName) ||
-                       visitNode(cbNode, node.to<ImportSpecifier>().name);
+                return visitNode(cbNode, node->to<ImportSpecifier>().propertyName) ||
+                       visitNode(cbNode, node->to<ImportSpecifier>().name);
             case SyntaxKind::ExportSpecifier:
-                return visitNode(cbNode, node.to<ExportSpecifier>().propertyName) ||
-                       visitNode(cbNode, node.to<ExportSpecifier>().name);
+                return visitNode(cbNode, node->to<ExportSpecifier>().propertyName) ||
+                       visitNode(cbNode, node->to<ExportSpecifier>().name);
             case SyntaxKind::ExportAssignment:
-                return visitNodes(cbNode, cbNodes, node.to<ExportAssignment>().decorators) ||
-                       visitNodes(cbNode, cbNodes, node.to<ExportAssignment>().modifiers) ||
-                       visitNode(cbNode, node.to<ExportAssignment>().expression);
+                return visitNodes(cbNode, cbNodes, node->to<ExportAssignment>().decorators) ||
+                       visitNodes(cbNode, cbNodes, node->to<ExportAssignment>().modifiers) ||
+                       visitNode(cbNode, node->to<ExportAssignment>().expression);
             case SyntaxKind::TemplateExpression:
-                return visitNode(cbNode, node.to<TemplateExpression>().head) || visitNodes(cbNode, cbNodes, node.to<TemplateExpression>().templateSpans);
+                return visitNode(cbNode, node->to<TemplateExpression>().head) || visitNodes(cbNode, cbNodes, node->to<TemplateExpression>().templateSpans);
             case SyntaxKind::TemplateSpan:
-                return visitNode(cbNode, node.to<TemplateSpan>().expression) || visitNode(cbNode, node.to<TemplateSpan>().literal);
+                return visitNode(cbNode, node->to<TemplateSpan>().expression) || visitNode(cbNode, node->to<TemplateSpan>().literal);
             case SyntaxKind::TemplateLiteralType:
-                return visitNode(cbNode, node.to<TemplateLiteralTypeNode>().head) || visitNodes(cbNode, cbNodes, node.to<TemplateLiteralTypeNode>().templateSpans);
+                return visitNode(cbNode, node->to<TemplateLiteralTypeNode>().head) || visitNodes(cbNode, cbNodes, node->to<TemplateLiteralTypeNode>().templateSpans);
             case SyntaxKind::TemplateLiteralTypeSpan:
-                return visitNode(cbNode, node.to<TemplateLiteralTypeSpan>().type) || visitNode(cbNode, node.to<TemplateLiteralTypeSpan>().literal);
+                return visitNode(cbNode, node->to<TemplateLiteralTypeSpan>().type) || visitNode(cbNode, node->to<TemplateLiteralTypeSpan>().literal);
             case SyntaxKind::ComputedPropertyName:
-                return visitNode(cbNode, node.to<ComputedPropertyName>().expression);
+                return visitNode(cbNode, node->to<ComputedPropertyName>().expression);
             case SyntaxKind::HeritageClause:
-                return visitNodes(cbNode, cbNodes, node.to<HeritageClause>().types);
+                return visitNodes(cbNode, cbNodes, node->to<HeritageClause>().types);
             case SyntaxKind::ExpressionWithTypeArguments:
-                return visitNode(cbNode, node.to<ExpressionWithTypeArguments>().expression) ||
-                       visitNodes(cbNode, cbNodes, node.to<ExpressionWithTypeArguments>().typeArguments);
+                return visitNode(cbNode, node->to<ExpressionWithTypeArguments>().expression) ||
+                       visitNodes(cbNode, cbNodes, node->to<ExpressionWithTypeArguments>().typeArguments);
             case SyntaxKind::ExternalModuleReference:
-                return visitNode(cbNode, node.to<ExternalModuleReference>().expression);
+                return visitNode(cbNode, node->to<ExternalModuleReference>().expression);
             case SyntaxKind::MissingDeclaration:
-                return visitNodes(cbNode, cbNodes, node.to<MissingDeclaration>().decorators);
+                return visitNodes(cbNode, cbNodes, node->to<MissingDeclaration>().decorators);
             case SyntaxKind::CommaListExpression:
-                return visitNodes(cbNode, cbNodes, node.to<CommaListExpression>().elements);
+                return visitNodes(cbNode, cbNodes, node->to<CommaListExpression>().elements);
 
             case SyntaxKind::JsxElement:
-                return visitNode(cbNode, node.to<JsxElement>().openingElement) ||
-                       visitNodes(cbNode, cbNodes, node.to<JsxElement>().children) ||
-                       visitNode(cbNode, node.to<JsxElement>().closingElement);
+                return visitNode(cbNode, node->to<JsxElement>().openingElement) ||
+                       visitNodes(cbNode, cbNodes, node->to<JsxElement>().children) ||
+                       visitNode(cbNode, node->to<JsxElement>().closingElement);
             case SyntaxKind::JsxFragment:
-                return visitNode(cbNode, node.to<JsxFragment>().openingFragment) ||
-                       visitNodes(cbNode, cbNodes, node.to<JsxFragment>().children) ||
-                       visitNode(cbNode, node.to<JsxFragment>().closingFragment);
+                return visitNode(cbNode, node->to<JsxFragment>().openingFragment) ||
+                       visitNodes(cbNode, cbNodes, node->to<JsxFragment>().children) ||
+                       visitNode(cbNode, node->to<JsxFragment>().closingFragment);
             case SyntaxKind::JsxSelfClosingElement:
-                return visitNode(cbNode, node.to<JsxSelfClosingElement>().tagName) ||
-                       visitNodes(cbNode, cbNodes, node.to<JsxSelfClosingElement>().typeArguments) ||
-                       visitNode(cbNode, node.to<JsxSelfClosingElement>().attributes);
+                return visitNode(cbNode, node->to<JsxSelfClosingElement>().tagName) ||
+                       visitNodes(cbNode, cbNodes, node->to<JsxSelfClosingElement>().typeArguments) ||
+                       visitNode(cbNode, node->to<JsxSelfClosingElement>().attributes);
             case SyntaxKind::JsxOpeningElement:
-                return visitNode(cbNode, node.to<JsxOpeningElement>().tagName) ||
-                       visitNodes(cbNode, cbNodes, node.to<JsxOpeningElement>().typeArguments) ||
-                       visitNode(cbNode, node.to<JsxOpeningElement>().attributes);
+                return visitNode(cbNode, node->to<JsxOpeningElement>().tagName) ||
+                       visitNodes(cbNode, cbNodes, node->to<JsxOpeningElement>().typeArguments) ||
+                       visitNode(cbNode, node->to<JsxOpeningElement>().attributes);
             case SyntaxKind::JsxAttributes:
-                return visitNodes(cbNode, cbNodes, node.to<JsxAttributes>().properties);
+                return visitNodes(cbNode, cbNodes, node->to<JsxAttributes>().properties);
             case SyntaxKind::JsxAttribute:
-                return visitNode(cbNode, node.to<JsxAttribute>().name) ||
-                       visitNode(cbNode, node.to<JsxAttribute>().initializer);
+                return visitNode(cbNode, node->to<JsxAttribute>().name) ||
+                       visitNode(cbNode, node->to<JsxAttribute>().initializer);
             case SyntaxKind::JsxSpreadAttribute:
-                return visitNode(cbNode, node.to<JsxSpreadAttribute>().expression);
+                return visitNode(cbNode, node->to<JsxSpreadAttribute>().expression);
             case SyntaxKind::JsxExpression:
-                return visitNode(cbNode, node.to<JsxExpression>().dotDotDotToken) ||
-                       visitNode(cbNode, node.to<JsxExpression>().expression);
+                return visitNode(cbNode, node->to<JsxExpression>().dotDotDotToken) ||
+                       visitNode(cbNode, node->to<JsxExpression>().expression);
             case SyntaxKind::JsxClosingElement:
-                return visitNode(cbNode, node.to<JsxClosingElement>().tagName);
+                return visitNode(cbNode, node->to<JsxClosingElement>().tagName);
 
             case SyntaxKind::OptionalType:
-                return visitNode(cbNode, node.to<OptionalTypeNode>().type);
+                return visitNode(cbNode, node->to<OptionalTypeNode>().type);
             case SyntaxKind::RestType:
-                return visitNode(cbNode, node.to<RestTypeNode>().type);
+                return visitNode(cbNode, node->to<RestTypeNode>().type);
             case SyntaxKind::PartiallyEmittedExpression:
-                return visitNode(cbNode, node.to<PartiallyEmittedExpression>().expression);
+                return visitNode(cbNode, node->to<PartiallyEmittedExpression>().expression);
         }
     }
 
@@ -764,7 +771,7 @@ namespace ts {
 //        sourceFile.externalModuleIndicator = isFileProbablyExternalModule(sourceFile);
 //    }
 
-    void setExternalModuleIndicator(shared<SourceFile> sourceFile) {
+    inline void setExternalModuleIndicator(const shared<SourceFile> &sourceFile) {
         sourceFile->externalModuleIndicator = isFileProbablyExternalModule(sourceFile);
     }
 
@@ -785,12 +792,12 @@ namespace ts {
 //    export function parseJsonText(fileName: string, sourceText: string): JsonSourceFile {
 //        return Parser.parseJsonText(fileName, sourceText);
 //    }
-//
-//    // See also `isExternalOrCommonJsModule` in utilities.ts
-//    export function isExternalModule(file: SourceFile): boolean {
-//        return file.externalModuleIndicator != undefined;
-//    }
-//
+
+    // See also `isExternalOrCommonJsModule` in utilities.ts
+    inline bool isExternalModule(const shared<SourceFile> &file) {
+        return (bool) file->externalModuleIndicator;
+    }
+
 //    // Produces a new SourceFile for the 'newText' provided. The 'textChangeRange' parameter
 //    // indicates what changed between the 'text' that this SourceFile has and the 'newText'.
 //    // The SourceFile will be created with the compiler attempting to reuse as many nodes from
@@ -835,7 +842,7 @@ namespace ts {
         Scanner scanner{ScriptTarget::Latest, /*skipTrivia*/ true};
         Factory factory;
 
-        int disallowInAndDecoratorContext = (int)NodeFlags::DisallowInContext | (int)NodeFlags::DecoratorContext;
+        int disallowInAndDecoratorContext = (int) NodeFlags::DisallowInContext | (int) NodeFlags::DecoratorContext;
 
 //        // capture constructors in 'initializeState' to avoid null checks
 //        // tslint:disable variable-name
@@ -987,6 +994,7 @@ namespace ts {
         }
 
         SyntaxKind nextToken() {
+            ZoneScoped;
             // if the keyword had an escape
             if (isKeyword(currentToken) && (scanner.hasUnicodeEscape() || scanner.hasExtendedUnicodeEscape())) {
                 // issue a parse error for the escape
@@ -997,11 +1005,13 @@ namespace ts {
 
         template<typename T>
         T nextTokenAnd(function<T()> func) {
+            ZoneScoped;
             nextToken();
             return func();
         }
 
         void initializeState(string _fileName, string _sourceText, ScriptTarget _languageVersion, ScriptKind _scriptKind) {
+            ZoneScoped;
 //            NodeConstructor = objectAllocator.getNodeConstructor();
 //            TokenConstructor = objectAllocator.getTokenConstructor();
 //            IdentifierConstructor = objectAllocator.getIdentifierConstructor();
@@ -1040,12 +1050,13 @@ namespace ts {
 
             // Initialize and prime the scanner before parsing the source elements.
             scanner.setText(sourceText);
-            scanner.setOnError([this](auto ...a) { scanError(a...); });
+//            scanner.setOnError([this](auto ...a) { scanError(a...); });
             scanner.setScriptTarget(languageVersion);
             scanner.setLanguageVariant(languageVariant);
         }
 
         void clearState() {
+            ZoneScoped;
             // Clear out the text the scanner is pointing at, so it doesn't keep anything alive unnecessarily.
             scanner.clearCommentDirectives();
             scanner.setText("");
@@ -1209,44 +1220,52 @@ namespace ts {
 //            // binding.
 //            setParentRecursive(rootNode, /*incremental*/ true);
 //        }
-//
-//        function createSourceFile(
-//            fileName: string,
-//            languageVersion: ScriptTarget,
-//            scriptKind: ScriptKind,
-//            isDeclarationFile: boolean,
-//            statements: readonly Statement[],
-//            endOfFileToken: EndOfFileToken,
-//            flags: NodeFlags,
-//            setExternalModuleIndicator: (sourceFile: SourceFile) => void): SourceFile {
-//            // code from createNode is inlined here so createNode won't have to deal with special case of creating source files
-//            // this is quite rare comparing to other nodes and createNode should be as fast as possible
-//            auto sourceFile = factory.createSourceFile(statements, endOfFileToken, flags);
-//            setTextRangePosWidth(sourceFile, 0, sourceText.length);
-//            setFields(sourceFile);
-//
-//            // If we parsed this as an external module, it may contain top-level await
-//            if (!isDeclarationFile && isExternalModule(sourceFile) && sourceFile.transformFlags & TransformFlags.ContainsPossibleTopLevelAwait) {
-//                sourceFile = reparseTopLevelAwait(sourceFile);
-//                setFields(sourceFile);
-//            }
-//
-//            return sourceFile;
-//
-//            function setFields(sourceFile: SourceFile) {
-//                sourceFile.text = sourceText;
+
+        shared<SourceFile> createSourceFile(
+                string fileName,
+                ScriptTarget languageVersion,
+                ScriptKind scriptKind,
+                bool isDeclarationFile,
+                shared<NodeArray> statements,
+                shared<EndOfFileToken> endOfFileToken,
+                int flags,
+                function<void(shared<SourceFile>)> setExternalModuleIndicator
+        ) {
+            // code from createNode is inlined here so createNode won't have to deal with special case of creating source files
+            // this is quite rare comparing to other nodes and createNode should be as fast as possible
+            auto sourceFile = factory.createSourceFile(statements, endOfFileToken, flags);
+            setTextRangePosEnd(sourceFile, 0, sourceText.size());
+            sourceFile->text = sourceText;
+
 //                sourceFile.bindDiagnostics = [];
 //                sourceFile.bindSuggestionDiagnostics = undefined;
-//                sourceFile.languageVersion = languageVersion;
-//                sourceFile.fileName = fileName;
-//                sourceFile.languageVariant = getLanguageVariant(scriptKind);
-//                sourceFile.isDeclarationFile = isDeclarationFile;
-//                sourceFile.scriptKind = scriptKind;
-//
-//                setExternalModuleIndicator(sourceFile);
-//                sourceFile.setExternalModuleIndicator = setExternalModuleIndicator;
-//            }
-//        }
+            sourceFile->languageVersion = languageVersion;
+            sourceFile->fileName = fileName;
+            sourceFile->languageVariant = getLanguageVariant(scriptKind);
+            sourceFile->isDeclarationFile = isDeclarationFile;
+            sourceFile->scriptKind = scriptKind;
+            setExternalModuleIndicator(sourceFile);
+            sourceFile->setExternalModuleIndicator = setExternalModuleIndicator;
+
+            // If we parsed this as an external module, it may contain top-level await
+            if (!isDeclarationFile && isExternalModule(sourceFile) && sourceFile->transformFlags & (int) TransformFlags::ContainsPossibleTopLevelAwait) {
+                throw runtime_error("not implemented");
+//                sourceFile = reparseTopLevelAwait(sourceFile);
+
+                sourceFile->text = sourceText;
+//                sourceFile.bindDiagnostics = [];
+//                sourceFile.bindSuggestionDiagnostics = undefined;
+                sourceFile->languageVersion = languageVersion;
+                sourceFile->fileName = fileName;
+                sourceFile->languageVariant = getLanguageVariant(scriptKind);
+                sourceFile->isDeclarationFile = isDeclarationFile;
+                sourceFile->scriptKind = scriptKind;
+                setExternalModuleIndicator(sourceFile);
+                sourceFile->setExternalModuleIndicator = setExternalModuleIndicator;
+            }
+
+            return sourceFile;
+        }
 
         void setContextFlag(bool val, int flag) {
             if (val) {
@@ -1340,6 +1359,7 @@ namespace ts {
         }
         template<typename T>
         T speculationHelper(const function<T()> &callback, SpeculationKind speculationKind) {
+            ZoneScoped;
             // Keep track of the state we'll need to rollback to if lookahead fails (or if the
             // caller asked us to always reset our state).
             auto saveToken = currentToken;
@@ -1363,7 +1383,7 @@ namespace ts {
 
             // If our callback returned something 'falsy' or we're just looking ahead,
             // then unconditionally restore us to where we were.
-            if (!(bool)result || (speculationKind != SpeculationKind::TryParse)) {
+            if (!(bool) result || (speculationKind != SpeculationKind::TryParse)) {
                 currentToken = saveToken;
                 if (speculationKind != SpeculationKind::Reparse) {
                     parseDiagnostics.resize(saveParseDiagnosticsLength);
@@ -1380,6 +1400,7 @@ namespace ts {
          */
         template<typename T>
         T lookAhead(const function<T()> &callback) {
+            ZoneScoped;
             return speculationHelper<T>(callback, SpeculationKind::Lookahead);
         }
 
@@ -1428,12 +1449,10 @@ namespace ts {
         void parseErrorForInvalidName(DiagnosticMessage nameDiagnostic, DiagnosticMessage blankDiagnostic, SyntaxKind tokenIfBlankName) {
             if (token() == tokenIfBlankName) {
                 parseErrorAtCurrentToken(blankDiagnostic);
-            }
-            else {
+            } else {
                 parseErrorAtCurrentToken(nameDiagnostic, scanner.getTokenValue());
             }
         }
-
 
         /**
          * Provides a better error message than the generic "';' expected" if possible for
@@ -1554,8 +1573,7 @@ namespace ts {
             if (type && !canParseSemicolon()) {
                 if (initializer) {
                     parseErrorAtCurrentToken(Diagnostics::_0_expected, tokenToString(SyntaxKind::SemicolonToken));
-                }
-                else {
+                } else {
                     parseErrorAtCurrentToken(Diagnostics::Expected_for_property_initializer);
                 }
                 return;
@@ -1592,6 +1610,7 @@ namespace ts {
 
         template<class T>
         shared<T> finishNode(shared<T> node, int pos, optional<int> end = {}) {
+            ZoneScoped;
             setTextRangePosEnd(node, pos, end ? *end : scanner.getStartPos());
             if (contextFlags) {
                 node->flags |= contextFlags;
@@ -1610,6 +1629,7 @@ namespace ts {
 
         template<class T>
         shared<T> parseTokenNode() {
+            ZoneScoped;
             auto pos = getNodePos();
             auto kind = token();
             nextToken();
@@ -1619,6 +1639,7 @@ namespace ts {
 //        function parseOptionalToken<TKind extends SyntaxKind>(t: TKind): Token<TKind>;
         template<class T>
         sharedOpt<T> parseOptionalToken(SyntaxKind t) {
+            ZoneScoped;
             if (token() == t) {
                 return parseTokenNode<T>();
             }
@@ -1650,8 +1671,15 @@ namespace ts {
             return tryParseSemicolon() || parseExpected(SyntaxKind::SemicolonToken);
         }
 
-        NodeArray createNodeArray(vector<shared<Node>> elements, int pos, optional<int> end = {}, optional<bool> hasTrailingComma = {}) {
+        shared<NodeArray> createNodeArray(const vector<shared<Node>> &elements, int pos, optional<int> end = {}, optional<bool> hasTrailingComma = {}) {
             auto array = factory.createNodeArray(elements, hasTrailingComma);
+            setTextRangePosEnd(array, pos, end ? *end : scanner.getStartPos());
+            return array;
+        }
+
+        //for empty call: createNodeArray(nullptr)
+        shared<NodeArray> createNodeArray(vector<shared<Node>> *elements, int pos, optional<int> end = {}, optional<bool> hasTrailingComma = {}) {
+            auto array = factory.createNodeArray(elements ? *elements : (vector<shared<Node>>) {}, hasTrailingComma);
             setTextRangePosEnd(array, pos, end ? *end : scanner.getStartPos());
             return array;
         }
@@ -1674,14 +1702,15 @@ namespace ts {
                     kind == SyntaxKind::StringLiteral ? factory.createStringLiteral("", /*isSingleQuote*/ {}) :
                     kind == SyntaxKind::MissingDeclaration ? factory.createMissingDeclaration() :
                     factory.createToken<Node>(kind);
-            auto a = finishNode(result, pos);
+            return to<T>(finishNode(result, pos));
         }
 
         string internIdentifier(string text) {
             auto identifier = get(identifiers, text);
             if (!identifier) {
                 identifier = text;
-                set(identifiers, text, *identifier);
+                identifiers[text] = text;
+//                set(identifiers, text, *identifier);
             }
             return *identifier;
         }
@@ -1713,7 +1742,7 @@ namespace ts {
          * of invoking the callback is returned from this function.
          */
         template<typename T>
-        T tryParse(function<T()> callback) {
+        T tryParse(const function<T()> &callback) {
             return speculationHelper<T>(callback, SpeculationKind::TryParse);
         }
 
@@ -1732,7 +1761,7 @@ namespace ts {
             return token() == SyntaxKind::ClassKeyword || token() == SyntaxKind::FunctionKeyword ||
                    token() == SyntaxKind::InterfaceKeyword ||
                    (token() == SyntaxKind::AbstractKeyword && lookAhead<bool>(CALLBACK(nextTokenIsClassKeywordOnSameLine)) ||
-                   (token() == SyntaxKind::AsyncKeyword && lookAhead<bool>(CALLBACK(nextTokenIsFunctionKeywordOnSameLine))));
+                    (token() == SyntaxKind::AsyncKeyword && lookAhead<bool>(CALLBACK(nextTokenIsFunctionKeywordOnSameLine))));
         }
 
         bool isLiteralPropertyName() {
@@ -1796,7 +1825,7 @@ namespace ts {
         }
 
         bool parseContextualModifier(SyntaxKind t) {
-            return token() == t && tryParse<bool>(CALLBACK(CALLBACK(nextTokenCanFollowModifier)));
+            return token() == t && tryParse<bool>(CALLBACK(nextTokenCanFollowModifier));
         }
 
         bool nextTokenIsOpenParenOrLessThanOrDot() {
@@ -2334,6 +2363,7 @@ namespace ts {
 
         // True if positioned at the start of a list element
         bool isListElement(ParsingContext parsingContext, bool inErrorRecovery) {
+            ZoneScoped;
             auto node = currentNode(parsingContext);
             if (node) {
                 return true;
@@ -2887,6 +2917,7 @@ namespace ts {
 
         template<class T>
         sharedOpt<T> parseListElement(ParsingContext parsingContext, function<shared<T>()> parseElement) {
+            ZoneScoped;
             auto node = currentNode(parsingContext);
             if (node) {
                 return consumeNode(node);
@@ -2896,8 +2927,9 @@ namespace ts {
         }
 
         // Parses a list of elements
-        NodeArray parseList(ParsingContext kind, function<shared<Node>()> parseElement) {
-            auto saveParsingContext = parsingContext;
+        shared<NodeArray> parseList(ParsingContext kind, const function<shared<Node>()> &parseElement) {
+            ZoneScoped;
+            int saveParsingContext = parsingContext;
             parsingContext |= 1 << (int) kind;
             vector<shared<Node>> list;
 
@@ -2905,7 +2937,9 @@ namespace ts {
 
             while (!isListTerminator(kind)) {
                 if (isListElement(kind, /*inErrorRecovery*/ false)) {
-                    list.push_back(parseListElement(kind, parseElement));
+                    auto n = parseListElement(kind, parseElement);
+                    if (!n) throw runtime_error("No node given");
+                    list.push_back(n);
 
                     continue;
                 }
@@ -2922,7 +2956,8 @@ namespace ts {
 //        // Parses a comma-delimited list of elements
 //        function parseDelimitedList<T extends Node>(kind: ParsingContext, parseElement: () => T, considerSemicolonAsDelimiter?: boolean): NodeArray<T>;
 //        function parseDelimitedList<T extends Node | undefined>(kind: ParsingContext, parseElement: () => T, considerSemicolonAsDelimiter?: boolean): NodeArray<NonNullable<T>> | undefined;
-        optional<NodeArray> parseDelimitedList(ParsingContext kind, function<sharedOpt<Node>()> parseElement, optional<bool> considerSemicolonAsDelimiter = {}) {
+        sharedOpt<NodeArray> parseDelimitedList(ParsingContext kind, function<sharedOpt<Node>()> parseElement, optional<bool> considerSemicolonAsDelimiter = {}) {
+            ZoneScoped;
             auto saveParsingContext = parsingContext;
             parsingContext |= 1 << (int) kind;
             vector<shared<Node>> list;
@@ -2935,7 +2970,7 @@ namespace ts {
                     auto result = parseListElement(kind, parseElement);
                     if (!result) {
                         parsingContext = saveParsingContext;
-                        return nullopt;
+                        return nullptr;
                     }
                     list.push_back(result);
                     commaStart = scanner.getTokenPos();
@@ -2995,14 +3030,14 @@ namespace ts {
 //            isMissingList: true;
 //        }
 
-        NodeArray createMissingList() {
-            auto list = createNodeArray({}, getNodePos());
-            list.isMissingList = true;
+        shared<NodeArray> createMissingList() {
+            auto list = createNodeArray(nullptr, getNodePos());
+            list->isMissingList = true;
             return list;
         }
 
-        bool isMissingList(NodeArray &arr) {
-            return arr.isMissingList;
+        bool isMissingList(const shared<NodeArray> &arr) {
+            return arr->isMissingList;
         }
 
         // An identifier that starts with two underscores has an extra underscore character prepended to it to avoid issues
@@ -3076,6 +3111,7 @@ namespace ts {
 
         template<typename T>
         T doInsideOfContext(/*NodeFlags*/int context, function<T()> func) {
+            ZoneScoped;
             // contextFlagsToSet will contain only the context flags that
             // are not currently set that we need to temporarily enable.
             // We don't just blindly reset to the previous flags to ensure
@@ -3098,37 +3134,37 @@ namespace ts {
 
         template<typename T>
         T allowInAnd(const function<T()> &func) {
-            return doOutsideOfContext<T>((int)NodeFlags::DisallowInContext, func);
+            return doOutsideOfContext<T>((int) NodeFlags::DisallowInContext, func);
         }
 
         template<typename T>
         T disallowInAnd(const function<T()> &func) {
-            return doInsideOfContext<T>((int)NodeFlags::DisallowInContext, func);
+            return doInsideOfContext<T>((int) NodeFlags::DisallowInContext, func);
         }
 
         template<typename T>
         T allowConditionalTypesAnd(const function<T()> &func) {
-            return doOutsideOfContext<T>((int)NodeFlags::DisallowConditionalTypesContext, func);
+            return doOutsideOfContext<T>((int) NodeFlags::DisallowConditionalTypesContext, func);
         }
         template<typename T>
         T disallowConditionalTypesAnd(const function<T()> &func) {
-            return doInsideOfContext<T>((int)NodeFlags::DisallowConditionalTypesContext, func);
+            return doInsideOfContext<T>((int) NodeFlags::DisallowConditionalTypesContext, func);
         }
         template<typename T>
         T doInYieldContext(const function<T()> &func) {
-            return doInsideOfContext<T>((int)NodeFlags::YieldContext, func);
+            return doInsideOfContext<T>((int) NodeFlags::YieldContext, func);
         }
         template<typename T>
         T doInDecoratorContext(const function<T()> &func) {
-            return doInsideOfContext<T>((int)NodeFlags::DecoratorContext, func);
+            return doInsideOfContext<T>((int) NodeFlags::DecoratorContext, func);
         }
         template<typename T>
         T doInAwaitContext(const function<T()> &func) {
-            return doInsideOfContext<T>((int)NodeFlags::AwaitContext, func);
+            return doInsideOfContext<T>((int) NodeFlags::AwaitContext, func);
         }
         template<typename T>
         T doOutsideOfAwaitContext(const function<T()> &func) {
-            return doOutsideOfContext<T>((int)NodeFlags::AwaitContext, func);
+            return doOutsideOfContext<T>((int) NodeFlags::AwaitContext, func);
         }
         template<typename T>
         T doInYieldAndAwaitContext(const function<T()> &func) {
@@ -3185,7 +3221,7 @@ namespace ts {
             );
         }
 
-        NodeArray parseTemplateSpans(bool isTaggedTemplate) {
+        shared<NodeArray> parseTemplateSpans(bool isTaggedTemplate) {
             auto pos = getNodePos();
             vector<shared<Node>> list;
             sharedOpt<TemplateSpan> node;
@@ -3202,7 +3238,7 @@ namespace ts {
             }
             shared<Node> fragment = parseLiteralLikeNode(token());
 //            Debug::asserts(fragment.kind == SyntaxKind::TemplateHead, "Template head has wrong token kind");
-            return dynamic_pointer_cast<TemplateHead>(fragment);
+            return reinterpret_pointer_cast<TemplateHead>(fragment);
         }
 
         shared<TemplateExpression> parseTemplateExpression(bool isTaggedTemplate) {
@@ -3229,11 +3265,11 @@ namespace ts {
                 }
                 dotPos = getNodePos();
                 entity = finishNode(
-                    factory.createQualifiedName(
-                        entity,
-                        parseRightSideOfDot(allowReservedWords, /* allowPrivateIdentifiers */ false)
-                    ),
-                    pos
+                        factory.createQualifiedName(
+                                entity,
+                                parseRightSideOfDot(allowReservedWords, /* allowPrivateIdentifiers */ false)
+                        ),
+                        pos
                 );
             }
             return entity;
@@ -3246,21 +3282,21 @@ namespace ts {
             return parseEntityName(/*allowReservedWords*/ true, Diagnostics::Type_expected);
         }
 
-        optional<NodeArray> parseTypeArgumentsOfTypeReference() {
+        sharedOpt<NodeArray> parseTypeArgumentsOfTypeReference() {
             if (!scanner.hasPrecedingLineBreak() && reScanLessThanToken() == SyntaxKind::LessThanToken) {
                 return parseBracketedList(ParsingContext::TypeArguments, CALLBACK(parseType), SyntaxKind::LessThanToken, SyntaxKind::GreaterThanToken);
             }
-            return nullopt;
+            return nullptr;
         }
 
         shared<TypeReferenceNode> parseTypeReference() {
             auto pos = getNodePos();
             return finishNode(
-                factory.createTypeReferenceNode(
-                    parseEntityNameOfTypeReference(),
-                    parseTypeArgumentsOfTypeReference()
-                ),
-                pos
+                    factory.createTypeReferenceNode(
+                            parseEntityNameOfTypeReference(),
+                            parseTypeArgumentsOfTypeReference()
+                    ),
+                    pos
             );
         }
 
@@ -3271,11 +3307,11 @@ namespace ts {
                     return nodeIsMissing(node->to<TypeReferenceNode>().typeName);
                 case SyntaxKind::FunctionType:
                 case SyntaxKind::ConstructorType: {
-                    auto f = dynamic_pointer_cast<FunctionOrConstructorTypeNodeBase>(node);
+                    auto f = reinterpret_pointer_cast<FunctionOrConstructorTypeNodeBase>(node);
                     return isMissingList(f->parameters) || typeHasArrowFunctionBlockingParseError(f->type);
                 }
                 case SyntaxKind::ParenthesizedType:
-                    return typeHasArrowFunctionBlockingParseError(reinterpret_cast<ParenthesizedTypeNode&>(node).type);
+                    return typeHasArrowFunctionBlockingParseError(reinterpret_cast<ParenthesizedTypeNode &>(node).type);
                 default:
                     return false;
             }
@@ -3400,7 +3436,7 @@ namespace ts {
             parseExpected(SyntaxKind::TypeOfKeyword);
             auto entityName = parseEntityName(/*allowReservedWords*/ true);
             // Make sure we perform ASI to prevent parsing the next line's type arguments as part of an instantiation expression.
-            optional<NodeArray> typeArguments = !scanner.hasPrecedingLineBreak() ? tryParseTypeArguments() : nullopt;
+            sharedOpt<NodeArray> typeArguments = !scanner.hasPrecedingLineBreak() ? tryParseTypeArguments() : nullptr;
             return finishNode(factory.createTypeQueryNode(entityName, typeArguments), pos);
         }
 
@@ -3442,8 +3478,7 @@ namespace ts {
             return false;
         }
 
-
-        shared<PropertyAccessExpression> parsePropertyAccessExpressionRest(int pos, shared<LeftHandSideExpression> expression, sharedOpt<QuestionDotToken> questionDotToken) {
+        shared<PropertyAccessExpression> parsePropertyAccessExpressionRest(int pos, const shared<LeftHandSideExpression> &expression, const sharedOpt<QuestionDotToken> &questionDotToken) {
             auto name = parseRightSideOfDot(/*allowIdentifierNames*/ true, /*allowPrivateIdentifiers*/ true);
             auto isOptionalChain = questionDotToken || tryReparseOptionalChain(expression);
             auto propertyAccess = isOptionalChain ?
@@ -3455,14 +3490,14 @@ namespace ts {
             return finishNode(propertyAccess, pos);
         }
 
-        shared<ElementAccessExpression> parseElementAccessExpressionRest(int pos, shared<LeftHandSideExpression> expression, sharedOpt<QuestionDotToken> questionDotToken) {
+        shared<ElementAccessExpression> parseElementAccessExpressionRest(int pos, const shared<LeftHandSideExpression> &expression, const sharedOpt<QuestionDotToken> &questionDotToken) {
             sharedOpt<Expression> argumentExpression;
             if (token() == SyntaxKind::CloseBracketToken) {
                 argumentExpression = createMissingNode<Identifier>(SyntaxKind::Identifier, /*reportAtCurrentPosition*/ true, Diagnostics::An_element_access_expression_should_take_an_argument);
             } else {
                 auto argument = allowInAnd<shared<Expression>>(CALLBACK(parseExpression));
                 if (isStringOrNumericLiteralLike(argument)) {
-                    dynamic_pointer_cast<LiteralExpression>(argument)->text = internIdentifier(dynamic_pointer_cast<LiteralExpression>(argument)->text);
+                    reinterpret_pointer_cast<LiteralExpression>(argument)->text = internIdentifier(reinterpret_pointer_cast<LiteralExpression>(argument)->text);
                 }
                 argumentExpression = argument;
             }
@@ -3475,7 +3510,7 @@ namespace ts {
             return finishNode(factory.createElementAccessExpression(expression, argumentExpression), pos);
         }
 
-        shared<TaggedTemplateExpression> parseTaggedTemplateRest(int pos, shared<LeftHandSideExpression> tag, sharedOpt<QuestionDotToken> questionDotToken, optional<NodeArray> typeArguments = {}) {
+        shared<TaggedTemplateExpression> parseTaggedTemplateRest(int pos, shared<LeftHandSideExpression> tag, sharedOpt<QuestionDotToken> questionDotToken, sharedOpt<NodeArray> typeArguments = {}) {
             shared<Node> templateLiteral = token() == SyntaxKind::NoSubstitutionTemplateLiteral ?
                                            (shared<Node>) (reScanTemplateHeadOrNoSubstitutionTemplate(), parseLiteralNode()) :
                                            (shared<Node>) parseTemplateExpression(/*isTaggedTemplate*/ true);
@@ -3485,7 +3520,7 @@ namespace ts {
                     templateLiteral
             );
             if (questionDotToken || tag->flags & (int) NodeFlags::OptionalChain) {
-                tagExpression->flags |= (int)NodeFlags::OptionalChain;
+                tagExpression->flags |= (int) NodeFlags::OptionalChain;
             }
             tagExpression->questionDotToken = questionDotToken;
             return finishNode(tagExpression, pos);
@@ -3503,28 +3538,28 @@ namespace ts {
             return !isStartOfExpression();
         }
 
-        optional<NodeArray> parseTypeArgumentsInExpression() {
-            if ((contextFlags & (int)NodeFlags::JavaScriptFile) != 0) {
+        sharedOpt<NodeArray> parseTypeArgumentsInExpression() {
+            if ((contextFlags & (int) NodeFlags::JavaScriptFile) != 0) {
                 // TypeArguments must not be parsed in JavaScript files to avoid ambiguity with binary operators.
-                return nullopt;
+                return nullptr;
             }
 
             if (reScanLessThanToken() != SyntaxKind::LessThanToken) {
-                return nullopt;
+                return nullptr;
             }
             nextToken();
 
             auto typeArguments = parseDelimitedList(ParsingContext::TypeArguments, CALLBACK(parseType));
             if (!parseExpected(SyntaxKind::GreaterThanToken)) {
                 // If it doesn't have the closing `>` then it's definitely not an type argument list.
-                return nullopt;
+                return nullptr;
             }
 
             // We successfully parsed a type argument list. The next token determines whether we want to
             // treat it as such. If the type argument list is followed by `(` or a template literal, as in
             // `f<number>(42)`, we favor the type argument interpretation even though JavaScript would view
             // it as a relational expression.
-            return typeArguments && canFollowTypeArgumentsInExpression() ? typeArguments : nullopt;
+            return typeArguments && canFollowTypeArgumentsInExpression() ? typeArguments : nullptr;
         }
 
         shared<MemberExpression> parseMemberExpressionRest(int pos, shared<LeftHandSideExpression> expression, bool allowOptionalChain) {
@@ -3563,14 +3598,14 @@ namespace ts {
                         expression = finishNode(factory.createNonNullExpression(expression), pos);
                         continue;
                     }
-                    auto typeArguments = tryParse<optional<NodeArray>>(CALLBACK(CALLBACK(parseTypeArgumentsInExpression)));
+                    auto typeArguments = tryParse<sharedOpt<NodeArray>>(CALLBACK(parseTypeArgumentsInExpression));
                     if (typeArguments) {
                         expression = finishNode(factory.createExpressionWithTypeArguments(expression, typeArguments), pos);
                         continue;
                     }
                 }
 
-                return dynamic_pointer_cast<MemberExpression>(expression);
+                return reinterpret_pointer_cast<MemberExpression>(expression);
             }
         }
 
@@ -3596,7 +3631,8 @@ namespace ts {
             return finishNode(factory.createDecorator(expression), pos);
         }
 
-        optional<NodeArray> parseDecorators() {
+        sharedOpt<NodeArray> parseDecorators() {
+            ZoneScoped;
             auto pos = getNodePos();
             sharedOpt<Node> decorator;
             vector<shared<Node>> list;
@@ -3604,7 +3640,7 @@ namespace ts {
             while (decorator = tryParseDecorator()) {
                 list = append(list, decorator);
             }
-            if (list.empty()) return nullopt;
+            if (list.empty()) return nullptr;
             return createNodeArray(list, pos);
         }
 
@@ -3613,6 +3649,7 @@ namespace ts {
         }
 
         sharedOpt<Modifier> tryParseModifier(bool permitInvalidConstAsModifier = false, bool stopOnStartOfClassStaticBlock = false, bool hasSeenStaticModifier = false) {
+            ZoneScoped;
             auto pos = getNodePos();
             auto kind = token();
 
@@ -3642,7 +3679,8 @@ namespace ts {
          *
          * In such situations, 'permitInvalidConstAsModifier' should be set to true.
          */
-        optional<NodeArray> parseModifiers(bool permitInvalidConstAsModifier = false, bool stopOnStartOfClassStaticBlock = false) {
+        sharedOpt<NodeArray> parseModifiers(bool permitInvalidConstAsModifier = false, bool stopOnStartOfClassStaticBlock = false) {
+            ZoneScoped;
             auto pos = getNodePos();
             auto hasSeenStatic = false;
             vector<shared<Node>> list;
@@ -3652,7 +3690,7 @@ namespace ts {
                 list = append(list, modifier);
             }
             if (!list.empty()) return createNodeArray(list, pos);
-            return nullopt;
+            return nullptr;
         }
 
         bool isParameterNameStart() {
@@ -3662,7 +3700,8 @@ namespace ts {
             return isBindingIdentifier() || token() == SyntaxKind::OpenBracketToken || token() == SyntaxKind::OpenBraceToken;
         }
 
-        shared<Node> parseNameOfParameter(optional<NodeArray> modifiers) {
+        shared<Node> parseNameOfParameter(const sharedOpt<NodeArray> &modifiers) {
+            ZoneScoped;
             // FormalParameter [Yield,Await]:
             //      BindingElement[?Yield,?Await]
             auto name = parseIdentifierOrPattern(Diagnostics::Private_identifiers_cannot_be_used_as_parameters);
@@ -3681,6 +3720,7 @@ namespace ts {
         }
 
         sharedOpt<Expression> parseInitializer() {
+            ZoneScoped;
             return parseOptional(SyntaxKind::EqualsToken) ? parseAssignmentExpressionOrHigher() : nullptr;
         }
 
@@ -3694,7 +3734,7 @@ namespace ts {
             //      BindingElement[?Yield,?Await]
 
             // Decorators are parsed in the outer [Await] context, the rest of the parameter is parsed in the function's [Await] context.
-            auto decorators = inOuterAwaitContext ? doInAwaitContext<optional<NodeArray>>(CALLBACK(parseDecorators)) : parseDecorators();
+            auto decorators = inOuterAwaitContext ? doInAwaitContext<sharedOpt<NodeArray>>(CALLBACK(parseDecorators)) : parseDecorators();
 
             if (token() == SyntaxKind::ThisKeyword) {
                 auto node = factory.createParameterDeclaration(
@@ -3751,15 +3791,13 @@ namespace ts {
             return parseParameterWorker(inOuterAwaitContext, /*allowAmbiguity*/ false);
         }
 
-        bool shouldParseReturnType(SyntaxKind returnToken, bool isType){
+        bool shouldParseReturnType(SyntaxKind returnToken, bool isType) {
             if (returnToken == SyntaxKind::EqualsGreaterThanToken) {
                 parseExpected(returnToken);
                 return true;
-            }
-            else if (parseOptional(SyntaxKind::ColonToken)) {
+            } else if (parseOptional(SyntaxKind::ColonToken)) {
                 return true;
-            }
-            else if (isType && token() == SyntaxKind::EqualsGreaterThanToken) {
+            } else if (isType && token() == SyntaxKind::EqualsGreaterThanToken) {
                 // This is easy to get backward, especially in type contexts, so parse the type anyway
                 parseErrorAtCurrentToken(Diagnostics::_0_expected, tokenToString(SyntaxKind::ColonToken));
                 nextToken();
@@ -3770,7 +3808,7 @@ namespace ts {
 
 //        function parseReturnType(returnToken: SyntaxKind::EqualsGreaterThanToken, isType: boolean): TypeNode;
 //        function parseReturnType(returnToken: SyntaxKind::ColonToken | SyntaxKind::EqualsGreaterThanToken, isType: boolean): TypeNode | undefined;
-         sharedOpt<TypeNode> parseReturnType(SyntaxKind returnToken, bool isType) {
+        sharedOpt<TypeNode> parseReturnType(SyntaxKind returnToken, bool isType) {
             if (shouldParseReturnType(returnToken, isType)) {
                 return allowConditionalTypesAnd<shared<TypeNode>>(CALLBACK(parseTypeOrTypePredicate));
             }
@@ -3804,13 +3842,13 @@ namespace ts {
             parseExpected(SyntaxKind::OpenBracketToken);
             auto elements = parseDelimitedList(ParsingContext::ArrayBindingElements, CALLBACK(parseArrayBindingElement));
             parseExpected(SyntaxKind::CloseBracketToken);
-            return finishNode(factory.createArrayBindingPattern(*elements), pos);
+            return finishNode(factory.createArrayBindingPattern(elements), pos);
         }
 
         string getTemplateLiteralRawText(SyntaxKind kind) {
             auto isLast = kind == SyntaxKind::NoSubstitutionTemplateLiteral || kind == SyntaxKind::TemplateTail;
             auto tokenText = scanner.getTokenText();
-            return tokenText.substr(1, tokenText.size() - (scanner.isUnterminated() ? 0 : isLast ? 1 : 2));
+            return substring(tokenText, 1, tokenText.size() - (scanner.isUnterminated() ? 0 : isLast ? 1 : 2));
         }
 
         shared<LiteralLike> parseLiteralLikeNode(SyntaxKind kind) {
@@ -3858,7 +3896,7 @@ namespace ts {
             return finishNode(factory.createComputedPropertyName(expression), pos);
         }
 
-        string internPrivateIdentifier(string text) {
+        string internPrivateIdentifier(const string &text) {
             auto privateIdentifier = get(privateIdentifiers, text);
             if (!privateIdentifier) {
                 privateIdentifier = text;
@@ -3894,6 +3932,7 @@ namespace ts {
         }
 
         shared<BindingElement> parseObjectBindingElement() {
+            ZoneScoped;
             auto pos = getNodePos();
             auto dotDotDotToken = parseOptionalToken<DotDotDotToken>(SyntaxKind::DotDotDotToken);
             auto tokenIsIdentifier = isBindingIdentifier();
@@ -3915,10 +3954,11 @@ namespace ts {
             parseExpected(SyntaxKind::OpenBraceToken);
             auto elements = parseDelimitedList(ParsingContext::ObjectBindingElements, CALLBACK(parseObjectBindingElement));
             parseExpected(SyntaxKind::CloseBraceToken);
-            return finishNode(factory.createObjectBindingPattern(*elements), pos);
+            return finishNode(factory.createObjectBindingPattern(elements), pos);
         }
 
         shared<UnionNode<Identifier, BindingPattern>> parseIdentifierOrPattern(optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {}) {
+            ZoneScoped;
             if (token() == SyntaxKind::OpenBracketToken) {
                 return parseArrayBindingPattern();
             }
@@ -3990,8 +4030,8 @@ namespace ts {
             return token() == SyntaxKind::NewKeyword || (token() == SyntaxKind::AbstractKeyword && lookAhead<bool>(CALLBACK(nextTokenIsNewKeyword)));
         }
 
-        optional<NodeArray> parseModifiersForConstructorType() {
-            optional<NodeArray> modifiers;
+        sharedOpt<NodeArray> parseModifiersForConstructorType() {
+            sharedOpt<NodeArray> modifiers;
             if (token() == SyntaxKind::AbstractKeyword) {
                 auto pos = getNodePos();
                 nextToken();
@@ -4090,19 +4130,19 @@ namespace ts {
             return expression;
         }
 
-        NodeArray parseBracketedList(ParsingContext kind, function<shared<Node>()> parseElement, SyntaxKind open, SyntaxKind close) {
+        shared<NodeArray> parseBracketedList(ParsingContext kind, function<shared<Node>()> parseElement, SyntaxKind open, SyntaxKind close) {
             if (parseExpected(open)) {
                 auto result = parseDelimitedList(kind, parseElement);
                 parseExpected(close);
-                return *result;
+                return result;
             }
 
             return createMissingList();
         }
 
-        optional<NodeArray> tryParseTypeArguments() {
+        sharedOpt<NodeArray> tryParseTypeArguments() {
             if (token() == SyntaxKind::LessThanToken) return parseBracketedList(ParsingContext::TypeArguments, CALLBACK(parseType), SyntaxKind::LessThanToken, SyntaxKind::GreaterThanToken);
-            return nullopt;
+            return nullptr;
         }
 
         SyntaxKind scanJsxAttributeValue() {
@@ -4199,7 +4239,7 @@ namespace ts {
             return false;
         }
 
-        NodeArray parseJsxChildren(shared<NodeUnion(JsxOpeningElement, JsxOpeningFragment)> openingTag) {
+        shared<NodeArray> parseJsxChildren(shared<NodeUnion(JsxOpeningElement, JsxOpeningFragment)> openingTag) {
             vector<shared<Node>> list;
             auto listPos = getNodePos();
             auto saveParsingContext = parsingContext;
@@ -4260,11 +4300,11 @@ namespace ts {
             auto _opening = parseJsxOpeningOrSelfClosingElementOrOpeningFragment(inExpressionContext);
             sharedOpt<Expression> result; //JsxElement | JsxSelfClosingElement | JsxFragment
             if (_opening->kind == SyntaxKind::JsxOpeningElement) {
-                auto opening = dynamic_pointer_cast<JsxOpeningElement>(_opening);
+                auto opening = reinterpret_pointer_cast<JsxOpeningElement>(_opening);
                 auto children = parseJsxChildren(opening);
                 sharedOpt<JsxClosingElement> closingElement; // JsxClosingElement;
 
-                auto lastChild = children.list[children.length() - 1];
+                auto lastChild = children->list[children->length() - 1];
                 if (lastChild && lastChild->kind == SyntaxKind::JsxElement
                     && !tagNamesAreEquivalent(getTagName(lastChild->to<JsxElement>().openingElement), getTagName(lastChild->to<JsxElement>().closingElement))
                     && tagNamesAreEquivalent(getTagName(opening), getTagName(lastChild->to<JsxElement>().closingElement))) {
@@ -4272,7 +4312,7 @@ namespace ts {
                     // restructure (<div>(...<span>...</div>)) --> (<div>(...<span>...</>)</div>)
                     // (no need to error; the parent will error)
                     auto jsxElement = lastChild->to<JsxElement>();
-                    auto end = jsxElement.children.end;
+                    auto end = jsxElement.children->end;
                     auto newLast = finishNode(factory.createJsxElement(
                                                       jsxElement.openingElement,
                                                       jsxElement.children,
@@ -4280,9 +4320,9 @@ namespace ts {
                                               jsxElement.openingElement->pos,
                                               end);
 
-                    auto c = children.slice(0, children.length() - 1);
+                    auto c = children->slice(0, children->length() - 1);
                     c.push_back(newLast);
-                    children = createNodeArray(c, children.pos, end);
+                    children = createNodeArray(c, children->pos, end);
                     closingElement = jsxElement.closingElement;
                 } else {
                     closingElement = parseJsxClosingElement(opening, inExpressionContext);
@@ -4298,7 +4338,7 @@ namespace ts {
                 }
                 result = finishNode(factory.createJsxElement(opening, children, closingElement), pos);
             } else if (_opening->kind == SyntaxKind::JsxOpeningFragment) {
-                auto opening = dynamic_pointer_cast<JsxOpeningFragment>(_opening);
+                auto opening = reinterpret_pointer_cast<JsxOpeningFragment>(_opening);
                 result = finishNode(factory.createJsxFragment(opening, parseJsxChildren(opening), parseJsxClosingFragment(inExpressionContext)), pos);
             } else {
                 assert(_opening->kind == SyntaxKind::JsxSelfClosingElement);
@@ -4378,7 +4418,7 @@ namespace ts {
                 return finishNode(factory.createJsxOpeningFragment(), pos);
             }
             auto tagName = parseJsxElementName();
-            optional<NodeArray> typeArguments = (contextFlags & (int) NodeFlags::JavaScriptFile) == 0 ? tryParseTypeArguments() : nullopt;
+            sharedOpt<NodeArray> typeArguments = (contextFlags & (int) NodeFlags::JavaScriptFile) == 0 ? tryParseTypeArguments() : nullptr;
             auto attributes = parseJsxAttributes();
 
             sharedOpt<Expression> node;
@@ -4414,16 +4454,16 @@ namespace ts {
             return nextToken() == SyntaxKind::DotToken;
         }
 
-        optional<NodeArray> parseTypeParameters() {
+        sharedOpt<NodeArray> parseTypeParameters() {
             if (token() == SyntaxKind::LessThanToken) {
                 return parseBracketedList(ParsingContext::TypeParameters, CALLBACK(parseTypeParameter), SyntaxKind::LessThanToken, SyntaxKind::GreaterThanToken);
             }
-            return nullopt;
+            return nullptr;
         }
 
 //        function parseParametersWorker(SignatureFlags flags, allowAmbiguity: true): NodeArray<ParameterDeclaration>;
 //        function parseParametersWorker(SignatureFlags flags, allowAmbiguity: false): NodeArray<ParameterDeclaration> | undefined;
-        optional<NodeArray> parseParametersWorker(int flags, bool allowAmbiguity) {
+        sharedOpt<NodeArray> parseParametersWorker(int flags, bool allowAmbiguity) {
             // FormalParameters [Yield,Await]: (modified)
             //      [empty]
             //      FormalParameterList[?Yield,Await]
@@ -4440,12 +4480,12 @@ namespace ts {
             auto savedYieldContext = inYieldContext();
             auto savedAwaitContext = inAwaitContext();
 
-            setYieldContext(!!(flags & (int)SignatureFlags::Yield));
-            setAwaitContext(!!(flags & (int)SignatureFlags::Await));
+            setYieldContext(!!(flags & (int) SignatureFlags::Yield));
+            setAwaitContext(!!(flags & (int) SignatureFlags::Await));
 
-            optional<NodeArray> parameters = flags & (int)SignatureFlags::JSDoc ?
-                              NodeArray() : //we ignore JSDoc, parseDelimitedList(ParsingContext::JSDocParameters, parseJSDocParameter) :
-                              parseDelimitedList(ParsingContext::Parameters, [this, &allowAmbiguity, savedAwaitContext]()->sharedOpt<Node> { return allowAmbiguity ? parseParameter(savedAwaitContext) : parseParameterForSpeculation(savedAwaitContext); });
+            sharedOpt<NodeArray> parameters = flags & (int) SignatureFlags::JSDoc ?
+                                              make_shared<NodeArray>() : //we ignore JSDoc, parseDelimitedList(ParsingContext::JSDocParameters, parseJSDocParameter) :
+                                              parseDelimitedList(ParsingContext::Parameters, [this, &allowAmbiguity, savedAwaitContext]()->sharedOpt<Node> { return allowAmbiguity ? parseParameter(savedAwaitContext) : parseParameterForSpeculation(savedAwaitContext); });
 
             setYieldContext(savedYieldContext);
             setAwaitContext(savedAwaitContext);
@@ -4453,7 +4493,7 @@ namespace ts {
             return parameters;
         }
 
-        NodeArray parseParameters(int flags) {
+        shared<NodeArray> parseParameters(int flags) {
             // FormalParameters [Yield,Await]: (modified)
             //      [empty]
             //      FormalParameterList[?Yield,Await]
@@ -4473,11 +4513,11 @@ namespace ts {
 
             auto parameters = parseParametersWorker(flags, /*allowAmbiguity*/ true);
             parseExpected(SyntaxKind::CloseParenToken);
-            return *parameters;
+            return parameters;
         }
 
-        NodeArray parseParameters(SignatureFlags flags) {
-            return parseParameters((int)flags);
+        shared<NodeArray> parseParameters(SignatureFlags flags) {
+            return parseParameters((int) flags);
         }
 
         shared<NodeUnion(CallSignatureDeclaration, ConstructSignatureDeclaration)> parseSignatureMember(SyntaxKind kind) {
@@ -4492,8 +4532,8 @@ namespace ts {
             auto type = parseReturnType(SyntaxKind::ColonToken, /*isType*/ true);
             parseTypeMemberSemicolon();
             shared<Node> node = kind == SyntaxKind::CallSignature
-                        ? (shared<Node>)factory.createCallSignature(typeParameters, parameters, type)
-                        : (shared<Node>)factory.createConstructSignature(typeParameters, parameters, type);
+                                ? (shared<Node>) factory.createCallSignature(typeParameters, parameters, type)
+                                : (shared<Node>) factory.createConstructSignature(typeParameters, parameters, type);
             return withJSDoc(finishNode(node, pos), hasJSDoc);
         }
 
@@ -4509,8 +4549,8 @@ namespace ts {
             if (lastError) {
                 auto b = createDetachedDiagnostic(fileName, openPosition, 1, Diagnostics::The_parser_expected_to_find_a_1_to_match_the_0_token_here, {tokenToString(openKind), tokenToString(closeKind)});
                 addRelatedInfo(
-                    *lastError,
-                    {b}
+                        *lastError,
+                        {b}
                 );
             }
         }
@@ -4531,8 +4571,7 @@ namespace ts {
                 }
 
                 return result;
-            }
-            else {
+            } else {
                 auto statements = createMissingList();
                 return withJSDoc(finishNode(factory.createBlock(statements, /*multiLine*/ false), pos), hasJSDoc);
             }
@@ -4540,10 +4579,10 @@ namespace ts {
 
         shared<Block> parseFunctionBlock(int flags, optional<DiagnosticMessage> diagnosticMessage = {}) {
             auto savedYieldContext = inYieldContext();
-            setYieldContext(!!(flags & (int)SignatureFlags::Yield));
+            setYieldContext(!!(flags & (int) SignatureFlags::Yield));
 
             auto savedAwaitContext = inAwaitContext();
-            setAwaitContext(!!(flags & (int)SignatureFlags::Await));
+            setAwaitContext(!!(flags & (int) SignatureFlags::Await));
 
             auto savedTopLevel = topLevel;
             topLevel = false;
@@ -4555,7 +4594,7 @@ namespace ts {
                 setDecoratorContext(/*val*/ false);
             }
 
-            auto block = parseBlock(!!(flags & (int)SignatureFlags::IgnoreMissingOpenBrace), diagnosticMessage);
+            auto block = parseBlock(!!(flags & (int) SignatureFlags::IgnoreMissingOpenBrace), diagnosticMessage);
 
             if (saveDecoratorContext) {
                 setDecoratorContext(/*val*/ true);
@@ -4577,15 +4616,15 @@ namespace ts {
             return parseFunctionBlock(flags, diagnosticMessage);
         }
 
-        shared<Node> parseAccessorDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers, SyntaxKind kind) {
+        shared<Node> parseAccessorDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray> decorators, sharedOpt<NodeArray> modifiers, SyntaxKind kind) {
             auto name = parsePropertyName();
             auto typeParameters = parseTypeParameters();
             auto parameters = parseParameters(SignatureFlags::None);
             auto type = parseReturnType(SyntaxKind::ColonToken, /*isType*/ false);
-            auto body = parseFunctionBlockOrSemicolon((int)SignatureFlags::None);
+            auto body = parseFunctionBlockOrSemicolon((int) SignatureFlags::None);
             shared<Node> node = kind == SyntaxKind::GetAccessor
-                ? (shared<Node>)factory.createGetAccessorDeclaration(decorators, modifiers, name, parameters, type, body)
-                : (shared<Node>)factory.createSetAccessorDeclaration(decorators, modifiers, name, parameters, body);
+                                ? (shared<Node>) factory.createGetAccessorDeclaration(decorators, modifiers, name, parameters, type, body)
+                                : (shared<Node>) factory.createSetAccessorDeclaration(decorators, modifiers, name, parameters, body);
             // Keep track of `typeParameters` (for both) and `type` (for setters) if they were parsed those indicate grammar errors
             if (node->is<GetAccessorDeclaration>()) {
                 node->to<GetAccessorDeclaration>().typeParameters = typeParameters;
@@ -4625,11 +4664,9 @@ namespace ts {
                 if (isIdentifier()) {
                     return true;
                 }
-            }
-            else if (!isIdentifier()) {
+            } else if (!isIdentifier()) {
                 return false;
-            }
-            else {
+            } else {
                 // Skip the identifier
                 nextToken();
             }
@@ -4657,15 +4694,15 @@ namespace ts {
             return token() == SyntaxKind::OpenBracketToken && lookAhead<bool>(CALLBACK(isUnambiguouslyIndexSignature));
         }
 
-        shared<IndexSignatureDeclaration> parseIndexSignatureDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers) {
-            auto parameters = parseBracketedList(ParsingContext::Parameters, [this]() -> shared<Node>{ return parseParameter(/*inOuterAwaitContext*/ false); }, SyntaxKind::OpenBracketToken, SyntaxKind::CloseBracketToken);
+        shared<IndexSignatureDeclaration> parseIndexSignatureDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray> decorators, sharedOpt<NodeArray> modifiers) {
+            auto parameters = parseBracketedList(ParsingContext::Parameters, [this]()->shared<Node> { return parseParameter(/*inOuterAwaitContext*/ false); }, SyntaxKind::OpenBracketToken, SyntaxKind::CloseBracketToken);
             auto type = parseTypeAnnotation();
             parseTypeMemberSemicolon();
             auto node = factory.createIndexSignature(decorators, modifiers, parameters, type);
             return withJSDoc(finishNode(node, pos), hasJSDoc);
         }
 
-        shared<Node> parsePropertyOrMethodSignature(int pos, bool hasJSDoc, optional<NodeArray> modifiers) {
+        shared<Node> parsePropertyOrMethodSignature(int pos, bool hasJSDoc, sharedOpt<NodeArray> modifiers) {
             auto name = parsePropertyName();
             auto questionToken = parseOptionalToken<QuestionToken>(SyntaxKind::QuestionToken);
             shared<Node> node;
@@ -4676,8 +4713,7 @@ namespace ts {
                 auto parameters = parseParameters(SignatureFlags::Type);
                 auto type = parseReturnType(SyntaxKind::ColonToken, /*isType*/ true);
                 node = factory.createMethodSignature(modifiers, name, questionToken, typeParameters, parameters, type);
-            }
-            else {
+            } else {
                 auto type = parseTypeAnnotation();
                 auto p = factory.createPropertySignature(modifiers, name, questionToken, type);
                 // Although type literal properties cannot not have initializers, we attempt
@@ -4714,8 +4750,8 @@ namespace ts {
             return parsePropertyOrMethodSignature(pos, hasJSDoc, modifiers);
         }
 
-        NodeArray parseObjectTypeMembers() {
-            NodeArray members;
+        shared<NodeArray> parseObjectTypeMembers() {
+            shared<NodeArray> members;
             if (parseExpected(SyntaxKind::OpenBraceToken)) {
                 members = parseList(ParsingContext::TypeMembers, CALLBACK(parseTypeMember));
                 parseExpected(SyntaxKind::CloseBraceToken);
@@ -4747,20 +4783,20 @@ namespace ts {
             return doOutsideOfContext<shared<Expression>>(disallowInAndDecoratorContext, CALLBACK(parseArgumentOrArrayLiteralElement));
         }
 
-        NodeArray parseArgumentList() {
+        shared<NodeArray> parseArgumentList() {
             parseExpected(SyntaxKind::OpenParenToken);
             auto result = parseDelimitedList(ParsingContext::ArgumentExpressions, CALLBACK(parseArgumentExpression));
             parseExpected(SyntaxKind::CloseParenToken);
-            return *result;
+            return result;
         }
 
         shared<LeftHandSideExpression> parseCallExpressionRest(int pos, shared<LeftHandSideExpression> expression) {
             while (true) {
                 expression = parseMemberExpressionRest(pos, expression, /*allowOptionalChain*/ true);
-                optional<NodeArray> typeArguments;
+                sharedOpt<NodeArray> typeArguments;
                 auto questionDotToken = parseOptionalToken<QuestionDotToken>(SyntaxKind::QuestionDotToken);
                 if (questionDotToken) {
-                    typeArguments = tryParse<optional<NodeArray>>(CALLBACK(parseTypeArgumentsInExpression));
+                    typeArguments = tryParse<sharedOpt<NodeArray>>(CALLBACK(parseTypeArgumentsInExpression));
                     if (isTemplateStartOfTaggedTemplate()) {
                         expression = parseTaggedTemplateRest(pos, expression, questionDotToken, typeArguments);
                         continue;
@@ -4774,8 +4810,8 @@ namespace ts {
                     }
                     auto argumentList = parseArgumentList();
                     auto callExpr = questionDotToken || tryReparseOptionalChain(expression) ?
-                        factory.createCallChain(expression, questionDotToken, typeArguments, argumentList) :
-                        factory.createCallExpression(expression, typeArguments, argumentList);
+                                    factory.createCallChain(expression, questionDotToken, typeArguments, argumentList) :
+                                    factory.createCallExpression(expression, typeArguments, argumentList);
                     expression = finishNode(callExpr, pos);
                     continue;
                 }
@@ -4808,34 +4844,33 @@ namespace ts {
             return finishNode(factory.createArrayLiteralExpression(elements, multiLine), pos);
         }
 
-
         shared<MethodDeclaration> parseMethodDeclaration(
-            int pos,
-            bool hasJSDoc,
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
-            sharedOpt<AsteriskToken> asteriskToken,
-            shared<Node> name,
-            sharedOpt<QuestionToken> questionToken,
-            sharedOpt<ExclamationToken> exclamationToken,
-            optional<DiagnosticMessage> diagnosticMessage = {}
+                int pos,
+                bool hasJSDoc,
+                sharedOpt<NodeArray> decorators,
+                sharedOpt<NodeArray> modifiers,
+                sharedOpt<AsteriskToken> asteriskToken,
+                shared<Node> name,
+                sharedOpt<QuestionToken> questionToken,
+                sharedOpt<ExclamationToken> exclamationToken,
+                optional<DiagnosticMessage> diagnosticMessage = {}
         ) {
             auto isGenerator = asteriskToken ? SignatureFlags::Yield : SignatureFlags::None;
             auto isAsync = some(modifiers, isAsyncModifier) ? SignatureFlags::Await : SignatureFlags::None;
             auto typeParameters = parseTypeParameters();
-            auto parameters = parseParameters((int)isGenerator | (int)isAsync);
+            auto parameters = parseParameters((int) isGenerator | (int) isAsync);
             auto type = parseReturnType(SyntaxKind::ColonToken, /*isType*/ false);
-            auto body = parseFunctionBlockOrSemicolon((int)isGenerator | (int)isAsync, diagnosticMessage);
+            auto body = parseFunctionBlockOrSemicolon((int) isGenerator | (int) isAsync, diagnosticMessage);
             auto node = factory.createMethodDeclaration(
-                decorators,
-                modifiers,
-                asteriskToken,
-                name,
-                questionToken,
-                typeParameters,
-                parameters,
-                type,
-                body
+                    decorators,
+                    modifiers,
+                    asteriskToken,
+                    name,
+                    questionToken,
+                    typeParameters,
+                    parameters,
+                    type,
+                    body
             );
             // An exclamation token on a method is invalid syntax and will be handled by the grammar checker
             node->exclamationToken = exclamationToken;
@@ -4843,6 +4878,7 @@ namespace ts {
         }
 
         shared<ObjectLiteralElementLike> parseObjectLiteralElement() {
+            ZoneScoped;
             auto pos = getNodePos();
             auto hasJSDoc = hasPrecedingJSDocComment();
 
@@ -4890,8 +4926,7 @@ namespace ts {
                 n->questionToken = questionToken;
                 n->exclamationToken = exclamationToken;
                 node = n;
-            }
-            else {
+            } else {
                 parseExpected(SyntaxKind::ColonToken);
                 auto initializer = allowInAnd<shared<Expression>>(CALLBACK(parseAssignmentExpressionOrHigher));
                 auto n = factory.createPropertyAssignment(name, initializer);
@@ -4935,15 +4970,15 @@ namespace ts {
             auto asteriskToken = parseOptionalToken<AsteriskToken>(SyntaxKind::AsteriskToken);
             auto isGenerator = asteriskToken ? SignatureFlags::Yield : SignatureFlags::None;
             auto isAsync = some(modifiers, isAsyncModifier) ? SignatureFlags::Await : SignatureFlags::None;
-            auto name = (int)isGenerator && (int)isAsync ? doInYieldAndAwaitContext<sharedOpt<Identifier>>(CALLBACK(parseOptionalBindingIdentifier)) :
-                        (int)isGenerator ? doInYieldContext<sharedOpt<Identifier>>(CALLBACK(parseOptionalBindingIdentifier)) :
-                        (int)isAsync ? doInAwaitContext<sharedOpt<Identifier>>(CALLBACK(parseOptionalBindingIdentifier)) :
-                parseOptionalBindingIdentifier();
+            auto name = (int) isGenerator && (int) isAsync ? doInYieldAndAwaitContext<sharedOpt<Identifier>>(CALLBACK(parseOptionalBindingIdentifier)) :
+                        (int) isGenerator ? doInYieldContext<sharedOpt<Identifier>>(CALLBACK(parseOptionalBindingIdentifier)) :
+                        (int) isAsync ? doInAwaitContext<sharedOpt<Identifier>>(CALLBACK(parseOptionalBindingIdentifier)) :
+                        parseOptionalBindingIdentifier();
 
             auto typeParameters = parseTypeParameters();
-            auto parameters = parseParameters((int)isGenerator | (int)isAsync);
+            auto parameters = parseParameters((int) isGenerator | (int) isAsync);
             auto type = parseReturnType(SyntaxKind::ColonToken, /*isType*/ false);
-            auto body = parseFunctionBlock((int)isGenerator | (int)isAsync);
+            auto body = parseFunctionBlock((int) isGenerator | (int) isAsync);
 
             setDecoratorContext(savedDecoratorContext);
 
@@ -4962,15 +4997,15 @@ namespace ts {
             // - class with name 'implements'
             // 'isImplementsClause' helps to disambiguate between these two cases
             return isBindingIdentifier() && !isImplementsClause()
-                ? createIdentifier(isBindingIdentifier())
-                : nullptr;
+                   ? createIdentifier(isBindingIdentifier())
+                   : nullptr;
         }
 
         shared<ExpressionWithTypeArguments> parseExpressionWithTypeArguments() {
             auto pos = getNodePos();
             auto expression = parseLeftHandSideExpressionOrHigher();
             if (expression->kind == SyntaxKind::ExpressionWithTypeArguments) {
-                return dynamic_pointer_cast<ExpressionWithTypeArguments>(expression);
+                return reinterpret_pointer_cast<ExpressionWithTypeArguments>(expression);
             }
             auto typeArguments = tryParseTypeArguments();
             return finishNode(factory.createExpressionWithTypeArguments(expression, typeArguments), pos);
@@ -4982,10 +5017,10 @@ namespace ts {
             Debug::asserts(tok == SyntaxKind::ExtendsKeyword || tok == SyntaxKind::ImplementsKeyword); // isListElement() should ensure this.
             nextToken();
             auto types = parseDelimitedList(ParsingContext::HeritageClauseElement, CALLBACK(parseExpressionWithTypeArguments));
-            return finishNode(factory.createHeritageClause(tok, *types), pos);
+            return finishNode(factory.createHeritageClause(tok, types), pos);
         }
 
-        optional<NodeArray> parseHeritageClauses() {
+        sharedOpt<NodeArray> parseHeritageClauses() {
             // ClassTail[Yield,Await] : (Modified) See 14.5
             //      ClassHeritage[?Yield,?Await]opt { ClassBody[?Yield,?Await]opt }
 
@@ -4993,7 +5028,7 @@ namespace ts {
                 return parseList(ParsingContext::HeritageClauses, CALLBACK(parseHeritageClause));
             }
 
-            return nullopt;
+            return nullptr;
         }
 
         shared<Block> parseClassStaticBlockBody() {
@@ -5011,7 +5046,7 @@ namespace ts {
             return body;
         }
 
-        shared<ClassStaticBlockDeclaration> parseClassStaticBlockDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers) {
+        shared<ClassStaticBlockDeclaration> parseClassStaticBlockDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray> decorators, sharedOpt<NodeArray> modifiers) {
             parseExpectedToken<StaticKeyword>(SyntaxKind::StaticKeyword);
             auto body = parseClassStaticBlockBody();
             return withJSDoc(finishNode(factory.createClassStaticBlockDeclaration(decorators, modifiers, body), pos), hasJSDoc);
@@ -5022,7 +5057,7 @@ namespace ts {
                 return parseExpected(SyntaxKind::ConstructorKeyword);
             }
             if (token() == SyntaxKind::StringLiteral && lookAhead<SyntaxKind>(CALLBACK(nextToken)) == SyntaxKind::OpenParenToken) {
-                return tryParse<bool>([this]() -> bool {
+                return tryParse<bool>([this]()->bool {
                     auto literalNode = parseLiteralNode();
                     return literalNode->text == "constructor";
                 });
@@ -5030,14 +5065,13 @@ namespace ts {
             return false;
         }
 
-
-        sharedOpt<ConstructorDeclaration> tryParseConstructorDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers) {
-            return tryParse<sharedOpt<ConstructorDeclaration>>([this, &decorators, &modifiers, &pos, &hasJSDoc]() -> sharedOpt<ConstructorDeclaration> {
+        sharedOpt<ConstructorDeclaration> tryParseConstructorDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray> decorators, sharedOpt<NodeArray> modifiers) {
+            return tryParse<sharedOpt<ConstructorDeclaration>>([this, &decorators, &modifiers, &pos, &hasJSDoc]()->sharedOpt<ConstructorDeclaration> {
                 if (parseConstructorName()) {
                     auto typeParameters = parseTypeParameters();
                     auto parameters = parseParameters(SignatureFlags::None);
                     auto type = parseReturnType(SyntaxKind::ColonToken, /*isType*/ false);
-                    auto body = parseFunctionBlockOrSemicolon((int)SignatureFlags::None, Diagnostics::or_expected);
+                    auto body = parseFunctionBlockOrSemicolon((int) SignatureFlags::None, Diagnostics::or_expected);
                     auto node = factory.createConstructorDeclaration(decorators, modifiers, parameters, body);
                     // Attach `typeParameters` and `type` if they exist so that we can report them in the grammar checker.
                     node->typeParameters = typeParameters;
@@ -5053,26 +5087,26 @@ namespace ts {
         }
 
         shared<PropertyDeclaration> parsePropertyDeclaration(
-            int pos,
-            bool hasJSDoc,
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers,
-            shared<Node> name,
-            sharedOpt<QuestionToken> questionToken
+                int pos,
+                bool hasJSDoc,
+                sharedOpt<NodeArray> decorators,
+                sharedOpt<NodeArray> modifiers,
+                shared<Node> name,
+                sharedOpt<QuestionToken> questionToken
         ) {
             sharedOpt<ExclamationToken> exclamationToken = !questionToken && !scanner.hasPrecedingLineBreak() ? parseOptionalToken<ExclamationToken>(SyntaxKind::ExclamationToken) : nullptr;
             auto type = parseTypeAnnotation();
-            auto initializer = doOutsideOfContext<sharedOpt<Expression>>((int)NodeFlags::YieldContext | (int)NodeFlags::AwaitContext | (int)NodeFlags::DisallowInContext, CALLBACK(parseInitializer));
+            auto initializer = doOutsideOfContext<sharedOpt<Expression>>((int) NodeFlags::YieldContext | (int) NodeFlags::AwaitContext | (int) NodeFlags::DisallowInContext, CALLBACK(parseInitializer));
             parseSemicolonAfterPropertyName(name, type, initializer);
-            auto node = factory.createPropertyDeclaration(decorators, modifiers, name, questionToken ? (shared<Node>)questionToken : (shared<Node>)exclamationToken, type, initializer);
+            auto node = factory.createPropertyDeclaration(decorators, modifiers, name, questionToken ? (shared<Node>) questionToken : (shared<Node>) exclamationToken, type, initializer);
             return withJSDoc(finishNode(node, pos), hasJSDoc);
         }
 
         shared<Node> parsePropertyOrMethodDeclaration(
-            int pos,
-            bool hasJSDoc,
-            optional<NodeArray> decorators,
-            optional<NodeArray> modifiers
+                int pos,
+                bool hasJSDoc,
+                sharedOpt<NodeArray> decorators,
+                sharedOpt<NodeArray> modifiers
         ) {
             auto asteriskToken = parseOptionalToken<AsteriskToken>(SyntaxKind::AsteriskToken);
             auto name = parsePropertyName();
@@ -5128,13 +5162,12 @@ namespace ts {
                 auto isAmbient = some(modifiers, CALLBACK(isDeclareModifier));
                 if (isAmbient && modifiers) {
                     for (auto &m: modifiers->list) {
-                        m->flags |= (int)NodeFlags::Ambient;
+                        m->flags |= (int) NodeFlags::Ambient;
                     }
-                    return doInsideOfContext<shared<Node>>((int)NodeFlags::Ambient, [&]() {
+                    return doInsideOfContext<shared<Node>>((int) NodeFlags::Ambient, [&]() {
                         return parsePropertyOrMethodDeclaration(pos, hasJSDoc, decorators, modifiers);
                     });
-                }
-                else {
+                } else {
                     return parsePropertyOrMethodDeclaration(pos, hasJSDoc, decorators, modifiers);
                 }
             }
@@ -5149,11 +5182,11 @@ namespace ts {
             throw runtime_error("Should not have attempted to parse class member declaration.");
         }
 
-        NodeArray parseClassMembers() {
+        shared<NodeArray> parseClassMembers() {
             return parseList(ParsingContext::ClassMembers, CALLBACK(parseClassElement));
         }
 
-        shared<NodeUnion(ClassLikeDeclaration)> parseClassDeclarationOrExpression(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers, SyntaxKind kind) {
+        shared<NodeUnion(ClassLikeDeclaration)> parseClassDeclarationOrExpression(int pos, bool hasJSDoc, sharedOpt<NodeArray> decorators, sharedOpt<NodeArray> modifiers, SyntaxKind kind) {
             auto savedAwaitContext = inAwaitContext();
             parseExpected(SyntaxKind::ClassKeyword);
 
@@ -5163,25 +5196,24 @@ namespace ts {
             if (some(modifiers, isExportModifier)) setAwaitContext(/*value*/ true);
             auto heritageClauses = parseHeritageClauses();
 
-            NodeArray members;
+            shared<NodeArray> members;
             if (parseExpected(SyntaxKind::OpenBraceToken)) {
                 // ClassTail[Yield,Await] : (Modified) See 14.5
                 //      ClassHeritage[?Yield,?Await]opt { ClassBody[?Yield,?Await]opt }
                 members = parseClassMembers();
                 parseExpected(SyntaxKind::CloseBraceToken);
-            }
-            else {
+            } else {
                 members = createMissingList();
             }
             setAwaitContext(savedAwaitContext);
             auto node = kind == SyntaxKind::ClassDeclaration
-                ? (shared<Node>)factory.createClassDeclaration(decorators, modifiers, name, typeParameters, heritageClauses, members)
-                : (shared<Node>)factory.createClassExpression(decorators, modifiers, name, typeParameters, heritageClauses, members);
+                        ? (shared<Node>) factory.createClassDeclaration(decorators, modifiers, name, typeParameters, heritageClauses, members)
+                        : (shared<Node>) factory.createClassExpression(decorators, modifiers, name, typeParameters, heritageClauses, members);
             return withJSDoc(finishNode(node, pos), hasJSDoc);
         }
 
         shared<ClassExpression> parseClassExpression() {
-            return dynamic_pointer_cast<ClassExpression>(parseClassDeclarationOrExpression(getNodePos(), hasPrecedingJSDocComment(), /*decorators*/ {}, /*modifiers*/ {}, SyntaxKind::ClassExpression));
+            return reinterpret_pointer_cast<ClassExpression>(parseClassDeclarationOrExpression(getNodePos(), hasPrecedingJSDocComment(), /*decorators*/ {}, /*modifiers*/ {}, SyntaxKind::ClassExpression));
         }
 
         shared<PrimaryExpression> parseNewExpressionOrNewDotTarget() {
@@ -5193,13 +5225,13 @@ namespace ts {
             }
             auto expressionPos = getNodePos();
             shared<Expression> expression = parseMemberExpressionRest(expressionPos, parsePrimaryExpression(), /*allowOptionalChain*/ false);
-            optional<NodeArray> typeArguments;
+            sharedOpt<NodeArray> typeArguments;
             // Absorb type arguments into NewExpression when preceding expression is ExpressionWithTypeArguments
             if (expression->kind == SyntaxKind::ExpressionWithTypeArguments) {
                 typeArguments = expression->to<ExpressionWithTypeArguments>().typeArguments;
                 expression = expression->to<ExpressionWithTypeArguments>().expression;
             }
-            optional<NodeArray> argumentList;
+            sharedOpt<NodeArray> argumentList;
             if (token() == SyntaxKind::OpenParenToken) argumentList = parseArgumentList();
 
             return finishNode(factory.createNewExpression(expression, typeArguments, argumentList), pos);
@@ -5255,6 +5287,7 @@ namespace ts {
         }
 
         shared<MemberExpression> parseMemberExpressionOrHigher() {
+            ZoneScoped;
             // Note: to make our lives simpler, we decompose the NewExpression productions and
             // place ObjectCreationExpression and FunctionExpression into PrimaryExpression.
             // like so:
@@ -5308,11 +5341,12 @@ namespace ts {
         }
 
         shared<MemberExpression> parseSuperExpression() {
+            ZoneScoped;
             auto pos = getNodePos();
             auto expression = parseTokenNode<PrimaryExpression>();
             if (token() == SyntaxKind::LessThanToken) {
                 auto startPos = getNodePos();
-                auto typeArguments = tryParse<optional<NodeArray>>(CALLBACK(parseTypeArgumentsInExpression));
+                auto typeArguments = tryParse<sharedOpt<NodeArray>>(CALLBACK(parseTypeArgumentsInExpression));
                 if (typeArguments) {
                     parseErrorAt(startPos, getNodePos(), Diagnostics::super_may_not_use_type_arguments);
                 }
@@ -5330,6 +5364,7 @@ namespace ts {
         }
 
         shared<LeftHandSideExpression> parseLeftHandSideExpressionOrHigher() {
+            ZoneScoped;
             // Original Ecma:
             // LeftHandSideExpression: See 11.2
             //      NewExpression
@@ -5396,12 +5431,14 @@ namespace ts {
         }
 
         shared<Expression> parseBinaryExpressionOrHigher(int precedence) {
+            ZoneScoped;
             auto pos = getNodePos();
             auto leftOperand = parseUnaryExpressionOrHigher();
             return parseBinaryExpressionRest(precedence, leftOperand, pos);
         }
 
         shared<Expression> parseBinaryExpressionRest(int precedence, shared<Expression> leftOperand, int pos) {
+            ZoneScoped;
             while (true) {
                 // We either have a binary operator here, or we're finished.  We call
                 // reScanGreaterToken so that we merge token sequences like > and = into >=
@@ -5431,8 +5468,8 @@ namespace ts {
                 //      a ** b - c
                 //             ^token; leftOperand = b. Return b to the caller as a rightOperand
                 auto consumeCurrentOperator = token() == SyntaxKind::AsteriskAsteriskToken ?
-                    newPrecedence >= (int)precedence :
-                    newPrecedence > (int)precedence;
+                                              newPrecedence >= (int) precedence :
+                                              newPrecedence > (int) precedence;
 
                 if (!consumeCurrentOperator) {
                     break;
@@ -5450,13 +5487,11 @@ namespace ts {
                     // by a function call to 'as' with the argument 'Bar'
                     if (scanner.hasPrecedingLineBreak()) {
                         break;
-                    }
-                    else {
+                    } else {
                         nextToken();
                         leftOperand = makeAsExpression(leftOperand, parseType());
                     }
-                }
-                else {
+                } else {
 
                     leftOperand = makeBinaryExpression(leftOperand, parseTokenNode<Node>(), parseBinaryExpressionOrHigher(newPrecedence), pos);
                 }
@@ -5477,6 +5512,7 @@ namespace ts {
          * In TypeScript (2), (3) are parsed as PostfixUnaryExpression. (4), (5) are parsed as PrefixUnaryExpression
          */
         shared<Expression> parseUpdateExpression() {
+            ZoneScoped;
             if (token() == SyntaxKind::PlusPlusToken || token() == SyntaxKind::MinusMinusToken) {
                 auto pos = getNodePos();
                 return finishNode(factory.createPrefixUnaryExpression(token(), nextTokenAnd<shared<LeftHandSideExpression>>(CALLBACK(parseLeftHandSideExpressionOrHigher))), pos);
@@ -5550,6 +5586,7 @@ namespace ts {
          *      9) [+Await] await UnaryExpression[?yield]
          */
         shared<UnaryExpression> parseSimpleUnaryExpression() {
+            ZoneScoped;
             switch (token()) {
                 case SyntaxKind::PlusToken:
                 case SyntaxKind::MinusToken:
@@ -5573,7 +5610,7 @@ namespace ts {
                     }
                     // falls through
                 default:
-                    return dynamic_pointer_cast<UnaryExpression>(parseUpdateExpression());
+                    return reinterpret_pointer_cast<UnaryExpression>(parseUpdateExpression());
             }
         }
 
@@ -5586,7 +5623,6 @@ namespace ts {
             return finishNode(factory.createTypeAssertion(type, expression), pos);
         }
 
-
         /**
          * Parse ES7 exponential expression and await expression
          *
@@ -5596,6 +5632,7 @@ namespace ts {
          *
          */
         shared<Expression> parseUnaryExpressionOrHigher() {
+            ZoneScoped;
             /**
              * ES7 UpdateExpression:
              *      1) LeftHandSideExpression[?Yield]
@@ -5680,8 +5717,8 @@ namespace ts {
             auto parameters = parseParameters(SignatureFlags::Type);
             auto type = parseReturnType(SyntaxKind::EqualsGreaterThanToken, /*isType*/ false);
             auto node = isConstructorType
-                        ? (shared<TypeNode>)factory.createConstructorTypeNode1(modifiers, typeParameters, parameters, type)
-                        : (shared<TypeNode>)factory.createFunctionTypeNode(typeParameters, parameters, type);
+                        ? (shared<TypeNode>) factory.createConstructorTypeNode1(modifiers, typeParameters, parameters, type)
+                        : (shared<TypeNode>) factory.createFunctionTypeNode(typeParameters, parameters, type);
             if (!isConstructorType) node->modifiers = modifiers;
             return withJSDoc(finishNode(node, pos), hasJSDoc);
         }
@@ -5721,7 +5758,6 @@ namespace ts {
             return token() == SyntaxKind::DotToken ? nullptr : node;
         }
 
-
         shared<TypeNode> parseJSDocAllType() {
             throw runtime_error("JSDoc not supported");
 //            auto pos = getNodePos();
@@ -5735,7 +5771,7 @@ namespace ts {
                 nextToken();
             }
             shared<Expression> expression =
-                token() == SyntaxKind::TrueKeyword || token() == SyntaxKind::FalseKeyword || token() == SyntaxKind::NullKeyword ?
+                    token() == SyntaxKind::TrueKeyword || token() == SyntaxKind::FalseKeyword || token() == SyntaxKind::NullKeyword ?
                     parseTokenNode<Expression>() :
                     parseLiteralLikeNode(token());
             if (negative) {
@@ -5750,8 +5786,9 @@ namespace ts {
         }
 
         shared<AssertEntry> parseAssertEntry() {
+            ZoneScoped;
             auto pos = getNodePos();
-            shared<Node> name = tokenIsIdentifierOrKeyword(token()) ? (shared<Node>)parseIdentifierName() : (shared<Node>)parseLiteralLikeNode(SyntaxKind::StringLiteral);
+            shared<Node> name = tokenIsIdentifierOrKeyword(token()) ? (shared<Node>) parseIdentifierName() : (shared<Node>) parseLiteralLikeNode(SyntaxKind::StringLiteral);
             parseExpected(SyntaxKind::ColonToken);
             auto value = parseAssignmentExpressionOrHigher();
             return finishNode(factory.createAssertEntry(name, value), pos);
@@ -5770,14 +5807,13 @@ namespace ts {
                     auto lastError = lastOrUndefined(parseDiagnostics);
                     if (lastError && lastError->code == Diagnostics::_0_expected.code) {
                         addRelatedInfo(
-                            *lastError,
-                            {createDetachedDiagnostic(fileName, openBracePosition, 1, Diagnostics::The_parser_expected_to_find_a_1_to_match_the_0_token_here, {"{", "}"})}
+                                *lastError,
+                                {createDetachedDiagnostic(fileName, openBracePosition, 1, Diagnostics::The_parser_expected_to_find_a_1_to_match_the_0_token_here, {"{", "}"})}
                         );
                     }
                 }
-                return finishNode(factory.createAssertClause(*elements, multiLine), pos);
-            }
-            else {
+                return finishNode(factory.createAssertClause(elements, multiLine), pos);
+            } else {
                 auto elements = createNodeArray({}, getNodePos(), /*end*/ {}, /*hasTrailingComma*/ false);
                 return finishNode(factory.createAssertClause(elements, /*multiLine*/ false), pos);
             }
@@ -5795,16 +5831,16 @@ namespace ts {
                 auto lastError = lastOrUndefined(parseDiagnostics);
                 if (lastError && lastError->code == Diagnostics::_0_expected.code) {
                     addRelatedInfo(
-                        *lastError,
-                        {createDetachedDiagnostic(fileName, openBracePosition, 1, Diagnostics::The_parser_expected_to_find_a_1_to_match_the_0_token_here, {"{", "}"})}
+                            *lastError,
+                            {createDetachedDiagnostic(fileName, openBracePosition, 1, Diagnostics::The_parser_expected_to_find_a_1_to_match_the_0_token_here, {"{", "}"})}
                     );
                 }
             }
             return finishNode(factory.createImportTypeAssertionContainer(clause, multiLine), pos);
         }
 
-        shared<ImportTypeNode> parseImportType()  {
-            sourceFlags |= (int)NodeFlags::PossiblyContainsDynamicImport;
+        shared<ImportTypeNode> parseImportType() {
+            sourceFlags |= (int) NodeFlags::PossiblyContainsDynamicImport;
             auto pos = getNodePos();
             auto isTypeOf = parseOptional(SyntaxKind::TypeOfKeyword);
             parseExpected(SyntaxKind::ImportKeyword);
@@ -5862,7 +5898,7 @@ namespace ts {
             }
             auto type = parseTypeAnnotation();
             parseSemicolon();
-            auto members = parseList(ParsingContext::TypeMembers, [this]() {return parseTypeMember();});
+            auto members = parseList(ParsingContext::TypeMembers, [this]() { return parseTypeMember(); });
             parseExpected(SyntaxKind::CloseBraceToken);
             return finishNode(factory.createMappedTypeNode(readonlyToken, typeParameter, nameType, questionToken, type, members), pos);
         }
@@ -5912,10 +5948,10 @@ namespace ts {
         shared<TupleTypeNode> parseTupleType() {
             auto pos = getNodePos();
             return finishNode(
-                factory.createTupleTypeNode(
-                    parseBracketedList(ParsingContext::TupleElementTypes, CALLBACK(parseTupleElementNameOrTupleElementType), SyntaxKind::OpenBracketToken, SyntaxKind::CloseBracketToken)
-                ),
-                pos
+                    factory.createTupleTypeNode(
+                            parseBracketedList(ParsingContext::TupleElementTypes, CALLBACK(parseTupleElementNameOrTupleElementType), SyntaxKind::OpenBracketToken, SyntaxKind::CloseBracketToken)
+                    ),
+                    pos
             );
         }
 
@@ -5930,7 +5966,7 @@ namespace ts {
         shared<TypeNode> parseAssertsTypePredicate() {
             auto pos = getNodePos();
             auto assertsModifier = parseExpectedToken<AssertsKeyword>(SyntaxKind::AssertsKeyword);
-            shared<Node> parameterName = token() == SyntaxKind::ThisKeyword ? (shared<Node>)parseThisTypeNode() : (shared<Node>)parseIdentifier();
+            shared<Node> parameterName = token() == SyntaxKind::ThisKeyword ? (shared<Node>) parseThisTypeNode() : (shared<Node>) parseIdentifier();
             sharedOpt<TypeNode> type = parseOptional(SyntaxKind::IsKeyword) ? parseType() : nullptr;
             return finishNode(factory.createTypePredicateNode(assertsModifier, parameterName, type), pos);
         }
@@ -5938,34 +5974,33 @@ namespace ts {
         shared<TemplateLiteralTypeSpan> parseTemplateTypeSpan() {
             auto pos = getNodePos();
             return finishNode(
-                factory.createTemplateLiteralTypeSpan(
-                    parseType(),
-                    parseLiteralOfTemplateSpan(/*isTaggedTemplate*/ false)
-                ),
-                pos
+                    factory.createTemplateLiteralTypeSpan(
+                            parseType(),
+                            parseLiteralOfTemplateSpan(/*isTaggedTemplate*/ false)
+                    ),
+                    pos
             );
         }
 
-        NodeArray parseTemplateTypeSpans() {
+        shared<NodeArray> parseTemplateTypeSpans() {
             auto pos = getNodePos();
             vector<shared<Node>> list;
             shared<TemplateLiteralTypeSpan> node;
             do {
                 node = parseTemplateTypeSpan();
                 list.push_back(node);
-            }
-            while (node->literal->kind == SyntaxKind::TemplateMiddle);
+            } while (node->literal->kind == SyntaxKind::TemplateMiddle);
             return createNodeArray(list, pos);
         }
 
         shared<TemplateLiteralTypeNode> parseTemplateType() {
             auto pos = getNodePos();
             return finishNode(
-                factory.createTemplateLiteralType(
-                    parseTemplateHead(/*isTaggedTemplate*/ false),
-                    parseTemplateTypeSpans()
-                ),
-                pos
+                    factory.createTemplateLiteralType(
+                            parseTemplateHead(/*isTaggedTemplate*/ false),
+                            parseTemplateTypeSpans()
+                    ),
+                    pos
             );
         }
 
@@ -6021,8 +6056,7 @@ namespace ts {
                     auto thisKeyword = parseThisTypeNode();
                     if (token() == SyntaxKind::IsKeyword && !scanner.hasPrecedingLineBreak()) {
                         return parseThisTypePredicate(thisKeyword);
-                    }
-                    else {
+                    } else {
                         return thisKeyword;
                     }
                 }
@@ -6073,8 +6107,7 @@ namespace ts {
                             auto indexType = parseType();
                             parseExpected(SyntaxKind::CloseBracketToken);
                             type = finishNode(factory.createIndexedAccessTypeNode(type, indexType), pos);
-                        }
-                        else {
+                        } else {
                             parseExpected(SyntaxKind::CloseBracketToken);
                             type = finishNode(factory.createArrayTypeNode(type), pos);
                         }
@@ -6108,14 +6141,12 @@ namespace ts {
                 DiagnosticMessage diagnostic;
                 if (isFunctionTypeNode(type)) {
                     diagnostic = isInUnionType
-                        ? Diagnostics::Function_type_notation_must_be_parenthesized_when_used_in_a_union_type
-                        : Diagnostics::Function_type_notation_must_be_parenthesized_when_used_in_an_intersection_type;
-                }
-                else {
+                                 ? Diagnostics::Function_type_notation_must_be_parenthesized_when_used_in_a_union_type
+                                 : Diagnostics::Function_type_notation_must_be_parenthesized_when_used_in_an_intersection_type;
+                } else {
                     diagnostic = isInUnionType
-                        ? Diagnostics::Constructor_type_notation_must_be_parenthesized_when_used_in_a_union_type
-                        : Diagnostics::Constructor_type_notation_must_be_parenthesized_when_used_in_an_intersection_type;
-
+                                 ? Diagnostics::Constructor_type_notation_must_be_parenthesized_when_used_in_a_union_type
+                                 : Diagnostics::Constructor_type_notation_must_be_parenthesized_when_used_in_an_intersection_type;
                 }
                 parseErrorAtRange(type, diagnostic);
                 return type;
@@ -6124,9 +6155,9 @@ namespace ts {
         }
 
         shared<TypeNode> parseUnionOrIntersectionType(
-            SyntaxKind operatorKind,
-            function<shared<TypeNode>()> parseConstituentType,
-            function<shared<TypeNode>(NodeArray)> createTypeNode //: (types: NodeArray<TypeNode>) => UnionOrIntersectionTypeNode
+                SyntaxKind operatorKind,
+                function<shared<TypeNode>()> parseConstituentType,
+                function<shared<TypeNode>(shared<NodeArray>)> createTypeNode //: (types: NodeArray<TypeNode>) => UnionOrIntersectionTypeNode
         ) {
             auto pos = getNodePos();
             auto isUnionType = operatorKind == SyntaxKind::BarToken;
@@ -6247,8 +6278,7 @@ namespace ts {
             auto type = parseType();
             if (typePredicateVariable) {
                 return finishNode(factory.createTypePredicateNode(/*assertsModifier*/ {}, typePredicateVariable, type), pos);
-            }
-            else {
+            } else {
                 return type;
             }
         }
@@ -6259,6 +6289,7 @@ namespace ts {
         }
 
         shared<Expression> parseExpression() {
+            ZoneScoped;
             // Expression[in]:
             //      AssignmentExpression[in]
             //      Expression[in] , AssignmentExpression[in]
@@ -6316,6 +6347,7 @@ namespace ts {
         }
 
         shared<YieldExpression> parseYieldExpression() {
+            ZoneScoped;
             auto pos = getNodePos();
 
             // YieldExpression[In] :
@@ -6485,19 +6517,19 @@ namespace ts {
             return Tristate::False;
         }
 
-        optional<NodeArray> parseModifiersForArrowFunction() {
+        sharedOpt<NodeArray> parseModifiersForArrowFunction() {
             if (token() == SyntaxKind::AsyncKeyword) {
                 auto pos = getNodePos();
                 nextToken();
                 auto modifier = finishNode(factory.createToken<AsyncKeyword>(SyntaxKind::AsyncKeyword), pos);
                 return factory.createNodeArray<Node>({modifier}, pos);
             }
-            return nullopt;
+            return nullptr;
         }
 
         shared<Node> parseArrowFunctionExpressionBody(bool isAsync) {
             if (token() == SyntaxKind::OpenBraceToken) {
-                return parseFunctionBlock(isAsync ? (int)SignatureFlags::Await : (int)SignatureFlags::None);
+                return parseFunctionBlock(isAsync ? (int) SignatureFlags::Await : (int) SignatureFlags::None);
             }
 
             if (token() != SyntaxKind::SemicolonToken &&
@@ -6519,14 +6551,14 @@ namespace ts {
                 // up preemptively closing the containing construct.
                 //
                 // Note: even when 'IgnoreMissingOpenBrace' is passed, parseBody will still error.
-                return parseFunctionBlock((int)SignatureFlags::IgnoreMissingOpenBrace | (isAsync ? (int)SignatureFlags::Await : (int)SignatureFlags::None));
+                return parseFunctionBlock((int) SignatureFlags::IgnoreMissingOpenBrace | (isAsync ? (int) SignatureFlags::Await : (int) SignatureFlags::None));
             }
 
             auto savedTopLevel = topLevel;
             topLevel = false;
             auto node = isAsync
-                ? doInAwaitContext<shared<Expression>>(CALLBACK(parseAssignmentExpressionOrHigher))
-                : doOutsideOfAwaitContext<shared<Expression>>(CALLBACK(parseAssignmentExpressionOrHigher));
+                        ? doInAwaitContext<shared<Expression>>(CALLBACK(parseAssignmentExpressionOrHigher))
+                        : doOutsideOfAwaitContext<shared<Expression>>(CALLBACK(parseAssignmentExpressionOrHigher));
             topLevel = savedTopLevel;
             return node;
         }
@@ -6545,7 +6577,7 @@ namespace ts {
             // close paren.
             auto typeParameters = parseTypeParameters();
 
-            NodeArray parameters;
+            shared<NodeArray> parameters;
             if (!parseExpected(SyntaxKind::OpenParenToken)) {
                 if (!allowAmbiguity) {
                     return nullptr;
@@ -6553,13 +6585,13 @@ namespace ts {
                 parameters = createMissingList();
             } else {
                 if (!allowAmbiguity) {
-                    auto maybeParameters = parseParametersWorker((int)isAsync, allowAmbiguity);
+                    auto maybeParameters = parseParametersWorker((int) isAsync, allowAmbiguity);
                     if (!maybeParameters) {
                         return nullptr;
                     }
-                    parameters = *maybeParameters;
+                    parameters = maybeParameters;
                 } else {
-                    parameters = *parseParametersWorker((int)isAsync, allowAmbiguity);
+                    parameters = parseParametersWorker((int) isAsync, allowAmbiguity);
                 }
                 if (!parseExpected(SyntaxKind::CloseParenToken) && !allowAmbiguity) {
                     return nullptr;
@@ -6620,6 +6652,7 @@ namespace ts {
         }
 
         sharedOpt<Expression> tryParseParenthesizedArrowFunctionExpression() {
+            ZoneScoped;
             auto triState = isParenthesizedArrowFunctionExpression();
             if (triState == Tristate::False) {
                 // It's definitely not a parenthesized arrow function expression.
@@ -6647,7 +6680,7 @@ namespace ts {
                     return Tristate::False;
                 }
                 // Check for un-parenthesized AsyncArrowFunction
-                auto expr = parseBinaryExpressionOrHigher((int)OperatorPrecedence::Lowest);
+                auto expr = parseBinaryExpressionOrHigher((int) OperatorPrecedence::Lowest);
                 if (!scanner.hasPrecedingLineBreak() && expr->kind == SyntaxKind::Identifier && token() == SyntaxKind::EqualsGreaterThanToken) {
                     return Tristate::True;
                 }
@@ -6656,16 +6689,17 @@ namespace ts {
             return Tristate::False;
         }
 
-        shared<ArrowFunction> parseSimpleArrowFunctionExpression(int pos, shared<Identifier> identifier, optional<NodeArray> asyncModifier)  {
+        shared<ArrowFunction> parseSimpleArrowFunctionExpression(int pos, shared<Identifier> identifier, sharedOpt<NodeArray> asyncModifier) {
+            ZoneScoped;
             Debug::asserts(token() == SyntaxKind::EqualsGreaterThanToken, "parseSimpleArrowFunctionExpression should only have been called if we had a =>");
             auto parameter = factory.createParameterDeclaration(
-                /*decorators*/ {},
-                /*modifiers*/ {},
-                /*dotDotDotToken*/ {},
-                identifier,
-                /*questionToken*/ {},
-                /*type*/ {},
-                /*initializer*/ {}
+                    /*decorators*/ {},
+                    /*modifiers*/ {},
+                    /*dotDotDotToken*/ {},
+                                   identifier,
+                    /*questionToken*/ {},
+                    /*type*/ {},
+                    /*initializer*/ {}
             );
             finishNode(parameter, identifier->pos);
 
@@ -6678,12 +6712,13 @@ namespace ts {
         }
 
         sharedOpt<ArrowFunction> tryParseAsyncSimpleArrowFunctionExpression() {
+            ZoneScoped;
             // We do a check here so that we won't be doing unnecessarily call to "lookAhead"
             if (token() == SyntaxKind::AsyncKeyword) {
                 if (lookAhead<Tristate>(CALLBACK(isUnParenthesizedAsyncArrowFunctionWorker)) == Tristate::True) {
                     auto pos = getNodePos();
                     auto asyncModifier = parseModifiersForArrowFunction();
-                    auto expr = parseBinaryExpressionOrHigher((int)OperatorPrecedence::Lowest);
+                    auto expr = parseBinaryExpressionOrHigher((int) OperatorPrecedence::Lowest);
                     return parseSimpleArrowFunctionExpression(pos, to<Identifier>(expr), asyncModifier);
                 }
             }
@@ -6691,6 +6726,7 @@ namespace ts {
         }
 
         shared<Expression> parseConditionalExpressionRest(shared<Expression> leftOperand, int pos) {
+            ZoneScoped;
             // Note: we are passed in an expression which was produced from parseBinaryExpressionOrHigher.
             auto questionToken = parseOptionalToken<QuestionToken>(SyntaxKind::QuestionToken);
             if (!questionToken) {
@@ -6701,20 +6737,21 @@ namespace ts {
             // we do not that for the 'whenFalse' part.
             sharedOpt<ColonToken> colonToken;
             return finishNode(
-                factory.createConditionalExpression(
-                    leftOperand,
-                    questionToken,
-                    doOutsideOfContext<shared<Expression>>(disallowInAndDecoratorContext, CALLBACK(parseAssignmentExpressionOrHigher)),
-                    colonToken = parseExpectedToken<ColonToken>(SyntaxKind::ColonToken),
-                    nodeIsPresent(colonToken)
-                        ? parseAssignmentExpressionOrHigher()
-                        : createMissingNode<Identifier>(SyntaxKind::Identifier, /*reportAtCurrentPosition*/ false, Diagnostics::_0_expected, tokenToString(SyntaxKind::ColonToken))
-                ),
-                pos
+                    factory.createConditionalExpression(
+                            leftOperand,
+                            questionToken,
+                            doOutsideOfContext<shared<Expression>>(disallowInAndDecoratorContext, CALLBACK(parseAssignmentExpressionOrHigher)),
+                            colonToken = parseExpectedToken<ColonToken>(SyntaxKind::ColonToken),
+                            nodeIsPresent(colonToken)
+                            ? parseAssignmentExpressionOrHigher()
+                            : createMissingNode<Identifier>(SyntaxKind::Identifier, /*reportAtCurrentPosition*/ false, Diagnostics::_0_expected, tokenToString(SyntaxKind::ColonToken))
+                    ),
+                    pos
             );
         }
 
         shared<Expression> parseAssignmentExpressionOrHigher() {
+            ZoneScoped;
             //  AssignmentExpression[in,yield]:
             //      1) ConditionalExpression[?in,?yield]
             //      2) LeftHandSideExpression = AssignmentExpression[?in,?yield]
@@ -6755,7 +6792,7 @@ namespace ts {
             // binary expression here, so we pass in the 'lowest' precedence here so that it matches
             // and consumes anything.
             auto pos = getNodePos();
-            auto expr = parseBinaryExpressionOrHigher((int)OperatorPrecedence::Lowest);
+            auto expr = parseBinaryExpressionOrHigher((int) OperatorPrecedence::Lowest);
 
             // To avoid a look-ahead, we did not handle the case of an arrow function with a single un-parenthesized
             // parameter ('x => ...') above. We handle it here by checking if the parsed expression was a single
@@ -7051,6 +7088,7 @@ namespace ts {
         }
 
         shared<VariableDeclaration> parseVariableDeclaration(optional<bool> allowExclamation = {}) {
+            ZoneScoped;
             auto pos = getNodePos();
             auto hasJSDoc = hasPrecedingJSDocComment();
             auto name = parseIdentifierOrPattern(Diagnostics::Private_identifiers_are_not_allowed_in_variable_declarations);
@@ -7070,6 +7108,7 @@ namespace ts {
         }
 
         shared<VariableDeclarationList> parseVariableDeclarationList(bool inForStatementInitializer) {
+            ZoneScoped;
             auto pos = getNodePos();
 
             int flags = 0;
@@ -7077,10 +7116,10 @@ namespace ts {
                 case SyntaxKind::VarKeyword:
                     break;
                 case SyntaxKind::LetKeyword:
-                    flags |= (int)NodeFlags::Let;
+                    flags |= (int) NodeFlags::Let;
                     break;
                 case SyntaxKind::ConstKeyword:
-                    flags |= (int)NodeFlags::Const;
+                    flags |= (int) NodeFlags::Const;
                     break;
                 default:
                     Debug::fail();
@@ -7097,18 +7136,17 @@ namespace ts {
             // So we need to look ahead to determine if 'of' should be treated as a keyword in
             // this context.
             // The checker will then give an error that there is an empty declaration list.
-            NodeArray declarations;
+            shared<NodeArray> declarations;
             if (token() == SyntaxKind::OfKeyword && lookAhead<bool>(CALLBACK(canFollowContextualOfKeyword))) {
                 declarations = createMissingList();
-            }
-            else {
+            } else {
                 auto savedDisallowIn = inDisallowInContext();
                 setDisallowInContext(inForStatementInitializer);
 
                 if (inForStatementInitializer) {
-                    declarations = *parseDelimitedList(ParsingContext::VariableDeclarations, [this]() { return parseVariableDeclaration(); });
+                    declarations = parseDelimitedList(ParsingContext::VariableDeclarations, [this]() { return parseVariableDeclaration(); });
                 } else {
-                    declarations = *parseDelimitedList(ParsingContext::VariableDeclarations, CALLBACK(parseVariableDeclarationAllowExclamation));
+                    declarations = parseDelimitedList(ParsingContext::VariableDeclarations, CALLBACK(parseVariableDeclarationAllowExclamation));
                 }
 
                 setDisallowInContext(savedDisallowIn);
@@ -7117,7 +7155,8 @@ namespace ts {
             return finishNode(factory.createVariableDeclarationList(declarations, flags), pos);
         }
 
-        shared<VariableStatement> parseVariableStatement(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers) {
+        shared<VariableStatement> parseVariableStatement(int pos, bool hasJSDoc, const sharedOpt<NodeArray> &decorators, const sharedOpt<NodeArray> &modifiers) {
+            ZoneScoped;
             auto declarationList = parseVariableDeclarationList(/*inForStatementInitializer*/ false);
             parseSemicolon();
             auto node = factory.createVariableStatement(modifiers, declarationList);
@@ -7137,27 +7176,123 @@ namespace ts {
             return lookAhead<bool>(CALLBACK(nextTokenIsBindingIdentifierOrStartOfDestructuring));
         }
 
-        shared<FunctionDeclaration> parseFunctionDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers) {
+        shared<FunctionDeclaration> parseFunctionDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray> decorators, sharedOpt<NodeArray> modifiers) {
             auto savedAwaitContext = inAwaitContext();
 
             auto modifierFlags = modifiersToFlags(modifiers);
             parseExpected(SyntaxKind::FunctionKeyword);
             auto asteriskToken = parseOptionalToken<AsteriskToken>(SyntaxKind::AsteriskToken);
             // We don't parse the name here in await context, instead we will report a grammar error in the checker.
-            auto name = modifierFlags & (int)ModifierFlags::Default ? parseOptionalBindingIdentifier() : parseBindingIdentifier();
+            auto name = modifierFlags & (int) ModifierFlags::Default ? parseOptionalBindingIdentifier() : parseBindingIdentifier();
             auto isGenerator = asteriskToken ? SignatureFlags::Yield : SignatureFlags::None;
-            auto isAsync = modifierFlags & (int)ModifierFlags::Async ? SignatureFlags::Await : SignatureFlags::None;
+            auto isAsync = modifierFlags & (int) ModifierFlags::Async ? SignatureFlags::Await : SignatureFlags::None;
             auto typeParameters = parseTypeParameters();
-            if (modifierFlags & (int)ModifierFlags::Export) setAwaitContext(/*value*/ true);
-            auto parameters = parseParameters((int)isGenerator | (int)isAsync);
+            if (modifierFlags & (int) ModifierFlags::Export) setAwaitContext(/*value*/ true);
+            auto parameters = parseParameters((int) isGenerator | (int) isAsync);
             auto type = parseReturnType(SyntaxKind::ColonToken, /*isType*/ false);
-            auto body = parseFunctionBlockOrSemicolon((int)isGenerator | (int)isAsync, Diagnostics::or_expected);
+            auto body = parseFunctionBlockOrSemicolon((int) isGenerator | (int) isAsync, Diagnostics::or_expected);
             setAwaitContext(savedAwaitContext);
             auto node = factory.createFunctionDeclaration(decorators, modifiers, asteriskToken, name, typeParameters, parameters, type, body);
             return withJSDoc(finishNode(node, pos), hasJSDoc);
         }
 
+        shared<Statement> parseDeclaration() {
+            ZoneScoped;
+
+            // TODO: Can we hold onto the parsed decorators/modifiers and advance the scanner
+            //       if we can't reuse the declaration, so that we don't do this work twice?
+            //
+            // `parseListElement` attempted to get the reused node at this position,
+            // but the ambient context flag was not yet set, so the node appeared
+            // not reusable in that context.
+            auto a = lookAhead<sharedOpt<NodeArray>>([this]() {
+                parseDecorators();
+                return parseModifiers();
+            });
+            auto isAmbient = some(a, CALLBACK(isDeclareModifier));
+            if (isAmbient) {
+                auto node = tryReuseAmbientDeclaration();
+                if (node) {
+                    return node;
+                }
+            }
+
+            auto pos = getNodePos();
+            auto hasJSDoc = hasPrecedingJSDocComment();
+            auto decorators = parseDecorators();
+            auto modifiers = parseModifiers();
+            if (isAmbient) {
+                for (auto &m: modifiers->list) {
+                    m->flags |= (int) NodeFlags::Ambient;
+                }
+                return doInsideOfContext<shared<Statement>>((int) NodeFlags::Ambient, [this, &pos, &hasJSDoc, &decorators, &modifiers]() { return parseDeclarationWorker(pos, hasJSDoc, decorators, modifiers); });
+            } else {
+                return parseDeclarationWorker(pos, hasJSDoc, decorators, modifiers);
+            }
+        }
+
+        sharedOpt<Statement> tryReuseAmbientDeclaration() {
+            ZoneScoped;
+            return doInsideOfContext<sharedOpt<Statement>>((int) NodeFlags::Ambient, [this]()->sharedOpt<Statement> {
+                auto node = currentNode((ParsingContext) parsingContext);
+                if (node) {
+                    return to<Statement>(consumeNode(node));
+                }
+                return nullptr;
+            });
+        }
+
+        shared<Statement> parseDeclarationWorker(int pos, bool hasJSDoc, sharedOpt<NodeArray> decorators, sharedOpt<NodeArray> modifiers) {
+            ZoneScoped;
+            switch (token()) {
+                case SyntaxKind::VarKeyword:
+                case SyntaxKind::LetKeyword:
+                case SyntaxKind::ConstKeyword:
+                    return parseVariableStatement(pos, hasJSDoc, decorators, modifiers);
+                case SyntaxKind::FunctionKeyword:
+                    return parseFunctionDeclaration(pos, hasJSDoc, decorators, modifiers);
+//                case SyntaxKind::ClassKeyword:
+//                    return parseClassDeclaration(pos, hasJSDoc, decorators, modifiers);
+//                case SyntaxKind::InterfaceKeyword:
+//                    return parseInterfaceDeclaration(pos, hasJSDoc, decorators, modifiers);
+//                case SyntaxKind::TypeKeyword:
+//                    return parseTypeAliasDeclaration(pos, hasJSDoc, decorators, modifiers);
+//                case SyntaxKind::EnumKeyword:
+//                    return parseEnumDeclaration(pos, hasJSDoc, decorators, modifiers);
+//                case SyntaxKind::GlobalKeyword:
+//                case SyntaxKind::ModuleKeyword:
+//                case SyntaxKind::NamespaceKeyword:
+//                    return parseModuleDeclaration(pos, hasJSDoc, decorators, modifiers);
+//                case SyntaxKind::ImportKeyword:
+//                    return parseImportDeclarationOrImportEqualsDeclaration(pos, hasJSDoc, decorators, modifiers);
+//                case SyntaxKind::ExportKeyword:
+//                    nextToken();
+//                    switch (token()) {
+//                        case SyntaxKind::DefaultKeyword:
+//                        case SyntaxKind::EqualsToken:
+//                            return parseExportAssignment(pos, hasJSDoc, decorators, modifiers);
+//                        case SyntaxKind::AsKeyword:
+//                            return parseNamespaceExportDeclaration(pos, hasJSDoc, decorators, modifiers);
+//                        default:
+//                            return parseExportDeclaration(pos, hasJSDoc, decorators, modifiers);
+//                    }
+//                default:
+//                    if (decorators || modifiers) {
+//                        // We reached this point because we encountered decorators and/or modifiers and assumed a declaration
+//                        // would follow. For recovery and error reporting purposes, return an incomplete declaration.
+//                        auto missing = createMissingNode<MissingDeclaration>(SyntaxKind::MissingDeclaration, /*reportAtCurrentPosition*/ true, Diagnostics::Declaration_expected);
+//                        setTextRangePos(missing, pos);
+//                        missing.decorators = decorators;
+//                        missing.modifiers = modifiers;
+//                        return missing;
+//                    }
+//                    return undefined!; // TODO: GH#18217
+            }
+            throw runtime_error("not implemented");
+        }
+
         shared<Statement> parseStatement() {
+            ZoneScoped;
             switch (token()) {
                 case SyntaxKind::SemicolonToken:
                     return parseEmptyStatement();
@@ -7202,34 +7337,35 @@ namespace ts {
 //                    return parseTryStatement();
 //                case SyntaxKind::DebuggerKeyword:
 //                    return parseDebuggerStatement();
-//                case SyntaxKind::AtToken:
-//                    return parseDeclaration();
-//                case SyntaxKind::AsyncKeyword:
-//                case SyntaxKind::InterfaceKeyword:
-//                case SyntaxKind::TypeKeyword:
-//                case SyntaxKind::ModuleKeyword:
-//                case SyntaxKind::NamespaceKeyword:
-//                case SyntaxKind::DeclareKeyword:
-//                case SyntaxKind::ConstKeyword:
-//                case SyntaxKind::EnumKeyword:
-//                case SyntaxKind::ExportKeyword:
-//                case SyntaxKind::ImportKeyword:
-//                case SyntaxKind::PrivateKeyword:
-//                case SyntaxKind::ProtectedKeyword:
-//                case SyntaxKind::PublicKeyword:
-//                case SyntaxKind::AbstractKeyword:
-//                case SyntaxKind::StaticKeyword:
-//                case SyntaxKind::ReadonlyKeyword:
-//                case SyntaxKind::GlobalKeyword:
-//                    if (isStartOfDeclaration()) {
-//                        return parseDeclaration();
-//                    }
-//                    break;
+                case SyntaxKind::AtToken:
+                    return parseDeclaration();
+                case SyntaxKind::AsyncKeyword:
+                case SyntaxKind::InterfaceKeyword:
+                case SyntaxKind::TypeKeyword:
+                case SyntaxKind::ModuleKeyword:
+                case SyntaxKind::NamespaceKeyword:
+                case SyntaxKind::DeclareKeyword:
+                case SyntaxKind::ConstKeyword:
+                case SyntaxKind::EnumKeyword:
+                case SyntaxKind::ExportKeyword:
+                case SyntaxKind::ImportKeyword:
+                case SyntaxKind::PrivateKeyword:
+                case SyntaxKind::ProtectedKeyword:
+                case SyntaxKind::PublicKeyword:
+                case SyntaxKind::AbstractKeyword:
+                case SyntaxKind::StaticKeyword:
+                case SyntaxKind::ReadonlyKeyword:
+                case SyntaxKind::GlobalKeyword:
+                    if (isStartOfDeclaration()) {
+                        return parseDeclaration();
+                    }
+                    break;
             }
             return to<Statement>(parseExpressionOrLabeledStatement());
         }
 
         shared<SourceFile> parseSourceFileWorker(ScriptTarget languageVersion, bool setParentNodes, ScriptKind scriptKind, function<void(shared<SourceFile>)> setExternalModuleIndicator) {
+            ZoneScoped;
             auto isDeclarationFile = isDeclarationFileName(fileName);
             if (isDeclarationFile) {
                 contextFlags |= (int) NodeFlags::Ambient;
@@ -7241,11 +7377,14 @@ namespace ts {
             nextToken();
 
             auto statements = parseList(ParsingContext::SourceElements, CALLBACK(parseStatement));
-//            Debug::asserts(token() == SyntaxKind::EndOfFileToken);
-//            auto endOfFileToken = addJSDocComment(parseTokenNode<EndOfFileToken>());
-//
-//            auto sourceFile = createSourceFile(fileName, languageVersion, scriptKind, isDeclarationFile, statements, endOfFileToken, sourceFlags, setExternalModuleIndicator);
-//
+//            auto statements = parseList(ParsingContext::SourceElements, [this]() {
+//                return this->parseStatement();
+//            });
+            Debug::asserts(token() == SyntaxKind::EndOfFileToken);
+            auto endOfFileToken = addJSDocComment(parseTokenNode<EndOfFileToken>());
+
+            auto sourceFile = createSourceFile(fileName, languageVersion, scriptKind, isDeclarationFile, statements, endOfFileToken, sourceFlags, setExternalModuleIndicator);
+
 //            // A member of ReadonlyArray<T> isn't assignable to a member of T[] (and prevents a direct cast) - but this is where we set up those members so they can be readonly in the future
 //            processCommentPragmas(sourceFile as {} as PragmaContext, sourceText);
 //            processPragmasIntoFields(sourceFile as {} as PragmaContext, reportPragmaDiagnostic);
@@ -7263,7 +7402,7 @@ namespace ts {
 //                fixupParentReferences(sourceFile);
 //            }
 //
-//            return sourceFile;
+            return sourceFile;
 //
 //            function reportPragmaDiagnostic(int pos, end: number, diagnostic: DiagnosticMessage) {
 //                parseDiagnostics.push(createDetachedDiagnostic(fileName, pos, end, diagnostic));
@@ -7271,98 +7410,12 @@ namespace ts {
         }
 //
 
-//        function parseDeclaration(): Statement {
-//            // TODO: Can we hold onto the parsed decorators/modifiers and advance the scanner
-//            //       if we can't reuse the declaration, so that we don't do this work twice?
-//            //
-//            // `parseListElement` attempted to get the reused node at this position,
-//            // but the ambient context flag was not yet set, so the node appeared
-//            // not reusable in that context.
-//            auto isAmbient = some(lookAhead(() => (parseDecorators(), parseModifiers())), isDeclareModifier);
-//            if (isAmbient) {
-//                auto node = tryReuseAmbientDeclaration();
-//                if (node) {
-//                    return node;
-//                }
-//            }
-//
-//            auto pos = getNodePos();
-//            auto hasJSDoc = hasPrecedingJSDocComment();
-//            auto decorators = parseDecorators();
-//            auto modifiers = parseModifiers();
-//            if (isAmbient) {
-//                for (const m of modifiers!) {
-//                    (m as Mutable<Node>).flags |= NodeFlags::Ambient;
-//                }
-//                return doInsideOfContext(NodeFlags::Ambient, () => parseDeclarationWorker(pos, hasJSDoc, decorators, modifiers));
-//            }
-//            else {
-//                return parseDeclarationWorker(pos, hasJSDoc, decorators, modifiers);
-//            }
-//        }
-//
-//        function tryReuseAmbientDeclaration(): Statement | undefined {
-//            return doInsideOfContext(NodeFlags::Ambient, () => {
-//                auto node = currentNode(parsingContext);
-//                if (node) {
-//                    return consumeNode(node) as Statement;
-//                }
-//            });
-//        }
-//
-//        function parseDeclarationWorker(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers): Statement {
-//            switch (token()) {
-//                case SyntaxKind::VarKeyword:
-//                case SyntaxKind::LetKeyword:
-//                case SyntaxKind::ConstKeyword:
-//                    return parseVariableStatement(pos, hasJSDoc, decorators, modifiers);
-//                case SyntaxKind::FunctionKeyword:
-//                    return parseFunctionDeclaration(pos, hasJSDoc, decorators, modifiers);
-//                case SyntaxKind::ClassKeyword:
-//                    return parseClassDeclaration(pos, hasJSDoc, decorators, modifiers);
-//                case SyntaxKind::InterfaceKeyword:
-//                    return parseInterfaceDeclaration(pos, hasJSDoc, decorators, modifiers);
-//                case SyntaxKind::TypeKeyword:
-//                    return parseTypeAliasDeclaration(pos, hasJSDoc, decorators, modifiers);
-//                case SyntaxKind::EnumKeyword:
-//                    return parseEnumDeclaration(pos, hasJSDoc, decorators, modifiers);
-//                case SyntaxKind::GlobalKeyword:
-//                case SyntaxKind::ModuleKeyword:
-//                case SyntaxKind::NamespaceKeyword:
-//                    return parseModuleDeclaration(pos, hasJSDoc, decorators, modifiers);
-//                case SyntaxKind::ImportKeyword:
-//                    return parseImportDeclarationOrImportEqualsDeclaration(pos, hasJSDoc, decorators, modifiers);
-//                case SyntaxKind::ExportKeyword:
-//                    nextToken();
-//                    switch (token()) {
-//                        case SyntaxKind::DefaultKeyword:
-//                        case SyntaxKind::EqualsToken:
-//                            return parseExportAssignment(pos, hasJSDoc, decorators, modifiers);
-//                        case SyntaxKind::AsKeyword:
-//                            return parseNamespaceExportDeclaration(pos, hasJSDoc, decorators, modifiers);
-//                        default:
-//                            return parseExportDeclaration(pos, hasJSDoc, decorators, modifiers);
-//                    }
-//                default:
-//                    if (decorators || modifiers) {
-//                        // We reached this point because we encountered decorators and/or modifiers and assumed a declaration
-//                        // would follow. For recovery and error reporting purposes, return an incomplete declaration.
-//                        auto missing = createMissingNode<MissingDeclaration>(SyntaxKind::MissingDeclaration, /*reportAtCurrentPosition*/ true, Diagnostics::Declaration_expected);
-//                        setTextRangePos(missing, pos);
-//                        missing.decorators = decorators;
-//                        missing.modifiers = modifiers;
-//                        return missing;
-//                    }
-//                    return undefined!; // TODO: GH#18217
-//            }
-//        }
-//
 //        // DECLARATIONS
-//        function parseClassDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers): ClassDeclaration {
+//        function parseClassDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): ClassDeclaration {
 //            return parseClassDeclarationOrExpression(pos, hasJSDoc, decorators, modifiers, SyntaxKind::ClassDeclaration) as ClassDeclaration;
 //        }
 //
-//        function parseInterfaceDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers): InterfaceDeclaration {
+//        function parseInterfaceDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): InterfaceDeclaration {
 //            parseExpected(SyntaxKind::InterfaceKeyword);
 //            auto name = parseIdentifier();
 //            auto typeParameters = parseTypeParameters();
@@ -7372,7 +7425,7 @@ namespace ts {
 //            return withJSDoc(finishNode(node, pos), hasJSDoc);
 //        }
 //
-//        function parseTypeAliasDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers): TypeAliasDeclaration {
+//        function parseTypeAliasDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): TypeAliasDeclaration {
 //            parseExpected(SyntaxKind::TypeKeyword);
 //            auto name = parseIdentifier();
 //            auto typeParameters = parseTypeParameters();
@@ -7395,7 +7448,7 @@ namespace ts {
 //            return withJSDoc(finishNode(factory.createEnumMember(name, initializer), pos), hasJSDoc);
 //        }
 //
-//        function parseEnumDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers): EnumDeclaration {
+//        function parseEnumDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): EnumDeclaration {
 //            parseExpected(SyntaxKind::EnumKeyword);
 //            auto name = parseIdentifier();
 //            auto members;
@@ -7423,7 +7476,7 @@ namespace ts {
 //            return finishNode(factory.createModuleBlock(statements), pos);
 //        }
 //
-//        function parseModuleOrNamespaceDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers, flags: NodeFlags): ModuleDeclaration {
+//        function parseModuleOrNamespaceDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers, flags: NodeFlags): ModuleDeclaration {
 //            // If we are parsing a dotted namespace name, we want to
 //            // propagate the 'Namespace' flag across the names if set.
 //            auto namespaceFlag = flags & NodeFlags::Namespace;
@@ -7435,7 +7488,7 @@ namespace ts {
 //            return withJSDoc(finishNode(node, pos), hasJSDoc);
 //        }
 //
-//        function parseAmbientExternalModuleDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers): ModuleDeclaration {
+//        function parseAmbientExternalModuleDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): ModuleDeclaration {
 //            auto flags: NodeFlags = 0;
 //            auto name;
 //            if (token() == SyntaxKind::GlobalKeyword) {
@@ -7458,7 +7511,7 @@ namespace ts {
 //            return withJSDoc(finishNode(node, pos), hasJSDoc);
 //        }
 //
-//        function parseModuleDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers): ModuleDeclaration {
+//        function parseModuleDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): ModuleDeclaration {
 //            auto flags: NodeFlags = 0;
 //            if (token() == SyntaxKind::GlobalKeyword) {
 //                // global augmentation
@@ -7476,7 +7529,7 @@ namespace ts {
 //            return parseModuleOrNamespaceDeclaration(pos, hasJSDoc, decorators, modifiers, flags);
 //        }
 //
-//        function parseNamespaceExportDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers): NamespaceExportDeclaration {
+//        function parseNamespaceExportDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): NamespaceExportDeclaration {
 //            parseExpected(SyntaxKind::AsKeyword);
 //            parseExpected(SyntaxKind::NamespaceKeyword);
 //            auto name = parseIdentifier();
@@ -7488,7 +7541,7 @@ namespace ts {
 //            return withJSDoc(finishNode(node, pos), hasJSDoc);
 //        }
 //
-//        function parseImportDeclarationOrImportEqualsDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers): ImportEqualsDeclaration | ImportDeclaration {
+//        function parseImportDeclarationOrImportEqualsDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): ImportEqualsDeclaration | ImportDeclaration {
 //            parseExpected(SyntaxKind::ImportKeyword);
 //
 //            auto afterImportPos = scanner.getStartPos();
@@ -7545,7 +7598,7 @@ namespace ts {
 //            return token() == SyntaxKind::CommaToken || token() == SyntaxKind::FromKeyword;
 //        }
 //
-//        function parseImportEqualsDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers, identifier: Identifier, isTypeOnly: boolean): ImportEqualsDeclaration {
+//        function parseImportEqualsDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers, identifier: Identifier, isTypeOnly: boolean): ImportEqualsDeclaration {
 //            parseExpected(SyntaxKind::EqualsToken);
 //            auto moduleReference = parseModuleReference();
 //            parseSemicolon();
@@ -7727,7 +7780,7 @@ namespace ts {
 //            return finishNode(factory.createNamespaceExport(parseIdentifierName()), pos);
 //        }
 //
-//        function parseExportDeclaration(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers): ExportDeclaration {
+//        function parseExportDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): ExportDeclaration {
 //            auto savedAwaitContext = inAwaitContext();
 //            setAwaitContext(/*value*/ true);
 //            auto exportClause: NamedExportBindings | undefined;
@@ -7761,7 +7814,7 @@ namespace ts {
 //            return withJSDoc(finishNode(node, pos), hasJSDoc);
 //        }
 //
-//        function parseExportAssignment(int pos, bool hasJSDoc, optional<NodeArray> decorators, optional<NodeArray> modifiers): ExportAssignment {
+//        function parseExportAssignment(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): ExportAssignment {
 //            auto savedAwaitContext = inAwaitContext();
 //            setAwaitContext(/*value*/ true);
 //            auto isExportEquals: boolean | undefined;
@@ -8814,7 +8867,8 @@ namespace ts {
 //            }
 //        }
 
-        shared<SourceFile> parseSourceFile(string fileName, string sourceText, ScriptTarget languageVersion, bool setParentNodes, optional<ScriptKind> _scriptKind, optional<function<void(shared<SourceFile>)>> setExternalModuleIndicatorOverride) {
+        shared<SourceFile> parseSourceFile(const string &fileName, const string &sourceText, ScriptTarget languageVersion, bool setParentNodes, optional<ScriptKind> _scriptKind, optional<function<void(shared<SourceFile>)>> setExternalModuleIndicatorOverride) {
+            ZoneScoped;
             auto scriptKind = ensureScriptKind(fileName, _scriptKind);
 
             //            if (scriptKind == ScriptKind.JSON) {
@@ -9428,8 +9482,8 @@ namespace ts {
 //                Debug::asserts((oldText.length - textChangeRange.span.length + textChangeRange.newLength) == newText.length);
 //
 //                if (aggressiveChecks || Debug.shouldAssert(AssertionLevel.VeryAggressive)) {
-//                    auto oldTextPrefix = oldText.substr(0, textChangeRange.span.start);
-//                    auto newTextPrefix = newText.substr(0, textChangeRange.span.start);
+//                    auto oldTextPrefix = substr(oldText, 0, textChangeRange.span.start);
+//                    auto newTextPrefix = substr(newText, 0, textChangeRange.span.start);
 //                    Debug::asserts(oldTextPrefix == newTextPrefix);
 //
 //                    auto oldTextSuffix = oldText.substring(textSpanEnd(textChangeRange.span), oldText.length);
@@ -9801,10 +9855,16 @@ namespace ts {
 //        return argMap;
 //    }
 
-    shared<SourceFile> createSourceFile(string fileName, string sourceText, variant<ScriptTarget, CreateSourceFileOptions> languageVersionOrOptions, bool setParentNodes = false, optional<ScriptKind> scriptKind = {}) {
+    inline shared<SourceFile> createSourceFile(
+            string fileName,
+            string sourceText,
+            variant<ScriptTarget, CreateSourceFileOptions> languageVersionOrOptions,
+            bool setParentNodes = false,
+            optional<ScriptKind> scriptKind = {}
+    ) {
 //        tracing?.push(tracing.Phase.Parse, "createSourceFile", { path: fileName }, /*separateBeginAndEnd*/ true);
 //        performance.mark("beforeParse");
-        shared_ptr<SourceFile> result = make_shared<SourceFile>();
+        shared<SourceFile> result;
         optional<function<void(shared<SourceFile>)>> overrideSetExternalModuleIndicator;
         optional<ModuleKind> format;
 

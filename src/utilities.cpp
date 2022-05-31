@@ -1,15 +1,17 @@
 #pragma once
 
+#include "Tracy.hpp"
+#include "types.h"
 #include "utilities.h"
 #include "core.h"
 
 namespace ts {
-    static LanguageVariant getLanguageVariant(ScriptKind scriptKind) {
+    LanguageVariant getLanguageVariant(ScriptKind scriptKind) {
         // .tsx and .jsx files are treated as jsx language variant.
         return scriptKind == ScriptKind::TSX || scriptKind == ScriptKind::JSX || scriptKind == ScriptKind::JS || scriptKind == ScriptKind::JSON ? LanguageVariant::JSX : LanguageVariant::Standard;
     }
 
-    sharedOpt<Node> lastOrUndefined(optional<NodeArray> array) {
+    sharedOpt<Node> lastOrUndefined(sharedOpt<NodeArray> array) {
         if (!array) return nullptr;
         auto last = lastOrUndefined(array->list);
         if (last) *last;
@@ -426,6 +428,7 @@ namespace ts {
     }
 
     shared<Node> skipPartiallyEmittedExpressions(shared<Node> node) {
+        ZoneScoped;
         return skipOuterExpressions(node, (int) OuterExpressionKinds::PartiallyEmittedExpressions);
     }
 
@@ -610,6 +613,7 @@ namespace ts {
     }
 
     bool isLeftHandSideExpression(shared<Node> node) {
+        ZoneScoped;
         return isLeftHandSideExpressionKind(skipPartiallyEmittedExpressions(node)->kind);
     }
 

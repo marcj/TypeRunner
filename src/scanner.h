@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Tracy.hpp"
 #include <string>
 #include <regex>
 #include <any>
@@ -356,19 +357,19 @@ namespace ts {
         return token == SyntaxKind::GreaterThanToken || tokenIsIdentifierOrKeyword(token);
     }
 
-    bool isUnicodeIdentifierPart(CharCode code, optional<ScriptTarget> languageVersion = {});
+    bool isUnicodeIdentifierPart(const CharCode &code, ScriptTarget languageVersion = ScriptTarget::Latest);
 
-    bool isIdentifierPart(CharCode ch, optional<ScriptTarget> languageVersion = {}, optional<LanguageVariant> identifierVariant = {});
+    bool isIdentifierPart(const CharCode &ch, ScriptTarget languageVersion = ScriptTarget::Latest, LanguageVariant identifierVariant = LanguageVariant::Standard);
 
     /* @internal */
-    bool isUnicodeIdentifierStart(CharCode code, optional<ScriptTarget> languageVersion = {});
+    bool isUnicodeIdentifierStart(CharCode code, ScriptTarget languageVersion = ScriptTarget::Latest);
 
-    bool isIdentifierStart(CharCode ch, optional<ScriptTarget> languageVersion = {});
+    bool isIdentifierStart(const CharCode &ch, ScriptTarget languageVersion = ScriptTarget::Latest);
     
     /* @internal */
-    bool isIdentifierText(string name, optional<ScriptTarget> languageVersion = {}, optional<LanguageVariant> identifierVariant = {});
+    bool isIdentifierText(string name, ScriptTarget languageVersion = ScriptTarget::Latest, LanguageVariant identifierVariant = LanguageVariant::Standard);
 
-    bool isLineBreak(CharCode ch);
+    bool isLineBreak(const CharCode &ch);
 
     class Scanner {
     public:
@@ -477,13 +478,40 @@ namespace ts {
         }
 
         template<typename T>
-        T lookAhead(function<T()> callback);
+        T lookAhead(const function<T()> &callback) {
+            ZoneScoped;
+            return speculationHelper<T>(callback, /*isLookahead*/ true);
+        }
 
         template<typename T>
-        T tryScan(function<T()> callback);
+        T tryScan(const function<T()> &callback) {
+            ZoneScoped;
+            return speculationHelper<T>(callback, /*isLookahead*/ false);
+        }
 
         template<typename T>
-        T speculationHelper(function<T()> callback, bool isLookahead);
+        T speculationHelper(const function<T()> &callback, bool isLookahead) {
+            ZoneScoped;
+            auto savePos = pos;
+            auto saveStartPos = startPos;
+            auto saveTokenPos = tokenPos;
+            auto saveToken = token;
+            auto saveTokenValue = tokenValue;
+            auto saveTokenFlags = tokenFlags;
+            auto result = callback();
+
+            // If our callback returned something 'falsy' or we're just looking ahead,
+            // then unconditionally restore us to where we were.
+            if (!(bool)result || isLookahead) {
+                pos = savePos;
+                startPos = saveStartPos;
+                tokenPos = saveTokenPos;
+                token = saveToken;
+                tokenValue = saveTokenValue;
+                tokenFlags = saveTokenFlags;
+            }
+            return result;;
+        }
 
         bool hasPrecedingLineBreak() {
             return (tokenFlags & TokenFlags::PrecedingLineBreak) != 0;
@@ -518,7 +546,7 @@ namespace ts {
         SyntaxKind reScanJsxToken(bool allowMultilineJsxText = false);
 
         string getTokenText() {
-            return text.substr(tokenPos, pos);
+            return substring(text, tokenPos, pos);
         }
 
         SyntaxKind reScanLessThanToken() {
@@ -591,7 +619,7 @@ namespace ts {
 
         string scanString(bool jsxAttributeString = false);
 
-        bool isOctalDigit(CharCode code);
+        bool isOctalDigit(const CharCode &code);
 
         int error(DiagnosticMessage message, int errPos = -1, int length = -1);
 

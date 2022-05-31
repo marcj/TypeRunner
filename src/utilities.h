@@ -23,9 +23,9 @@ namespace ts {
     using types::DiagnosticCategory;
     using types::DiagnosticWithDetachedLocation;
 
-    static vector<const char *> supportedDeclarationExtensions{Extension::Dts, Extension::Dcts, Extension::Dmts};
+    inline vector<const char *> supportedDeclarationExtensions{Extension::Dts, Extension::Dcts, Extension::Dmts};
 
-    static LanguageVariant getLanguageVariant(ScriptKind scriptKind);
+    extern LanguageVariant getLanguageVariant(ScriptKind scriptKind);
 
     /* @internal */
     template<typename T>
@@ -35,7 +35,12 @@ namespace ts {
         return range;
     }
 
-    sharedOpt<Node> lastOrUndefined(optional<NodeArray> array);
+    template<typename T, typename T2>
+    T setTextRange(T range, T2 location) {
+        return location ? setTextRangePosEnd<T>(range, location->pos, location->end) : range;
+    }
+
+    sharedOpt<Node> lastOrUndefined(sharedOpt<NodeArray> array);
 
     NodeArray &setTextRangePosEnd(NodeArray &range, int pos, int end);
 
@@ -56,11 +61,6 @@ namespace ts {
     bool positionIsSynthesized(int pos);
 
     bool nodeIsSynthesized(shared<TextRange> range);
-
-    template<typename T>
-    T setTextRange(T range, sharedOpt<Node> location) {
-        return location ? setTextRangePosEnd(range, location->pos, location->end) : range;
-    }
 
     NodeArray setTextRange(NodeArray range, optional<NodeArray> location);
 

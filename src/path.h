@@ -19,9 +19,9 @@ namespace ts {
 
     bool fileExtensionIs(const string &path, const string &extension);
 
-    bool fileExtensionIsOneOf(const string &path, vector<string> extensions);
+    bool fileExtensionIsOneOf(const string &path, const vector<string> &extensions);
 
-    bool fileExtensionIsOneOf(const string &path, vector<const char *> extensions);
+    bool fileExtensionIsOneOf(const string &path, const vector<const char *> &extensions);
 
     /**
      * Normalize path separators, converting `\` into `/`.
@@ -29,15 +29,15 @@ namespace ts {
     string normalizeSlashes(const string &path);
 
     //// Path Parsing
-    bool isVolumeCharacter(CharCode charCode);
+    bool isVolumeCharacter(const CharCode &charCode);
 
-    int getFileUrlVolumeSeparatorEnd(string url, int start);
+    int getFileUrlVolumeSeparatorEnd(const string &url, int start);
 
     /**
      * Returns length of the root part of a path or URL (i.e. length of "/", "x:/", "//server/share/, file:///user/files").
      * If the root is part of a URL, the twos-complement of the root length is returned.
      */
-    int getEncodedRootLength(string path);
+    int getEncodedRootLength(const string &path);
 
     /**
      * Returns length of the root part of a path or URL (i.e. length of "/", "x:/", "//server/share/, file:///user/files").
@@ -69,11 +69,11 @@ namespace ts {
     /**
      * Determines whether a charCode corresponds to `/` or `\`.
      */
-    bool isAnyDirectorySeparator(CharCode charCode);
+    bool isAnyDirectorySeparator(const CharCode &charCode);
 
     bool hasTrailingDirectorySeparator(const string &path);
 
-    string ensureTrailingDirectorySeparator(string path);
+    string ensureTrailingDirectorySeparator(const string &path);
 
     /**
      * Combines paths. If a path is absolute, it replaces any previous path. Relative paths are not simplified.
@@ -93,9 +93,9 @@ namespace ts {
      * combinePaths("file:///path", "file:///to", "file.ext") === "file:///to/file.ext"
      * ```
      */
-    string combinePaths(string path, vector<string> paths);
+    string combinePaths(string path, const vector<string> &paths);
 
-    vector<string> pathComponents(string path, int rootLength);
+    vector<string> pathComponents(const string &path, int rootLength);
 
     /**
      * Parse a path into an array containing a root component (at index 0) and zero or more path
@@ -127,7 +127,7 @@ namespace ts {
      * getPathComponents("file:///") === ["file:///"]
      * getPathComponents("file://") === ["file://"]
      */
-    vector<string> getPathComponents(string path, const string &currentDirectory = "");
+    vector<string> getPathComponents(const string &path, const string &currentDirectory = "");
 
     /**
      * Formats a parsed path consisting of a root component (at index 0) and zero or more path

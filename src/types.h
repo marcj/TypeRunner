@@ -1209,15 +1209,15 @@ namespace ts {
     };
 
     template<class T>
-    bool some(optional<NodeArray> array, function<bool(shared<T>)> callback) {
+    bool some(sharedOpt<NodeArray> array, function<bool(shared<T>)> callback) {
         if (!array) return false;
         for (auto &item: array->list) {
-            if (callback(dynamic_pointer_cast<T>(item))) return true;
+            if (callback(reinterpret_pointer_cast<T>(item))) return true;
         }
         return false;
     }
 
-    inline bool some(optional<NodeArray> array) {
+    inline bool some(sharedOpt<NodeArray> array) {
         return array && !array->empty();
     }
 
@@ -1287,8 +1287,8 @@ namespace ts {
         constexpr static auto KIND = SyntaxKind::Unknown;
         /* types::NodeFlags */ int flags;
         /* @internal */ /* types::ModifierFlags */ int modifierFlagsCache;
-        optional<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
-        optional<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
+        sharedOpt<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
+        sharedOpt<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
         /* @internal */ /* types::TransformFlags */ int transformFlags; // Flags for transforms
 //        /* @internal */ id?: NodeId;                          // Unique id (used to look up NodeLinks)
         /* @internal */ sharedOpt<Node> original;                      // The original BaseNode if this is an updated node.
@@ -1350,7 +1350,7 @@ namespace ts {
         return b;
     };
 
-    inline bool operator==(optional<NodeArray> a, optional<NodeArray> b) {
+    inline bool operator==(sharedOpt<NodeArray> a, sharedOpt<NodeArray> b) {
         if (!a && !b) return true;
         if (!a || !b) return false;
         return *a == *b;
@@ -1567,7 +1567,7 @@ namespace ts {
         /*@internal*/ optional</*GeneratedIdentifierFlags*/int> autoGenerateFlags; // Specifies whether to auto-generate the text for an identifier.
         /*@internal*/ optional<int> autoGenerateId;           // Ensures unique generated identifiers get unique names, but clones get the same name.
         /*@internal*/ sharedOpt<ImportSpecifier> generatedImportReference; // Reference to the generated import specifier this identifier refers to
-        /*@internal*/ optional<NodeArray> typeArguments; // Only defined on synthesized nodes. Though not syntactically valid, used in emitting diagnostics, quickinfo, and signature help.
+        /*@internal*/ sharedOpt<NodeArray> typeArguments; // Only defined on synthesized nodes. Though not syntactically valid, used in emitting diagnostics, quickinfo, and signature help.
     };
 
     enum class FlowFlags {
@@ -1590,7 +1590,7 @@ namespace ts {
     };
 
     struct Block: BrandKind<SyntaxKind::Block, Statement> {
-        NodeTypeArray(Statement) statements;
+        shared<NodeTypeArray(Statement)> statements;
         /*@internal*/ bool multiLine;
     };
 
@@ -1657,13 +1657,13 @@ namespace ts {
 #define ArrayBindingElement BindingElement, OmittedExpression
 
     struct ObjectBindingPattern: BrandKind<SyntaxKind::ObjectBindingPattern, Node> {
-        NodeTypeArray(BindingElement) elements;
+        shared<NodeTypeArray(BindingElement)> elements;
         ParentProperty(VariableDeclaration, ParameterDeclaration, BindingElement);
     };
 
     struct ArrayBindingPattern: BrandKind<SyntaxKind::ArrayBindingPattern, Node> {
         ParentProperty(VariableDeclaration, ParameterDeclaration, BindingElement);
-        NodeTypeArray(ArrayBindingElement) elements;
+        shared<NodeTypeArray(ArrayBindingElement)> elements;
     };
 
     struct ExpressionStatement: BrandKind<SyntaxKind::ExpressionStatement, Statement> {
@@ -1719,7 +1719,7 @@ namespace ts {
 
     struct CaseBlock: BrandKind<SyntaxKind::CaseBlock, Node> {
         shared<SwitchStatement> parent;
-        NodeTypeArray(CaseClause, DefaultClause) clauses;
+        shared<NodeTypeArray(CaseClause, DefaultClause)> clauses;
     };
 
     struct SwitchStatement: BrandKind<SyntaxKind::SwitchStatement, Statement> {
@@ -1731,12 +1731,12 @@ namespace ts {
     struct CaseClause: BrandKind<SyntaxKind::CaseClause, Node> {
         Property(parent, CaseBlock);
         Property(expression, Expression);
-        NodeTypeArray(Statement) statements;
+        shared<NodeTypeArray(Statement)> statements;
     };
 
     struct DefaultClause: BrandKind<SyntaxKind::DefaultClause, Node> {
         shared<CaseBlock> parent;
-        NodeTypeArray(Statement) statements;
+        shared<NodeTypeArray(Statement)> statements;
     };
 
 //    export type CaseOrDefaultClause =
@@ -1790,11 +1790,11 @@ namespace ts {
 
     struct VariableDeclarationList: BrandKind<SyntaxKind::VariableDeclarationList, Node> {
         ParentProperty(VariableStatement, ForStatement, ForOfStatement, ForInStatement);
-        NodeTypeArray(VariableDeclaration) declarations;
+        shared<NodeTypeArray(VariableDeclaration)> declarations;
     };
 
     struct VariableStatement: BrandKind<SyntaxKind::VariableStatement, Statement> {
-//        /* @internal*/ optional<NodeTypeArray(Decorator)> decorators; // Present for use with reporting a grammar error
+//        /* @internal*/ sharedOpt<NodeTypeArray(Decorator)> decorators; // Present for use with reporting a grammar error
         Property(declarationList, VariableDeclarationList);
     };
 
@@ -1866,7 +1866,7 @@ namespace ts {
     };
 
     struct TypeLiteralNode: BrandKind<SyntaxKind::TypeLiteral, TypeNode> {
-        NodeTypeArray(TypeElement) members;
+        shared<NodeTypeArray(TypeElement)> members;
     };
 
 #define ClassLikeDeclaration ClassDeclaration, ClassExpression
@@ -1922,10 +1922,10 @@ namespace ts {
 
     struct SignatureDeclarationBase: NamedDeclaration {
         OptionalUnionProperty(name, PropertyName);
-        optional<NodeTypeArray(TypeParameterDeclaration)> typeParameters;
-        NodeTypeArray(ParameterDeclaration) parameters;
+        sharedOpt<NodeTypeArray(TypeParameterDeclaration)> typeParameters;
+        shared<NodeTypeArray(ParameterDeclaration)> parameters;
         OptionalProperty(type, TypeNode);
-        optional<NodeTypeArray(TypeNode)> typeArguments;
+        sharedOpt<NodeTypeArray(TypeNode)> typeArguments;
     };
 
     struct PropertyAssignment: BrandKind<SyntaxKind::PropertyAssignment, ObjectLiteralElement, Node> {
@@ -1957,14 +1957,14 @@ namespace ts {
 
     struct ClassLikeDeclarationBase {
         OptionalProperty(name, Identifier);
-        optional<NodeTypeArray(TypeParameterDeclaration)> typeParameters;
-        optional<NodeTypeArray(HeritageClause)> heritageClauses;
-        NodeTypeArray(ClassElement) members;
+        sharedOpt<NodeTypeArray(TypeParameterDeclaration)> typeParameters;
+        sharedOpt<NodeTypeArray(HeritageClause)> heritageClauses;
+        shared<NodeTypeArray(ClassElement)> members;
     };
 
     struct DeclarationStatement: Statement {
-//        optional<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
-//        optional<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
+//        sharedOpt<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
+//        sharedOpt<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
         OptionalUnionProperty(name, Identifier, StringLiteral, NumericLiteral);
     };
 
@@ -1973,7 +1973,7 @@ namespace ts {
     struct DebuggerStatement: BrandKind<SyntaxKind::DebuggerStatement, Statement> {};
 
     struct CommaListExpression: BrandKind<SyntaxKind::CommaListExpression, Expression> {
-        NodeTypeArray(Expression) elements;
+        shared<NodeTypeArray(Expression)> elements;
     };
 
     struct MissingDeclaration: BrandKind<SyntaxKind::MissingDeclaration, DeclarationStatement> {
@@ -1981,27 +1981,27 @@ namespace ts {
     };
 
     struct ClassDeclaration: BrandKind<SyntaxKind::ClassDeclaration, ClassLikeDeclarationBase, DeclarationStatement> {
-//        optional<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
-//        optional<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
+//        sharedOpt<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
+//        sharedOpt<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
         OptionalProperty(name, Identifier);
     };
 
     struct ClassExpression: BrandKind<SyntaxKind::ClassExpression, ClassLikeDeclarationBase, PrimaryExpression> {
-        optional<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
-        optional<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
+        sharedOpt<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
+        sharedOpt<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
     };
 
     struct HeritageClause;
 
     struct InterfaceDeclaration: BrandKind<SyntaxKind::InterfaceDeclaration, DeclarationStatement> {
         Property(name, Identifier);
-        optional<NodeTypeArray(TypeParameterDeclaration)> typeParameters;
-        optional<NodeTypeArray(HeritageClause)> heritageClauses;
-        NodeTypeArray(TypeElement) members;
+        sharedOpt<NodeTypeArray(TypeParameterDeclaration)> typeParameters;
+        sharedOpt<NodeTypeArray(HeritageClause)> heritageClauses;
+        shared<NodeTypeArray(TypeElement)> members;
     };
 
     struct NodeWithTypeArguments {
-        optional<NodeTypeArray(TypeNode)> typeArguments;
+        sharedOpt<NodeTypeArray(TypeNode)> typeArguments;
     };
 
     struct ExpressionWithTypeArguments: BrandKind<SyntaxKind::ExpressionWithTypeArguments, MemberExpression, NodeWithTypeArguments> {
@@ -2011,12 +2011,12 @@ namespace ts {
     struct HeritageClause: BrandKind<SyntaxKind::HeritageClause, Node> {
         ParentProperty(InterfaceDeclaration, ClassLikeDeclaration);
         SyntaxKind token; //SyntaxKind.ExtendsKeyword | SyntaxKind.ImplementsKeyword
-        NodeTypeArray(ExpressionWithTypeArguments) types;
+        shared<NodeTypeArray(ExpressionWithTypeArguments)> types;
     };
 
     struct TypeAliasDeclaration: BrandKind<SyntaxKind::TypeAliasDeclaration, DeclarationStatement> {
         Property(name, Identifier);
-        optional<NodeTypeArray(TypeParameterDeclaration)> typeParameters;
+        sharedOpt<NodeTypeArray(TypeParameterDeclaration)> typeParameters;
         Property(type, TypeNode);
     };
 
@@ -2024,7 +2024,7 @@ namespace ts {
 
     struct EnumDeclaration: BrandKind<SyntaxKind::EnumDeclaration, DeclarationStatement> {
         Property(name, Identifier);
-        NodeTypeArray(EnumMember) members;
+        shared<NodeTypeArray(EnumMember)> members;
     };
 
     struct EnumMember: BrandKind<SyntaxKind::EnumMember, NamedDeclaration, Node> {
@@ -2067,7 +2067,7 @@ namespace ts {
 
     struct ModuleBlock: BrandKind<SyntaxKind::ModuleBlock, Statement> {
         shared<ModuleDeclaration> parent;
-        NodeTypeArray(Statement) statements;
+        shared<NodeTypeArray(Statement)> statements;
     };
 
     struct NamespaceDeclaration: BrandKind<SyntaxKind::ModuleDeclaration, DeclarationStatement> {
@@ -2118,7 +2118,7 @@ namespace ts {
 
     struct NamedImports: BrandKind<SyntaxKind::NamedImports, Node> {
         shared<ImportClause> parent;
-        NodeTypeArray(ImportSpecifier) elements;
+        shared<NodeTypeArray(ImportSpecifier)> elements;
     };
 
 #define NamedImportBindings NamespaceImport, NamedImports
@@ -2136,7 +2136,7 @@ namespace ts {
     struct ExportDeclaration;
     struct AssertClause: BrandKind<SyntaxKind::AssertClause, Node> {
         ParentProperty(ImportDeclaration, ExportDeclaration);
-        NodeTypeArray(AssertEntry) elements;
+        shared<NodeTypeArray(AssertEntry)> elements;
         bool multiLine;
     };
 
@@ -2180,12 +2180,12 @@ namespace ts {
 
     struct NamedExports: BrandKind<SyntaxKind::NamedExports, Node> {
         shared<ExportDeclaration> parent;
-        NodeTypeArray(ExportSpecifier) elements;
+        shared<NodeTypeArray(ExportSpecifier)> elements;
     };
 
     struct NamespaceExportDeclaration: BrandKind<SyntaxKind::NamespaceExportDeclaration, DeclarationStatement> {
         Property(name, Identifier);
-        /* @internal */ optional<NodeTypeArray(Decorator)> decorators; // Present for use with reporting a grammar error
+        /* @internal */ sharedOpt<NodeTypeArray(Decorator)> decorators; // Present for use with reporting a grammar error
         /* @internal */ OptionalProperty(modifiers, ModifiersArray); // Present for use with reporting a grammar error
     };
 
@@ -2255,8 +2255,8 @@ namespace ts {
     struct IndexSignatureDeclaration: BrandKind<SyntaxKind::IndexSignature, SignatureDeclarationBase, ClassElement, TypeElement, Node> {
         using TypeElement::name;
         shared<NodeUnion(ObjectTypeDeclaration)> parent;
-//        optional<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
-//        optional<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
+//        sharedOpt<NodeTypeArray(Decorator)> decorators;           // Array of decorators (in document order)
+//        sharedOpt<NodeTypeArray(Modifier)> modifiers;            // Array of modifiers
         Property(type, TypeNode);
     };
 
@@ -2296,7 +2296,7 @@ namespace ts {
         shared<NodeUnion(ClassLikeDeclaration)> parent;
         OptionalProperty(body, FunctionBody);
 
-        /* @internal */ optional<NodeTypeArray(TypeParameterDeclaration)> typeParameters; // Present for use with reporting a grammar error
+        /* @internal */ sharedOpt<NodeTypeArray(TypeParameterDeclaration)> typeParameters; // Present for use with reporting a grammar error
         /* @internal */ OptionalProperty(type, TypeNode); // Present for use with reporting a grammar error
     };
 
@@ -2308,7 +2308,7 @@ namespace ts {
         ParentProperty(ClassLikeDeclaration, ObjectLiteralExpression, TypeLiteralNode, InterfaceDeclaration);
         UnionProperty(name, PropertyName);
         OptionalProperty(body, FunctionBody);
-        /* @internal */ optional<NodeTypeArray(TypeParameterDeclaration)> typeParameters; // Present for use with reporting a grammar error
+        /* @internal */ sharedOpt<NodeTypeArray(TypeParameterDeclaration)> typeParameters; // Present for use with reporting a grammar error
     };
 
     // See the comment on MethodDeclaration for the intuition behind SetAccessorDeclaration being a
@@ -2317,7 +2317,7 @@ namespace ts {
         ParentProperty(ClassLikeDeclaration, ObjectLiteralExpression, TypeLiteralNode, InterfaceDeclaration);
         UnionProperty(name, PropertyName);
         OptionalUnionProperty(body, FunctionBody);
-        /* @internal */ optional<NodeTypeArray(TypeParameterDeclaration)> typeParameters; // Present for use with reporting a grammar error
+        /* @internal */ sharedOpt<NodeTypeArray(TypeParameterDeclaration)> typeParameters; // Present for use with reporting a grammar error
         /* @internal */ OptionalProperty(type, TypeNode); // Present for use with reporting a grammar error
     };
 
@@ -2327,7 +2327,7 @@ namespace ts {
 
     template<class T>
     struct ObjectLiteralExpressionBase: PrimaryExpression {
-        NodeTypeArray(T) properties;
+        shared<NodeTypeArray(T)> properties;
     };
 
     struct ObjectLiteralExpression: BrandKind<SyntaxKind::ObjectLiteralExpression, ObjectLiteralExpressionBase<ObjectLiteralElementLike>> {
@@ -2432,7 +2432,7 @@ namespace ts {
     };
 
     struct ArrayLiteralExpression: BrandKind<SyntaxKind::ArrayLiteralExpression, PrimaryExpression> {
-        NodeTypeArray(Expression) elements;
+        shared<NodeTypeArray(Expression)> elements;
         /* @internal */
         bool multiLine; //optional
     };
@@ -2445,8 +2445,8 @@ namespace ts {
     struct CallExpression: BrandKind<SyntaxKind::CallExpression, LeftHandSideExpression> {
         Property(expression, LeftHandSideExpression);
         OptionalProperty(questionDotToken, QuestionDotToken);
-        optional<NodeTypeArray(TypeNode)> typeArguments;
-        NodeTypeArray(Expression) arguments;
+        sharedOpt<NodeTypeArray(TypeNode)> typeArguments;
+        shared<NodeTypeArray(Expression)> arguments;
     };
 
     using CallChain = CallExpression;
@@ -2457,8 +2457,8 @@ namespace ts {
 
     struct NewExpression: BrandKind<SyntaxKind::NewExpression, PrimaryExpression> {
         Property(expression, LeftHandSideExpression);
-        optional<NodeTypeArray(TypeNode)> typeArguments;
-        optional<NodeTypeArray(Expression)> arguments;
+        sharedOpt<NodeTypeArray(TypeNode)> typeArguments;
+        sharedOpt<NodeTypeArray(Expression)> arguments;
     };
 
     struct TypeAssertion: BrandKind<SyntaxKind::TypeAssertionExpression, UnaryExpression> {
@@ -2497,19 +2497,19 @@ namespace ts {
 
     struct TemplateLiteralTypeNode: BrandKind<SyntaxKind::TemplateLiteralType, TypeNode> {
         Property(head, TemplateHead);
-        NodeTypeArray(TemplateLiteralTypeSpan) templateSpans;
+        shared<NodeTypeArray(TemplateLiteralTypeSpan)> templateSpans;
     };
 
     struct TemplateExpression: BrandKind<SyntaxKind::TemplateExpression, PrimaryExpression> {
         Property(head, TemplateHead);
-        NodeTypeArray(TemplateSpan) templateSpans;
+        shared<NodeTypeArray(TemplateSpan)> templateSpans;
     };
 
 #define TemplateLiteral TemplateExpression, NoSubstitutionTemplateLiteral
 
     struct TaggedTemplateExpression: BrandKind<SyntaxKind::TaggedTemplateExpression, MemberExpression> {
         Property(tag, LeftHandSideExpression);
-        optional<NodeTypeArray(TypeNode)> typeArguments;
+        sharedOpt<NodeTypeArray(TypeNode)> typeArguments;
         UnionProperty(templateLiteral, TemplateLiteral);
         /*@internal*/ OptionalProperty(questionDotToken, QuestionDotToken); // NOTE: Invalid syntax, only used to report a grammar error.
     };
@@ -2564,11 +2564,11 @@ namespace ts {
     };
 
     struct UnionTypeNode: BrandKind<SyntaxKind::UnionType, TypeNode> {
-        NodeTypeArray(TypeNode) types;
+        shared<NodeTypeArray(TypeNode)> types;
     };
 
     struct IntersectionTypeNode: BrandKind<SyntaxKind::IntersectionType, TypeNode> {
-        NodeTypeArray(TypeNode) types;
+        shared<NodeTypeArray(TypeNode)> types;
     };
 
 #define UnionOrIntersectionTypeNode UnionTypeNode, IntersectionTypeNode
@@ -2610,7 +2610,7 @@ namespace ts {
         OptionalUnionProperty(questionToken, QuestionToken, PlusToken, MinusToken);
         OptionalProperty(type, TypeNode);
         /** Used only to produce grammar errors */
-        optional<NodeTypeArray(TypeElement)> members;
+        sharedOpt<NodeTypeArray(TypeElement)> members;
     };
 
 #define JsxChild JsxText, JsxExpression, JsxElement, JsxSelfClosingElement, JsxFragment
@@ -2647,14 +2647,14 @@ namespace ts {
 
     struct JsxAttributes: BrandKind<SyntaxKind::JsxAttributes, PrimaryExpression> {
         OptionalUnionProperty(parent, JsxOpeningLikeElement);
-        NodeTypeArray(JsxAttributeLike) properties;
+        shared<NodeTypeArray(JsxAttributeLike)> properties;
     };
 
     // The opening element of a <Tag>...</Tag> JsxElement
     struct JsxOpeningElement: BrandKind<SyntaxKind::JsxOpeningElement, Expression> {
         shared<JsxElement> parent;
         UnionProperty(tagName, JsxTagNameExpression);
-        optional<NodeTypeArray(TypeNode)> typeArguments;
+        sharedOpt<NodeTypeArray(TypeNode)> typeArguments;
         Property(attributes, JsxAttributes);
     };
 
@@ -2671,7 +2671,7 @@ namespace ts {
     /// A JSX expression of the form <TagName attrs>...</TagName>
     struct JsxElement: BrandKind<SyntaxKind::JsxElement, PrimaryExpression> {
         Property(openingElement, JsxOpeningElement);
-        NodeTypeArray(JsxChild) children;
+        shared<NodeTypeArray(JsxChild)> children;
         Property(closingElement, JsxClosingElement);
     };
 
@@ -2683,7 +2683,7 @@ namespace ts {
     // A JSX expression of the form <TagName attrs />
     struct JsxSelfClosingElement: BrandKind<SyntaxKind::JsxSelfClosingElement, PrimaryExpression> {
         UnionProperty(tagName, JsxTagNameExpression);
-        optional<NodeTypeArray(TypeNode)> typeArguments;
+        sharedOpt<NodeTypeArray(TypeNode)> typeArguments;
         Property(attributes, JsxAttributes);
     };
 
@@ -2701,7 +2701,7 @@ namespace ts {
     /// A JSX expression of the form <>...</>
     struct JsxFragment: BrandKind<SyntaxKind::JsxFragment, PrimaryExpression> {
         Property(openingFragment, JsxOpeningFragment);
-        NodeTypeArray(JsxChild) children;
+        shared<NodeTypeArray(JsxChild)> children;
         Property(closingFragment, JsxClosingFragment);
     };
 
@@ -2715,7 +2715,7 @@ namespace ts {
     };
 
     struct TupleTypeNode: BrandKind<SyntaxKind::TupleType, TypeNode> {
-        NodeTypeArray(TypeNode, NamedTupleMember) elements;
+        shared<NodeTypeArray(TypeNode, NamedTupleMember)> elements;
     };
 
 //    using AccessibilityModifier = NodeType<PublicKeyword, PrivateKeyword, ProtectedKeyword>;
@@ -2731,11 +2731,128 @@ namespace ts {
 
     struct SourceFile: BrandKind<SyntaxKind::SourceFile, Node> {
         string fileName;
-        NodeTypeArray(Statement) statements;
+        string text;
+
+        shared<NodeTypeArray(Statement)> statements;
         Property(endOfFileToken, EndOfFileToken);
 
-        optional<types::ModuleKind> impliedNodeFormat;
+        /* @internal */ string path;
+        /** Resolved path can be different from path property,
+         * when file is included through project reference is mapped to its output instead of source
+         * in that case resolvedPath = path to output file
+         * path = input file's path
+         */
+        /* @internal */ string resolvedPath;
 
-        sharedOpt<Node> externalModuleIndicator;
+        /** Original file name that can be different from fileName,
+         * when file is included through project reference is mapped to its output instead of source
+         * in that case originalFileName = name of input file
+         * fileName = output file's name
+         */
+        /* @internal */ string originalFileName;
+
+//        amdDependencies: readonly AmdDependency[];
+        optional<string> moduleName;
+//        referencedFiles: readonly FileReference[];
+//        typeReferenceDirectives: readonly FileReference[];
+//        libReferenceDirectives: readonly FileReference[];
+        types::LanguageVariant languageVariant;
+        bool isDeclarationFile;
+//
+//        // this map is used by transpiler to supply alternative names for dependencies (i.e. in case of bundling)
+//        /* @internal */
+//        renamedDependencies?: ReadonlyESMap<string, string>;
+//
+        /**
+         * lib.d.ts should have a reference comment like
+         *
+         *  /// <reference no-default-lib="true"/>
+         *
+         * If any other file has this comment, it signals not to include lib.d.ts
+         * because this containing file is intended to act as a default library.
+         */
+        bool hasNoDefaultLib;
+
+        types::ScriptTarget languageVersion;
+
+        /**
+         * When `module` is `Node16` or `NodeNext`, this field controls whether the
+         * source file in question is an ESNext-output-format file, or a CommonJS-output-format
+         * module. This is derived by the module resolver as it looks up the file, since
+         * it is derived from either the file extension of the module, or the containing
+         * `package.json` context, and affects both checking and emit.
+         *
+         * It is _public_ so that (pre)transformers can set this field,
+         * since it switches the builtin `node` module transform. Generally speaking, if unset,
+         * the field is treated as though it is `ModuleKind.CommonJS`.
+         */
+        optional<types::ModuleKind> impliedNodeFormat; //?: ModuleKind.ESNext | ModuleKind.CommonJS;
+
+        /* @internal */ types::ScriptKind scriptKind;
+
+        /**
+         * The first "most obvious" node that makes a file an external module.
+         * This is intended to be the first top-level import/export,
+         * but could be arbitrarily nested (e.g. `import.meta`).
+         */
+        /* @internal */ sharedOpt<Node> externalModuleIndicator; //?: Node | true;
+
+        /**
+         * The callback used to set the external module indicator - this is saved to
+         * be later reused during incremental reparsing, which otherwise lacks the information
+         * to set this field
+         */
+        /* @internal */ optional<function<void(shared<SourceFile>)>> setExternalModuleIndicator; //?: (file: SourceFile) => void;
+//        // The first node that causes this file to be a CommonJS module
+//        /* @internal */ commonJsModuleIndicator?: Node;
+//        // JS identifier-declarations that are intended to merge with globals
+//        /* @internal */ jsGlobalAugmentations?: SymbolTable;
+//
+//        /* @internal */ identifiers: ESMap<string, string>; // Map from a string to an interned string
+//        /* @internal */ nodeCount: number;
+//        /* @internal */ identifierCount: number;
+//        /* @internal */ symbolCount: number;
+//
+//        // File-level diagnostics reported by the parser (includes diagnostics about /// references
+//        // as well as code diagnostics).
+//        /* @internal */ parseDiagnostics: DiagnosticWithLocation[];
+//
+//        // File-level diagnostics reported by the binder.
+//        /* @internal */ bindDiagnostics: DiagnosticWithLocation[];
+//        /* @internal */ bindSuggestionDiagnostics?: DiagnosticWithLocation[];
+//
+//        // File-level JSDoc diagnostics reported by the JSDoc parser
+//        /* @internal */ jsDocDiagnostics?: DiagnosticWithLocation[];
+//
+//        // Stores additional file-level diagnostics reported by the program
+//        /* @internal */ additionalSyntacticDiagnostics?: readonly DiagnosticWithLocation[];
+//
+//        // Stores a line map for the file.
+//        // This field should never be used directly to obtain line map, use getLineMap function instead.
+//        /* @internal */ lineMap: readonly number[];
+//        /* @internal */ classifiableNames?: ReadonlySet<__String>;
+//        // Comments containing @ts-* directives, in order.
+//        /* @internal */ commentDirectives?: CommentDirective[];
+//        // Stores a mapping 'external module reference text' -> 'resolved file name' | undefined
+//        // It is used to resolve module names in the checker.
+//        // Content of this field should never be used directly - use getResolvedModuleFileName/setResolvedModuleFileName functions instead
+//        /* @internal */ resolvedModules?: ModeAwareCache<ResolvedModuleFull | undefined>;
+//        /* @internal */ resolvedTypeReferenceDirectiveNames: ModeAwareCache<ResolvedTypeReferenceDirective | undefined>;
+//        /* @internal */ imports: readonly StringLiteralLike[];
+//        // Identifier only if `declare global`
+//        /* @internal */ moduleAugmentations: readonly (StringLiteral | Identifier)[];
+//        /* @internal */ patternAmbientModules?: PatternAmbientModule[];
+//        /* @internal */ ambientModuleNames: readonly string[];
+//        /* @internal */ checkJsDirective?: CheckJsDirective;
+//        /* @internal */ version: string;
+//        /* @internal */ pragmas: ReadonlyPragmaMap;
+//        /* @internal */ localJsxNamespace?: __String;
+//        /* @internal */ localJsxFragmentNamespace?: __String;
+//        /* @internal */ localJsxFactory?: EntityName;
+//        /* @internal */ localJsxFragmentFactory?: EntityName;
+//
+//        /* @internal */ exportedModulesFromDeclarationEmit?: ExportedModulesFromDeclarationEmit;
+//        /* @internal */ endFlowNode?: FlowNode;
+
     };
 }
