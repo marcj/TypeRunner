@@ -201,7 +201,7 @@ void visitNode(Node &node, const function<void(Node &)> &cbNode) {
 
 void visitNodes(NodeArray &nodes, const function<void(Node &)> &cbNode) {
     debug("visit nodes %d", (int) nodes.list.size());
-    for (auto node: nodes.list) {
+    for (auto &&node: nodes.list) {
         cbNode(node);
     }
 }

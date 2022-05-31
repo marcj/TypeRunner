@@ -3,10 +3,11 @@ project(typescript)
 
 add_definitions(-DTRACY_ENABLE)
 
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -O3 -ffast-math")
+#set(CMAKE_CXX_FLAGS "-Wall -Wextra -O2")
+
 add_subdirectory(tests)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -O2")
-#set(CMAKE_CXX_FLAGS "-Wall -Wextra -O3 -ffast-math")
 
 add_library(typescript utf.h utf.cpp core.h core.cpp utilities.h utilities.cpp node_test.h node_test.cpp
         syntax_cursor.h syntax_cursor.cpp parser2.h parser2.cpp types.h types.cpp path.h path.cpp

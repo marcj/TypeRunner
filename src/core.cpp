@@ -52,7 +52,7 @@ namespace ts {
     }
     vector<string> charToStringVector(vector<const char *> chars) {
         vector<string> s;
-        for (auto c: chars) s.push_back(c);
+        for (auto &&c: chars) s.push_back(c);
         return s;
     }
     bool startsWith(const string &str, const string &suffix) {

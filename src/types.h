@@ -1211,7 +1211,7 @@ namespace ts {
     template<class T>
     bool some(sharedOpt<NodeArray> array, function<bool(shared<T>)> callback) {
         if (!array) return false;
-        for (auto &item: array->list) {
+        for (auto &&item: array->list) {
             if (callback(reinterpret_pointer_cast<T>(item))) return true;
         }
         return false;

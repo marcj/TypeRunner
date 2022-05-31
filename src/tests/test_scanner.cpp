@@ -11,7 +11,7 @@ using namespace magic_enum;
 TEST(scanner, basisc) {
 
     auto start = std::chrono::high_resolution_clock::now();
-    Scanner scanner("const i = 123;");
+    Scanner scanner("const i = 123;const i2 = 123;const i3 = 123;const i4 = 123;const i5 = 123;const i6 = 123;const i7 = 123;const i8 = 123;");
 
     auto i = 0;
     for (i = 0; i <10000; i++) {

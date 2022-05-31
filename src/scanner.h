@@ -621,7 +621,7 @@ namespace ts {
 
         bool isOctalDigit(const CharCode &code);
 
-        int error(DiagnosticMessage message, int errPos = -1, int length = -1);
+        int error(const DiagnosticMessage &message, int errPos = -1, int length = -1);
 
         vector<CommentDirective> appendIfCommentDirective(vector<CommentDirective> &commentDirectives, const string &text, const regex &commentDirectiveRegEx, int lineStart);
 

@@ -122,7 +122,7 @@ namespace ts {
             if (cbNodes) {
                 return cbNodes(nodes);
             }
-            for (auto node: nodes->list) {
+            for (auto &&node: nodes->list) {
                 auto result = cbNode(node);
                 if (result) {
                     return result;
@@ -175,7 +175,7 @@ namespace ts {
 
     inline bool some(const sharedOpt<NodeArray> &array, const function<bool(shared<Node> value)> &predicate) {
         if (array) {
-            for (auto &v: array->list) {
+            for (auto &&v: array->list) {
                 if (predicate(v)) {
                     return true;
                 }
@@ -1705,14 +1705,16 @@ namespace ts {
             return to<T>(finishNode(result, pos));
         }
 
-        string internIdentifier(string text) {
-            auto identifier = get(identifiers, text);
-            if (!identifier) {
-                identifier = text;
-                identifiers[text] = text;
-//                set(identifiers, text, *identifier);
-            }
-            return *identifier;
+        string internIdentifier(const string &text) {
+            //todo: add back
+            return text;
+//            auto identifier = get(identifiers, text);
+//            if (!identifier) {
+//                identifier = text;
+////                identifiers[text] = text;
+////                set(identifiers, text, *identifier);
+//            }
+//            return *identifier;
         }
 
         bool isBindingIdentifier() {
@@ -1725,6 +1727,7 @@ namespace ts {
         }
 
         shared<Identifier> parseBindingIdentifier(optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {}) {
+            ZoneScoped;
             return createIdentifier(isBindingIdentifier(), /*diagnosticMessage*/ {}, privateIdentifierDiagnosticMessage);
         }
 
@@ -3044,6 +3047,7 @@ namespace ts {
         // with magic property names like '__proto__'. The 'identifiers' object is used to share a single string instance for
         // each identifier in order to reduce memory consumption.
         shared<Identifier> createIdentifier(bool isIdentifier, optional<DiagnosticMessage> diagnosticMessage = {}, optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {}) {
+            ZoneScoped;
             if (isIdentifier) {
                 identifierCount++;
                 auto pos = getNodePos();
@@ -3838,6 +3842,7 @@ namespace ts {
         }
 
         shared<ArrayBindingPattern> parseArrayBindingPattern() {
+            ZoneScoped;
             auto pos = getNodePos();
             parseExpected(SyntaxKind::OpenBracketToken);
             auto elements = parseDelimitedList(ParsingContext::ArrayBindingElements, CALLBACK(parseArrayBindingElement));
@@ -3950,6 +3955,7 @@ namespace ts {
         }
 
         shared<ObjectBindingPattern> parseObjectBindingPattern() {
+            ZoneScoped;
             auto pos = getNodePos();
             parseExpected(SyntaxKind::OpenBraceToken);
             auto elements = parseDelimitedList(ParsingContext::ObjectBindingElements, CALLBACK(parseObjectBindingElement));
@@ -5161,7 +5167,7 @@ namespace ts {
                 token() == SyntaxKind::OpenBracketToken) {
                 auto isAmbient = some(modifiers, CALLBACK(isDeclareModifier));
                 if (isAmbient && modifiers) {
-                    for (auto &m: modifiers->list) {
+                    for (auto &&m: modifiers->list) {
                         m->flags |= (int) NodeFlags::Ambient;
                     }
                     return doInsideOfContext<shared<Node>>((int) NodeFlags::Ambient, [&]() {
@@ -7222,7 +7228,7 @@ namespace ts {
             auto decorators = parseDecorators();
             auto modifiers = parseModifiers();
             if (isAmbient) {
-                for (auto &m: modifiers->list) {
+                for (auto &&m: modifiers->list) {
                     m->flags |= (int) NodeFlags::Ambient;
                 }
                 return doInsideOfContext<shared<Statement>>((int) NodeFlags::Ambient, [this, &pos, &hasJSDoc, &decorators, &modifiers]() { return parseDeclarationWorker(pos, hasJSDoc, decorators, modifiers); });

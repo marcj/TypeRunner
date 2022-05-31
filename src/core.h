@@ -148,7 +148,7 @@ namespace ts {
         //inline bool some(optional<vector<T>> array) {
         if (array) {
             if (predicate) {
-                for (auto &v: (*array)) {
+                for (auto &&v: (*array)) {
                     if ((*predicate)(v)) {
                         return true;
                     }
@@ -211,7 +211,7 @@ namespace ts {
             const unordered_map<K, V> &map1
     ) {
         unordered_map<V, K> res;
-        for (auto &i: map1) {
+        for (auto &&i: map1) {
             res[i.second] = i.first;
         }
         return res;

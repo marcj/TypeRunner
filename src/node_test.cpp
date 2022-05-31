@@ -60,7 +60,7 @@ namespace ts {
     int modifiersToFlags(shared<NodeArray> modifiers) {
         int flags = (int) ModifierFlags::None;
         if (modifiers) {
-            for (auto &modifier: modifiers->list) {
+            for (auto &&modifier: modifiers->list) {
                 flags |= (int) modifierToFlag(modifier->kind);
             }
         }

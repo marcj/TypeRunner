@@ -24,15 +24,16 @@ namespace ts {
 
     void Factory::aggregateChildrenFlags(shared<NodeArray> &children) {
         int subtreeFlags = (int) TransformFlags::None;
-        for (auto &child: children->list) {
+        for (auto &&child: children->list) {
             subtreeFlags |= propagateChildFlags(child);
         }
         children->transformFlags = subtreeFlags;
     }
 
     shared<NodeArray> Factory::createNodeArray(sharedOpt<NodeArray> elements, optional<bool> hasTrailingComma) {
+        ZoneScoped;
         if (elements) {
-            if (!hasTrailingComma || elements->hasTrailingComma == hasTrailingComma) {
+            if (!hasTrailingComma || elements->hasTrailingComma == *hasTrailingComma) {
                 // Ensure the transform flags have been aggregated for this NodeArray
                 if (elements->transformFlags == (int) types::TransformFlags::None) {
                     aggregateChildrenFlags(elements);
@@ -247,6 +248,7 @@ namespace ts {
 
     // @api
     shared<Identifier> Factory::createIdentifier(string text, sharedOpt<NodeArray> typeArguments, optional<SyntaxKind> originalKeywordKind) {
+        ZoneScoped;
         auto node = createBaseIdentifier(std::move(text), originalKeywordKind);
         if (typeArguments) {
             // NOTE: we do not use `setChildren` here because typeArguments in an identifier do not contribute to transformations

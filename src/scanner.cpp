@@ -11,7 +11,7 @@ using namespace ts;
 using namespace std;
 
 namespace ts {
-    bool isShebangTrivia(string &text, int pos) {
+    bool isShebangTrivia(const string &text, int pos) {
         // Shebangs check must only be done at the start of the file
         //    Debug.assert(pos == 0);
         //    return shebangTriviaRegex.test(text);
@@ -39,7 +39,7 @@ namespace ts {
     string Scanner::scanString(bool jsxAttributeString) {
         auto quote = charCodeAt(text, pos);
         pos++;
-        string result = "";
+        string result;
         auto start = pos;
         while (true) {
             if (pos >= end) {
@@ -394,7 +394,7 @@ namespace ts {
         return result + substring(text, start, pos);
     }
 
-    map<string, SyntaxKind> textToKeyword{
+    static map<string, SyntaxKind> textToKeyword{
             {"abstract",    SyntaxKind::AbstractKeyword},
             {"any",         SyntaxKind::AnyKeyword},
             {"as",          SyntaxKind::AsKeyword},
@@ -491,7 +491,7 @@ namespace ts {
 // a <<<<<<< or >>>>>>> marker then it is also followed by a space.
     const unsigned long mergeConflictMarkerLength = size("<<<<<<<") - 1;
 
-    bool isConflictMarkerTrivia(const string text, int pos) {
+    bool isConflictMarkerTrivia(const string &text, int pos) {
         assert(pos >= 0);
 
         // Conflict markers must be at the start of a line.
@@ -512,7 +512,7 @@ namespace ts {
         return false;
     }
 
-    int Scanner::error(DiagnosticMessage message, int errPos, int length) {
+    int Scanner::error(const DiagnosticMessage &message, int errPos, int length) {
         if (errPos == -1) errPos = pos;
 
         cout << "Error: " << message.code << ": " << message.message << " at " << errPos << "\n";
@@ -741,7 +741,7 @@ namespace ts {
             auto start = pos;
             pos += 3;
             auto escapedValueString = scanMinimumNumberOfHexDigits(1, /*canHaveSeparators*/ false);
-            auto escapedValue = escapedValueString.size() ? stoi(escapedValueString, nullptr, 16) : -1;
+            auto escapedValue = !escapedValueString.empty() ? stoi(escapedValueString, nullptr, 16) : -1;
             pos = start;
             return {escapedValue, 1};
         }
@@ -1390,7 +1390,7 @@ namespace ts {
                     }
                     // Try to parse as an octal
                     if (pos + 1 < end && isOctalDigit(charCodeAt(text, pos + 1))) {
-                        tokenValue = "" + scanOctalDigits();
+                        tokenValue = to_string(scanOctalDigits());
                         tokenFlags |= TokenFlags::Octal;
                         return token = SyntaxKind::NumericLiteral;
                     }

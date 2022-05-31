@@ -52,7 +52,7 @@ namespace ts {
         template<class T>
         inline shared<NodeArray> asNodeArray(const vector<shared<T>> &array) {
             auto nodeArray = make_shared<NodeArray>();
-            for (auto node: array) nodeArray->list.push_back(node);
+            for (auto &&node: array) nodeArray->list.push_back(node);
             return nodeArray;
         }
 

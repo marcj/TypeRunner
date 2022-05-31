@@ -315,7 +315,7 @@ namespace ts {
             diagnostic.relatedInformation = vector<DiagnosticRelatedInformation>();
         }
 //        Debug::assert(diagnostic.relatedInformation !== emptyArray, "Diagnostic had empty array singleton for related info, but is still being constructed!");
-        for (auto &v: relatedInformation) (*diagnostic.relatedInformation).push_back(v);
+        for (auto &&v: relatedInformation) (*diagnostic.relatedInformation).push_back(v);
         return diagnostic;
     }
 
