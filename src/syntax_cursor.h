@@ -6,14 +6,6 @@
 using namespace std;
 
 namespace ts {
-    struct IncrementalElement : ReadonlyTextRange {
-        Node *parent = nullptr;
-        bool intersectsChange;
-        int length;
-//        _children: Node[] | undefined;
-        int pos;
-        int end;
-    };
 
     enum InvalidPosition {
         Value = -1

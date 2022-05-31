@@ -6,7 +6,7 @@
 #include <variant>
 #include "../core.h"
 #include "../types.h"
-#include "../node_factory.h"
+#include "../factory.h"
 
 using namespace std;
 using namespace ts;
@@ -218,17 +218,19 @@ SyntaxKind takeOptionalNodeUnion(sharedOpt<NodeUnion(Identifier, SourceFile)> no
 }
 
 TEST(core, passBaseToSharedNode) {
-    auto e = factory::createBaseExpression<BinaryExpression>(SyntaxKind::BinaryExpression);
+    Factory factory;
+    auto e = factory.createBaseExpression<BinaryExpression>(SyntaxKind::BinaryExpression);
     EXPECT_EQ(takeNode(e), SyntaxKind::BinaryExpression);
 }
 
 
 TEST(core, passBaseToSharedNode2) {
-    auto left = factory::createBaseNode<Expression>(SyntaxKind::Unknown);
-    auto right = factory::createBaseNode<Expression>(SyntaxKind::Unknown);
-    auto operatorNode = factory::createBaseNode<Node>(SyntaxKind::Unknown);
+    Factory factory;
+    auto left = factory.createBaseNode<Expression>(SyntaxKind::Unknown);
+    auto right = factory.createBaseNode<Expression>(SyntaxKind::Unknown);
+    auto operatorNode = factory.createBaseNode<Node>(SyntaxKind::Unknown);
 
-    auto e = factory::createBinaryExpression(left, operatorNode, right);
+    auto e = factory.createBinaryExpression(left, operatorNode, right);
     EXPECT_EQ(takeNode(e), SyntaxKind::BinaryExpression);
 }
 
@@ -283,7 +285,8 @@ TEST(core, node2) {
 }
 
 TEST(core, node) {
-    auto node = factory::createBaseNode<Identifier>();
+    Factory factory;
+    auto node = factory.createBaseNode<Identifier>();
     node->to<Identifier>().escapedText = "id";
 
     EXPECT_EQ(node->is<MetaProperty>(), false);
@@ -291,22 +294,22 @@ TEST(core, node) {
     EXPECT_EQ(node->to<Identifier>().escapedText, "id");
 }
 
-TEST(core, logicalOrOverride) {
-    auto a = LogicalOrReturnLast(0);
-    auto b = LogicalOrReturnLast(1);
-    auto c = LogicalOrReturnLast(2);
-
-    EXPECT_EQ((int) a, 0);
-
-    EXPECT_EQ((int) (a || 0), 0);
-    EXPECT_EQ((int) (0 || a), 0);
-    EXPECT_EQ((int) (a || 1), 1);
-    EXPECT_EQ((int) (1 || a), 1);
-    EXPECT_EQ((int) (a || b), 1);
-    EXPECT_EQ((int) (a || b || 2), 1);
-    EXPECT_EQ((int) (a || 0 || c), 2);
-    EXPECT_EQ((int) ((LogicalOrReturnLast<int>) 3 || a || b), 3);
-}
+//TEST(core, logicalOrOverride) {
+//    auto a = LogicalOrReturnLast(0);
+//    auto b = LogicalOrReturnLast(1);
+//    auto c = LogicalOrReturnLast(2);
+//
+//    EXPECT_EQ((int) a, 0);
+//
+//    EXPECT_EQ((int) (a || 0), 0);
+//    EXPECT_EQ((int) (0 || a), 0);
+//    EXPECT_EQ((int) (a || 1), 1);
+//    EXPECT_EQ((int) (1 || a), 1);
+//    EXPECT_EQ((int) (a || b), 1);
+//    EXPECT_EQ((int) (a || b || 2), 1);
+//    EXPECT_EQ((int) (a || 0 || c), 2);
+//    EXPECT_EQ((int) ((LogicalOrReturnLast<int>) 3 || a || b), 3);
+//}
 
 TEST(core, charToString) {
     vector<const char *> chars{"a", "b", "c"};

@@ -1813,7 +1813,7 @@ namespace ts {
     };
 
     struct VariableDeclaration: BrandKind<SyntaxKind::VariableDeclaration, NamedDeclaration, Node> {
-        shared<NodeUnion(VariableDeclarationList, CatchClause)> parent;
+//        shared<NodeUnion(VariableDeclarationList, CatchClause)> parent;
         shared<NodeUnion(BindingName)> name;                    // Declared variable name
         OptionalProperty(exclamationToken, ExclamationToken);  // Optional definite assignment assertion
         OptionalProperty(type, TypeNode);                      // Optional type annotation
@@ -2738,9 +2738,4 @@ namespace ts {
 
         sharedOpt<Node> externalModuleIndicator;
     };
-
-    vector<shared<Node>> append(vector<shared<Node>> &v, shared<Node> &item) {
-        v.push_back(item);
-        return v;
-    }
 }

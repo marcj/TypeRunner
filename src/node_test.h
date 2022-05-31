@@ -12,1265 +12,565 @@ namespace ts {
     /**
      * Gets flags that control emit behavior of a node.
      */
-    int getEmitFlags(const shared<Node> &node) {
-        return node->emitNode ? node->emitNode->flags : 0;
-    }
+    int getEmitFlags(const shared<Node> &node);
 
-    bool isCommaSequence(shared<Node> node) {
-        return node->kind == SyntaxKind::BinaryExpression && node->to<BinaryExpression>().operatorToken->kind == SyntaxKind::CommaToken || node->kind == SyntaxKind::CommaListExpression;
-    }
+    bool isCommaSequence(shared<Node> node);
 
-    bool isAssignmentOperator(SyntaxKind token) {
-        return token >= SyntaxKind::FirstAssignment && token <= SyntaxKind::LastAssignment;
-    }
+    bool isAssignmentOperator(SyntaxKind token);
 
     /**
      * Gets whether an identifier should only be referred to by its local name.
      */
-    bool isLocalName(const shared<Node> &node) {
-        return (getEmitFlags(node) & (int) EmitFlags::LocalName) != 0;
-    }
+    bool isLocalName(const shared<Node> &node);
 
-    ModifierFlags modifierToFlag(SyntaxKind token) {
-        switch (token) {
-            case SyntaxKind::StaticKeyword:
-                return ModifierFlags::Static;
-            case SyntaxKind::PublicKeyword:
-                return ModifierFlags::Public;
-            case SyntaxKind::ProtectedKeyword:
-                return ModifierFlags::Protected;
-            case SyntaxKind::PrivateKeyword:
-                return ModifierFlags::Private;
-            case SyntaxKind::AbstractKeyword:
-                return ModifierFlags::Abstract;
-            case SyntaxKind::ExportKeyword:
-                return ModifierFlags::Export;
-            case SyntaxKind::DeclareKeyword:
-                return ModifierFlags::Ambient;
-            case SyntaxKind::ConstKeyword:
-                return ModifierFlags::Const;
-            case SyntaxKind::DefaultKeyword:
-                return ModifierFlags::Default;
-            case SyntaxKind::AsyncKeyword:
-                return ModifierFlags::Async;
-            case SyntaxKind::ReadonlyKeyword:
-                return ModifierFlags::Readonly;
-            case SyntaxKind::OverrideKeyword:
-                return ModifierFlags::Override;
-            case SyntaxKind::InKeyword:
-                return ModifierFlags::In;
-            case SyntaxKind::OutKeyword:
-                return ModifierFlags::Out;
-        }
-        return ModifierFlags::None;
-    }
+    ModifierFlags modifierToFlag(SyntaxKind token);
 
-    int modifiersToFlags(optional<NodeArray> modifiers) {
-        int flags = (int) ModifierFlags::None;
-        if (modifiers) {
-            for (auto &modifier: (*modifiers).list) {
-                flags |= (int) modifierToFlag(modifier->kind);
-            }
-        }
-        return flags;
-    }
+    int modifiersToFlags(optional<NodeArray> modifiers);
 
     /**
      * Gets the ModifierFlags for syntactic modifiers on the provided node. The modifier flags cache on the node is ignored.
      *
      * NOTE: This function does not use `parent` pointers and will not include modifiers from JSDoc.
      */
-    int getSyntacticModifierFlagsNoCache(shared<Node> node) {
-        auto flags = modifiersToFlags(node->modifiers);
-        if (node->flags & (int) NodeFlags::NestedNamespace || (node->kind == SyntaxKind::Identifier && node->to<Identifier>().isInJSDocNamespace)) {
-            flags |= (int) ModifierFlags::Export;
-        }
-        return flags;
-    }
+    int getSyntacticModifierFlagsNoCache(shared<Node> node);
 
-    int getModifierFlagsWorker(shared<Node> node, bool includeJSDoc, optional<bool> alwaysIncludeJSDoc = {}) {
-        if (node->kind >= SyntaxKind::FirstToken && node->kind <= SyntaxKind::LastToken) {
-            return (int) ModifierFlags::None;
-        }
+    int getModifierFlagsWorker(shared<Node> node, bool includeJSDoc, optional<bool> alwaysIncludeJSDoc = {});
 
-        if (!(node->modifierFlagsCache & (int) ModifierFlags::HasComputedFlags)) {
-            node->modifierFlagsCache = getSyntacticModifierFlagsNoCache(node) | (int) ModifierFlags::HasComputedFlags;
-        }
+    int getSyntacticModifierFlags(shared<Node> node);
 
-        //we don't support JSDoc
-//        if (includeJSDoc && !(node->modifierFlagsCache & (int)ModifierFlags::HasComputedJSDocModifiers) && (alwaysIncludeJSDoc || isInJSFile(node)) && node->hasParent()) {
-//            node->modifierFlagsCache |= getJSDocModifierFlagsNoCache(node) | (int)ModifierFlags::HasComputedJSDocModifiers;
-//        }
+    int getSelectedSyntacticModifierFlags(shared<Node> node, int flags);
 
-        return node->modifierFlagsCache & ~((int) ModifierFlags::HasComputedFlags | (int) ModifierFlags::HasComputedJSDocModifiers);
-    }
+    bool hasSyntacticModifier(shared<Node> node, int flags);
 
-    int getSyntacticModifierFlags(shared<Node> node) {
-        return getModifierFlagsWorker(node, /*includeJSDoc*/ false);
-    }
+    bool hasStaticModifier(shared<Node> node);
 
-    int getSelectedSyntacticModifierFlags(shared<Node> node, int flags) {
-        return getSyntacticModifierFlags(node) & flags;
-    }
+    shared<NodeUnion(PropertyName)> resolveNameToNode(const shared<Node> &node);
 
-    bool hasSyntacticModifier(shared<Node> node, int flags) {
-        return !!getSelectedSyntacticModifierFlags(node, flags);
-    }
+    bool isFunctionOrConstructorTypeNode(shared<Node> node);
 
-    bool hasStaticModifier(shared<Node> node) {
-        return hasSyntacticModifier(node, (int) ModifierFlags::Static);
-    }
+    optional<NodeArray> getTypeParameters(shared<Node> node);
 
-    shared<NodeUnion(PropertyName)> resolveNameToNode(const shared<Node> &node) {
-        auto a = dynamic_pointer_cast<Identifier>(node);
+    shared<NodeUnion(JsxTagNameExpression)> getTagName(shared<NodeUnion(JsxOpeningElement, JsxOpeningFragment)> node);
 
-        switch (node->kind) {
-            case SyntaxKind::Identifier:
-                return dynamic_pointer_cast<Identifier>(node);
-            case SyntaxKind::StringLiteral:
-                return dynamic_pointer_cast<StringLiteral>(node);
-            case SyntaxKind::NumericLiteral:
-                return dynamic_pointer_cast<NumericLiteral>(node);
-            case SyntaxKind::ComputedPropertyName:
-                return dynamic_pointer_cast<ComputedPropertyName>(node);
-            case SyntaxKind::PrivateIdentifier:
-                return dynamic_pointer_cast<PrivateIdentifier>(node);
-        }
+    string &getEscapedName(const shared<Node> &node);
 
-        throw runtime_error(format("resolveNamToNode with kind %d no valid name property", (int) node->kind));
-    }
+    sharedOpt<NodeUnion(PropertyName)> getName(const shared<Node> &node);
 
-    bool isFunctionOrConstructorTypeNode(shared<Node> node) {
-        switch (node->kind) {
-            case SyntaxKind::FunctionType:
-            case SyntaxKind::ConstructorType:
-                return true;
-        }
-        return false;
-    }
+    bool isNumericLiteral(const shared<Node> &node);
 
-    optional<NodeArray> getTypeParameters(shared<Node> node) {
-        switch (node->kind) {
-            case SyntaxKind::Constructor:
-                return node->to<ConstructorDeclaration>().typeParameters;
-            case SyntaxKind::GetAccessor:
-                return node->to<GetAccessorDeclaration>().typeParameters;
-            case SyntaxKind::SetAccessor:
-                return node->to<SetAccessorDeclaration>().typeParameters;
-            case SyntaxKind::ClassExpression:
-                return node->to<ClassExpression>().typeParameters;
-            case SyntaxKind::InterfaceDeclaration:
-                return node->to<InterfaceDeclaration>().typeParameters;
-            case SyntaxKind::TypeAliasDeclaration:
-                return node->to<TypeAliasDeclaration>().typeParameters;
-            case SyntaxKind::FunctionExpression:
-                return node->to<FunctionExpression>().typeParameters;
-            case SyntaxKind::ArrowFunction:
-                return node->to<ArrowFunction>().typeParameters;
-            case SyntaxKind::FunctionType:
-                return node->to<FunctionTypeNode>().typeParameters;
-            case SyntaxKind::ConstructorType:
-                return node->to<ConstructorTypeNode>().typeParameters;
-            case SyntaxKind::CallSignature:
-                return node->to<CallSignatureDeclaration>().typeParameters;
-            case SyntaxKind::MethodSignature:
-                return node->to<MethodSignature>().typeParameters;
-            case SyntaxKind::IndexSignature:
-                return node->to<IndexSignatureDeclaration>().typeParameters;
-            default:
-                throw runtime_error(format("node %d has no typeParameters", node->kind));
-        }
-    }
+    bool isBigIntLiteral(const shared<Node> &node);
 
-    shared<NodeUnion(JsxTagNameExpression)> getTagName(shared<NodeUnion(JsxOpeningElement, JsxOpeningFragment)> node) {
-        switch (node->kind) {
-            case SyntaxKind::JsxClosingElement:
-                return node->to<JsxClosingElement>().tagName;
-            case SyntaxKind::JsxOpeningElement:
-                return node->to<JsxOpeningElement>().tagName;
-            default:
-                throw runtime_error(format("node %d has no tagName", node->kind));
-        }
-    }
+    bool isStringLiteral(const shared<Node> &node);
 
-    string &getEscapedName(const shared<Node> &node) {
-        switch (node->kind) {
-            case SyntaxKind::Identifier:
-                return dynamic_pointer_cast<Identifier>(node)->escapedText;
-            case SyntaxKind::PrivateIdentifier:
-                return dynamic_pointer_cast<PrivateIdentifier>(node)->escapedText;
-        }
+    bool isJsxText(const shared<Node> &node);
 
-        throw runtime_error(format("getEscapedName with kind %d no valid", (int) node->kind));
-    }
+    bool isRegularExpressionLiteral(const shared<Node> &node);
 
-    sharedOpt<NodeUnion(PropertyName)> getName(const shared<Node> &node) {
-        //[x] Check all with `name`
-        //[x] Check child of NamedDeclaration
-        //[x] Check child of SignatureDeclarationBase
-        //[x] Check child of ClassLikeDeclarationBase
-        //[x] Check child of DeclarationStatement
-        //[x] Check child of FunctionOrConstructorTypeNodeBase
+    bool isNoSubstitutionTemplateLiteral(const shared<Node> &node);
 
-        if (auto v = dynamic_pointer_cast<PropertyAccessEntityNameExpression>(node)) {
-            return resolveNameToNode(v->name);
-        } else if (auto v = dynamic_pointer_cast<NamespaceDeclaration>(node)) {
-            return resolveNameToNode(v->name);
-        } else
-            switch (node->kind) {
-                case SyntaxKind::FunctionType:
-                    return resolveNameToNode(node->to<FunctionTypeNode>().name);
-                case SyntaxKind::ConstructorType:
-                    return resolveNameToNode(node->to<ConstructorTypeNode>().name);
-                case SyntaxKind::PropertyAccessExpression:
-                    return resolveNameToNode(node->to<PropertyAccessExpression>().name);
-                case SyntaxKind::MetaProperty:
-                    return resolveNameToNode(node->to<MetaProperty>().name);
-                case SyntaxKind::ShorthandPropertyAssignment:
-                    return resolveNameToNode(node->to<ShorthandPropertyAssignment>().name);
-                case SyntaxKind::Parameter:
-                    return resolveNameToNode(node->to<ParameterDeclaration>().name);
-                case SyntaxKind::MissingDeclaration:
-                    return resolveNameToNode(node->to<MissingDeclaration>().name);
-                case SyntaxKind::InterfaceDeclaration:
-                    return resolveNameToNode(node->to<InterfaceDeclaration>().name);
-                case SyntaxKind::ClassDeclaration:
-                    return resolveNameToNode(node->to<ClassDeclaration>().name);
-                case SyntaxKind::ClassExpression:
-                    return resolveNameToNode(node->to<ClassExpression>().name);
-                case SyntaxKind::TypeAliasDeclaration:
-                    return resolveNameToNode(node->to<TypeAliasDeclaration>().name);
-                case SyntaxKind::EnumDeclaration:
-                    return resolveNameToNode(node->to<EnumDeclaration>().name);
-                case SyntaxKind::EnumMember:
-                    return resolveNameToNode(node->to<EnumMember>().name);
-                case SyntaxKind::PropertySignature:
-                    return resolveNameToNode(node->to<PropertySignature>().name);
-                case SyntaxKind::ModuleDeclaration:
-                    return resolveNameToNode(node->to<ModuleDeclaration>().name);
-                case SyntaxKind::ImportEqualsDeclaration:
-                    return resolveNameToNode(node->to<ImportEqualsDeclaration>().name);
-                case SyntaxKind::NamespaceImport:
-                    return resolveNameToNode(node->to<NamespaceImport>().name);
-                case SyntaxKind::ImportSpecifier:
-                    return resolveNameToNode(node->to<ImportSpecifier>().name);
-                case SyntaxKind::AssertEntry:
-                    return resolveNameToNode(node->to<AssertEntry>().name);
-                case SyntaxKind::ImportClause:
-                    return resolveNameToNode(node->to<ImportClause>().name);
-                case SyntaxKind::NamespaceExport:
-                    return resolveNameToNode(node->to<NamespaceExport>().name);
-                case SyntaxKind::ExportSpecifier:
-                    return resolveNameToNode(node->to<ExportSpecifier>().name);
-                case SyntaxKind::ExportDeclaration:
-                    return resolveNameToNode(node->to<ExportDeclaration>().name);
-                case SyntaxKind::NamespaceExportDeclaration:
-                    return resolveNameToNode(node->to<NamespaceExportDeclaration>().name);
-                case SyntaxKind::MethodSignature:
-                    return resolveNameToNode(node->to<MethodSignature>().name);
-                case SyntaxKind::FunctionDeclaration:
-                    return resolveNameToNode(node->to<FunctionDeclaration>().name);
-                case SyntaxKind::MethodDeclaration:
-                    return resolveNameToNode(node->to<MethodDeclaration>().name);
-                case SyntaxKind::GetAccessor:
-                    return resolveNameToNode(node->to<GetAccessorDeclaration>().name);
-                case SyntaxKind::SetAccessor:
-                    return resolveNameToNode(node->to<SetAccessorDeclaration>().name);
-                case SyntaxKind::FunctionExpression:
-                    return resolveNameToNode(node->to<FunctionExpression>().name);
-                case SyntaxKind::NamedTupleMember:
-                    return resolveNameToNode(node->to<NamedTupleMember>().name);
-                case SyntaxKind::JsxAttribute:
-                    return resolveNameToNode(node->to<JsxAttribute>().name);
-                case SyntaxKind::TypeParameter:
-                    return resolveNameToNode(node->to<TypeParameterDeclaration>().name);
-                case SyntaxKind::BindingElement:
-                    return resolveNameToNode(node->to<BindingElement>().name);
-                case SyntaxKind::VariableDeclaration:
-                    return resolveNameToNode(node->to<VariableDeclaration>().name);
-                case SyntaxKind::IndexSignature:
-                    return resolveNameToNode(node->to<IndexSignatureDeclaration>().name);
-                case SyntaxKind::CallSignature:
-                    return resolveNameToNode(node->to<CallSignatureDeclaration>().name);
-                case SyntaxKind::ConstructSignature:
-                    return resolveNameToNode(node->to<ConstructSignatureDeclaration>().name);
-                case SyntaxKind::ExportAssignment:
-                    return resolveNameToNode(node->to<ExportAssignment>().name);
-            }
+    bool isStringLiteralLike(shared<Node> node);
 
-        return nullptr;
-    }
-
-    bool isNumericLiteral(const shared<Node> &node) {
-        return node->kind == SyntaxKind::NumericLiteral;
-    }
-
-    bool isBigIntLiteral(const shared<Node> &node) {
-        return node->kind == SyntaxKind::BigIntLiteral;
-    }
-
-    bool isStringLiteral(const shared<Node> &node) {
-        return node->kind == SyntaxKind::StringLiteral;
-    }
-
-    bool isJsxText(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxText;
-    }
-
-    bool isRegularExpressionLiteral(const shared<Node> &node) {
-        return node->kind == SyntaxKind::RegularExpressionLiteral;
-    }
-
-    bool isNoSubstitutionTemplateLiteral(const shared<Node> &node) {
-        return node->kind == SyntaxKind::NoSubstitutionTemplateLiteral;
-    }
-
-    bool isStringLiteralLike(shared<Node> node) {
-        return node->kind == SyntaxKind::StringLiteral || node->kind == SyntaxKind::NoSubstitutionTemplateLiteral;
-    }
-
-    bool isStringOrNumericLiteralLike(shared<Node> node) {
-        return isStringLiteralLike(node) || isNumericLiteral(node);
-    }
+    bool isStringOrNumericLiteralLike(shared<Node> node);
 
     // Pseudo-literals
 
-    bool isTemplateHead(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TemplateHead;
-    }
+    bool isTemplateHead(const shared<Node> &node);
 
-    bool isTemplateMiddle(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TemplateMiddle;
-    }
+    bool isTemplateMiddle(const shared<Node> &node);
 
-    bool isTemplateTail(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TemplateTail;
-    }
+    bool isTemplateTail(const shared<Node> &node);
 
     // Punctuation
 
-    bool isDotDotDotToken(const shared<Node> &node) {
-        return node->kind == SyntaxKind::DotDotDotToken;
-    }
+    bool isDotDotDotToken(const shared<Node> &node);
 
     /*@internal*/
-    bool isCommaToken(const shared<Node> &node) {
-        return node->kind == SyntaxKind::CommaToken;
-    }
+    bool isCommaToken(const shared<Node> &node);
 
-    bool isPlusToken(const shared<Node> &node) {
-        return node->kind == SyntaxKind::PlusToken;
-    }
+    bool isPlusToken(const shared<Node> &node);
 
-    bool isMinusToken(const shared<Node> &node) {
-        return node->kind == SyntaxKind::MinusToken;
-    }
+    bool isMinusToken(const shared<Node> &node);
 
-    bool isAsteriskToken(const shared<Node> &node) {
-        return node->kind == SyntaxKind::AsteriskToken;
-    }
+    bool isAsteriskToken(const shared<Node> &node);
 
     /*@internal*/
-    bool isExclamationToken(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ExclamationToken;
-    }
+    bool isExclamationToken(const shared<Node> &node);
 
     /*@internal*/
-    bool isQuestionToken(const shared<Node> &node) {
-        return node->kind == SyntaxKind::QuestionToken;
-    }
+    bool isQuestionToken(const shared<Node> &node);
 
     /*@internal*/
-    bool isColonToken(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ColonToken;
-    }
+    bool isColonToken(const shared<Node> &node);
 
     /*@internal*/
-    bool isQuestionDotToken(const shared<Node> &node) {
-        return node->kind == SyntaxKind::QuestionDotToken;
-    }
+    bool isQuestionDotToken(const shared<Node> &node);
 
     /*@internal*/
-    bool isEqualsGreaterThanToken(const shared<Node> &node) {
-        return node->kind == SyntaxKind::EqualsGreaterThanToken;
-    }
+    bool isEqualsGreaterThanToken(const shared<Node> &node);
 
     // Identifiers
 
-    bool isIdentifier(const shared<Node> &node) {
-        return node->kind == SyntaxKind::Identifier;
-    }
+    bool isIdentifier(const shared<Node> &node);
 
-    bool isPrivateIdentifier(const shared<Node> &node) {
-        return node->kind == SyntaxKind::PrivateIdentifier;
-    }
+    bool isPrivateIdentifier(const shared<Node> &node);
 
-    bool identifierIsThisKeyword(Identifier &id) {
-        return id.originalKeywordKind == SyntaxKind::ThisKeyword;
-    }
+    bool identifierIsThisKeyword(Identifier &id);
 
-    bool isThisIdentifier(sharedOpt<Node> node) {
-        if (!node) return false;
-        return node->kind == SyntaxKind::Identifier && identifierIsThisKeyword(node->to<Identifier>());
-    }
+    bool isThisIdentifier(sharedOpt<Node> node);
 
     /**
      * Determines whether a node is a property or element access expression for `super`.
      */
-    bool isSuperProperty(shared<Node> node) {
-        if (node->is<PropertyAccessExpression>()) return node->to<PropertyAccessExpression>().expression->kind == SyntaxKind::SuperKeyword;
-        if (node->is<ElementAccessExpression>()) return node->to<ElementAccessExpression>().expression->kind == SyntaxKind::SuperKeyword;
-        return false;
-    }
+    bool isSuperProperty(shared<Node> node);
 
     // Reserved Words
 
     /* @internal */
-    bool isExportModifier(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ExportKeyword;
-    }
+    bool isExportModifier(const shared<Node> &node);
 
     /* @internal */
-    bool isAsyncModifier(const shared<Node> &node) {
-        return node->kind == SyntaxKind::AsyncKeyword;
-    }
+    bool isAsyncModifier(const shared<Node> &node);
 
     /* @internal */
-    bool isAssertsKeyword(const shared<Node> &node) {
-        return node->kind == SyntaxKind::AssertsKeyword;
-    }
+    bool isAssertsKeyword(const shared<Node> &node);
 
     /* @internal */
-    bool isAwaitKeyword(const shared<Node> &node) {
-        return node->kind == SyntaxKind::AwaitKeyword;
-    }
+    bool isAwaitKeyword(const shared<Node> &node);
 
     /* @internal */
-    bool isReadonlyKeyword(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ReadonlyKeyword;
-    }
+    bool isReadonlyKeyword(const shared<Node> &node);
 
     /* @internal */
-    bool isStaticModifier(const shared<Node> &node) {
-        return node->kind == SyntaxKind::StaticKeyword;
-    }
+    bool isStaticModifier(const shared<Node> &node);
 
     /* @internal */
-    bool isAbstractModifier(const shared<Node> &node) {
-        return node->kind == SyntaxKind::AbstractKeyword;
-    }
+    bool isAbstractModifier(const shared<Node> &node);
 
     /*@internal*/
-    bool isSuperKeyword(const shared<Node> &node) {
-        return node->kind == SyntaxKind::SuperKeyword;
-    }
+    bool isSuperKeyword(const shared<Node> &node);
 
     /*@internal*/
-    bool isImportKeyword(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ImportKeyword;
-    }
+    bool isImportKeyword(const shared<Node> &node);
 
     // Names
 
-    bool isQualifiedName(const shared<Node> &node) {
-        return node->kind == SyntaxKind::QualifiedName;
-    }
+    bool isQualifiedName(const shared<Node> &node);
 
-    bool isComputedPropertyName(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ComputedPropertyName;
-    }
+    bool isComputedPropertyName(const shared<Node> &node);
 
     // Signature elements
 
-    bool isTypeParameterDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TypeParameter;
-    }
+    bool isTypeParameterDeclaration(const shared<Node> &node);
 
     // TODO(rbuckton): Rename to 'isParameterDeclaration'
-    bool isParameter(const shared<Node> &node) {
-        return node->kind == SyntaxKind::Parameter;
-    }
+    bool isParameter(const shared<Node> &node);
 
-    bool isDecorator(const shared<Node> &node) {
-        return node->kind == SyntaxKind::Decorator;
-    }
+    bool isDecorator(const shared<Node> &node);
 
     // TypeMember
 
-    bool isPropertySignature(const shared<Node> &node) {
-        return node->kind == SyntaxKind::PropertySignature;
-    }
+    bool isPropertySignature(const shared<Node> &node);
 
-    bool isPropertyDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::PropertyDeclaration;
-    }
+    bool isPropertyDeclaration(const shared<Node> &node);
 
-    bool isMethodSignature(const shared<Node> &node) {
-        return node->kind == SyntaxKind::MethodSignature;
-    }
+    bool isMethodSignature(const shared<Node> &node);
 
-    bool isMethodDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::MethodDeclaration;
-    }
+    bool isMethodDeclaration(const shared<Node> &node);
 
-    bool isClassStaticBlockDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ClassStaticBlockDeclaration;
-    }
+    bool isClassStaticBlockDeclaration(const shared<Node> &node);
 
-    bool isConstructorDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::Constructor;
-    }
+    bool isConstructorDeclaration(const shared<Node> &node);
 
-    bool isGetAccessorDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::GetAccessor;
-    }
+    bool isGetAccessorDeclaration(const shared<Node> &node);
 
-    bool isSetAccessorDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::SetAccessor;
-    }
+    bool isSetAccessorDeclaration(const shared<Node> &node);
 
-    bool isCallSignatureDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::CallSignature;
-    }
+    bool isCallSignatureDeclaration(const shared<Node> &node);
 
-    bool isConstructSignatureDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ConstructSignature;
-    }
+    bool isConstructSignatureDeclaration(const shared<Node> &node);
 
-    bool isIndexSignatureDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::IndexSignature;
-    }
+    bool isIndexSignatureDeclaration(const shared<Node> &node);
 
     // Type
 
-    bool isTypePredicateNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TypePredicate;
-    }
+    bool isTypePredicateNode(const shared<Node> &node);
 
-    bool isTypeReferenceNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TypeReference;
-    }
+    bool isTypeReferenceNode(const shared<Node> &node);
 
-    bool isFunctionTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::FunctionType;
-    }
+    bool isFunctionTypeNode(const shared<Node> &node);
 
-    bool isConstructorTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ConstructorType;
-    }
+    bool isConstructorTypeNode(const shared<Node> &node);
 
-    bool isTypeQueryNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TypeQuery;
-    }
+    bool isTypeQueryNode(const shared<Node> &node);
 
-    bool isTypeLiteralNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TypeLiteral;
-    }
+    bool isTypeLiteralNode(const shared<Node> &node);
 
-    bool isArrayTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ArrayType;
-    }
+    bool isArrayTypeNode(const shared<Node> &node);
 
-    bool isTupleTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TupleType;
-    }
+    bool isTupleTypeNode(const shared<Node> &node);
 
-    bool isNamedTupleMember(const shared<Node> &node) {
-        return node->kind == SyntaxKind::NamedTupleMember;
-    }
+    bool isNamedTupleMember(const shared<Node> &node);
 
-    bool isOptionalTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::OptionalType;
-    }
+    bool isOptionalTypeNode(const shared<Node> &node);
 
-    bool isRestTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::RestType;
-    }
+    bool isRestTypeNode(const shared<Node> &node);
 
-    bool isUnionTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::UnionType;
-    }
+    bool isUnionTypeNode(const shared<Node> &node);
 
-    bool isIntersectionTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::IntersectionType;
-    }
+    bool isIntersectionTypeNode(const shared<Node> &node);
 
-    bool isConditionalTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ConditionalType;
-    }
+    bool isConditionalTypeNode(const shared<Node> &node);
 
-    bool isInferTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::InferType;
-    }
+    bool isInferTypeNode(const shared<Node> &node);
 
-    bool isParenthesizedTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ParenthesizedType;
-    }
+    bool isParenthesizedTypeNode(const shared<Node> &node);
 
-    bool isThisTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ThisType;
-    }
+    bool isThisTypeNode(const shared<Node> &node);
 
-    bool isTypeOperatorNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TypeOperator;
-    }
+    bool isTypeOperatorNode(const shared<Node> &node);
 
-    bool isIndexedAccessTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::IndexedAccessType;
-    }
+    bool isIndexedAccessTypeNode(const shared<Node> &node);
 
-    bool isMappedTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::MappedType;
-    }
+    bool isMappedTypeNode(const shared<Node> &node);
 
-    bool isLiteralTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::LiteralType;
-    }
+    bool isLiteralTypeNode(const shared<Node> &node);
 
-    bool isImportTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ImportType;
-    }
+    bool isImportTypeNode(const shared<Node> &node);
 
-    bool isTemplateLiteralTypeSpan(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TemplateLiteralTypeSpan;
-    }
+    bool isTemplateLiteralTypeSpan(const shared<Node> &node);
 
-    bool isTemplateLiteralTypeNode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TemplateLiteralType;
-    }
+    bool isTemplateLiteralTypeNode(const shared<Node> &node);
 
     // Binding patterns
 
-    bool isObjectBindingPattern(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ObjectBindingPattern;
-    }
+    bool isObjectBindingPattern(const shared<Node> &node);
 
-    bool isArrayBindingPattern(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ArrayBindingPattern;
-    }
+    bool isArrayBindingPattern(const shared<Node> &node);
 
-    bool isBindingElement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::BindingElement;
-    }
+    bool isBindingElement(const shared<Node> &node);
 
     // Expression
 
-    bool isArrayLiteralExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ArrayLiteralExpression;
-    }
+    bool isArrayLiteralExpression(const shared<Node> &node);
 
-    bool isObjectLiteralExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ObjectLiteralExpression;
-    }
+    bool isObjectLiteralExpression(const shared<Node> &node);
 
-    bool isPropertyAccessExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::PropertyAccessExpression;
-    }
+    bool isPropertyAccessExpression(const shared<Node> &node);
 
-    bool isElementAccessExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ElementAccessExpression;
-    }
+    bool isElementAccessExpression(const shared<Node> &node);
 
-    bool isCallExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::CallExpression;
-    }
+    bool isCallExpression(const shared<Node> &node);
 
-    bool isCallChain(shared<Node> node) {
-        return isCallExpression(node) && !!(node->flags & (int)NodeFlags::OptionalChain);
-    }
+    bool isCallChain(shared<Node> node);
 
-    bool isNewExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::NewExpression;
-    }
+    bool isNewExpression(const shared<Node> &node);
 
-    bool isTaggedTemplateExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TaggedTemplateExpression;
-    }
+    bool isTaggedTemplateExpression(const shared<Node> &node);
 
-    bool isTypeAssertionExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TypeAssertionExpression;
-    }
+    bool isTypeAssertionExpression(const shared<Node> &node);
 
-    bool isParenthesizedExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ParenthesizedExpression;
-    }
+    bool isParenthesizedExpression(const shared<Node> &node);
 
-    bool isFunctionExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::FunctionExpression;
-    }
+    bool isFunctionExpression(const shared<Node> &node);
 
-    bool isArrowFunction(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ArrowFunction;
-    }
+    bool isArrowFunction(const shared<Node> &node);
 
-    bool isDeleteExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::DeleteExpression;
-    }
+    bool isDeleteExpression(const shared<Node> &node);
 
-    bool isTypeOfExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TypeOfExpression;
-    }
+    bool isTypeOfExpression(const shared<Node> &node);
 
-    bool isVoidExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::VoidExpression;
-    }
+    bool isVoidExpression(const shared<Node> &node);
 
-    bool isAwaitExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::AwaitExpression;
-    }
+    bool isAwaitExpression(const shared<Node> &node);
 
-    bool isPrefixUnaryExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::PrefixUnaryExpression;
-    }
+    bool isPrefixUnaryExpression(const shared<Node> &node);
 
-    bool isPostfixUnaryExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::PostfixUnaryExpression;
-    }
+    bool isPostfixUnaryExpression(const shared<Node> &node);
 
-    bool isBinaryExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::BinaryExpression;
-    }
+    bool isBinaryExpression(const shared<Node> &node);
 
-    bool isConditionalExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ConditionalExpression;
-    }
+    bool isConditionalExpression(const shared<Node> &node);
 
-    bool isTemplateExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TemplateExpression;
-    }
+    bool isTemplateExpression(const shared<Node> &node);
 
-    bool isYieldExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::YieldExpression;
-    }
+    bool isYieldExpression(const shared<Node> &node);
 
-    bool isSpreadElement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::SpreadElement;
-    }
+    bool isSpreadElement(const shared<Node> &node);
 
-    bool isClassExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ClassExpression;
-    }
+    bool isClassExpression(const shared<Node> &node);
 
-    bool isOmittedExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::OmittedExpression;
-    }
+    bool isOmittedExpression(const shared<Node> &node);
 
-    bool isExpressionWithTypeArguments(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ExpressionWithTypeArguments;
-    }
+    bool isExpressionWithTypeArguments(const shared<Node> &node);
 
-    bool isAsExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::AsExpression;
-    }
+    bool isAsExpression(const shared<Node> &node);
 
-    bool isNonNullExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::NonNullExpression;
-    }
+    bool isNonNullExpression(const shared<Node> &node);
 
-    bool isNonNullChain(shared<Node> node) {
-        return isNonNullExpression(node) && !!(node->flags & (int)NodeFlags::OptionalChain);
-    }
+    bool isNonNullChain(shared<Node> node);
 
-    bool isMetaProperty(const shared<Node> &node) {
-        return node->kind == SyntaxKind::MetaProperty;
-    }
+    bool isMetaProperty(const shared<Node> &node);
 
-    bool isSyntheticExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::SyntheticExpression;
-    }
+    bool isSyntheticExpression(const shared<Node> &node);
 
-    bool isPartiallyEmittedExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::PartiallyEmittedExpression;
-    }
+    bool isPartiallyEmittedExpression(const shared<Node> &node);
 
-    bool isCommaListExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::CommaListExpression;
-    }
+    bool isCommaListExpression(const shared<Node> &node);
 
     // Misc
 
-    bool isTemplateSpan(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TemplateSpan;
-    }
+    bool isTemplateSpan(const shared<Node> &node);
 
-    bool isSemicolonClassElement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::SemicolonClassElement;
-    }
+    bool isSemicolonClassElement(const shared<Node> &node);
 
     // Elements
 
-    bool isBlock(const shared<Node> &node) {
-        return node->kind == SyntaxKind::Block;
-    }
+    bool isBlock(const shared<Node> &node);
 
-    bool isVariableStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::VariableStatement;
-    }
+    bool isVariableStatement(const shared<Node> &node);
 
-    bool isEmptyStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::EmptyStatement;
-    }
+    bool isEmptyStatement(const shared<Node> &node);
 
-    bool isExpressionStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ExpressionStatement;
-    }
+    bool isExpressionStatement(const shared<Node> &node);
 
-    bool isIfStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::IfStatement;
-    }
+    bool isIfStatement(const shared<Node> &node);
 
-    bool isDoStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::DoStatement;
-    }
+    bool isDoStatement(const shared<Node> &node);
 
-    bool isWhileStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::WhileStatement;
-    }
+    bool isWhileStatement(const shared<Node> &node);
 
-    bool isForStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ForStatement;
-    }
+    bool isForStatement(const shared<Node> &node);
 
-    bool isForInStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ForInStatement;
-    }
+    bool isForInStatement(const shared<Node> &node);
 
-    bool isForOfStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ForOfStatement;
-    }
+    bool isForOfStatement(const shared<Node> &node);
 
-    bool isContinueStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ContinueStatement;
-    }
+    bool isContinueStatement(const shared<Node> &node);
 
-    bool isBreakStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::BreakStatement;
-    }
+    bool isBreakStatement(const shared<Node> &node);
 
-    bool isReturnStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ReturnStatement;
-    }
+    bool isReturnStatement(const shared<Node> &node);
 
-    bool isWithStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::WithStatement;
-    }
+    bool isWithStatement(const shared<Node> &node);
 
-    bool isSwitchStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::SwitchStatement;
-    }
+    bool isSwitchStatement(const shared<Node> &node);
 
-    bool isLabeledStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::LabeledStatement;
-    }
+    bool isLabeledStatement(const shared<Node> &node);
 
-    bool isThrowStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ThrowStatement;
-    }
+    bool isThrowStatement(const shared<Node> &node);
 
-    bool isTryStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TryStatement;
-    }
+    bool isTryStatement(const shared<Node> &node);
 
-    bool isDebuggerStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::DebuggerStatement;
-    }
+    bool isDebuggerStatement(const shared<Node> &node);
 
-    bool isVariableDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::VariableDeclaration;
-    }
+    bool isVariableDeclaration(const shared<Node> &node);
 
-    bool isVariableDeclarationList(const shared<Node> &node) {
-        return node->kind == SyntaxKind::VariableDeclarationList;
-    }
+    bool isVariableDeclarationList(const shared<Node> &node);
 
-    bool isFunctionDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::FunctionDeclaration;
-    }
+    bool isFunctionDeclaration(const shared<Node> &node);
 
-    bool isClassDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ClassDeclaration;
-    }
+    bool isClassDeclaration(const shared<Node> &node);
 
-    bool isInterfaceDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::InterfaceDeclaration;
-    }
+    bool isInterfaceDeclaration(const shared<Node> &node);
 
-    bool isTypeAliasDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::TypeAliasDeclaration;
-    }
+    bool isTypeAliasDeclaration(const shared<Node> &node);
 
-    bool isEnumDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::EnumDeclaration;
-    }
+    bool isEnumDeclaration(const shared<Node> &node);
 
-    bool isModuleDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ModuleDeclaration;
-    }
+    bool isModuleDeclaration(const shared<Node> &node);
 
-    bool isModuleBlock(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ModuleBlock;
-    }
+    bool isModuleBlock(const shared<Node> &node);
 
-    bool isCaseBlock(const shared<Node> &node) {
-        return node->kind == SyntaxKind::CaseBlock;
-    }
+    bool isCaseBlock(const shared<Node> &node);
 
-    bool isNamespaceExportDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::NamespaceExportDeclaration;
-    }
+    bool isNamespaceExportDeclaration(const shared<Node> &node);
 
-    bool isImportEqualsDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ImportEqualsDeclaration;
-    }
+    bool isImportEqualsDeclaration(const shared<Node> &node);
 
-    bool isImportDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ImportDeclaration;
-    }
+    bool isImportDeclaration(const shared<Node> &node);
 
-    bool isImportClause(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ImportClause;
-    }
+    bool isImportClause(const shared<Node> &node);
 
-    bool isAssertClause(const shared<Node> &node) {
-        return node->kind == SyntaxKind::AssertClause;
-    }
+    bool isAssertClause(const shared<Node> &node);
 
-    bool isAssertEntry(const shared<Node> &node) {
-        return node->kind == SyntaxKind::AssertEntry;
-    }
+    bool isAssertEntry(const shared<Node> &node);
 
-    bool isNamespaceImport(const shared<Node> &node) {
-        return node->kind == SyntaxKind::NamespaceImport;
-    }
+    bool isNamespaceImport(const shared<Node> &node);
 
-    bool isNamespaceExport(const shared<Node> &node) {
-        return node->kind == SyntaxKind::NamespaceExport;
-    }
+    bool isNamespaceExport(const shared<Node> &node);
 
-    bool isNamedImports(const shared<Node> &node) {
-        return node->kind == SyntaxKind::NamedImports;
-    }
+    bool isNamedImports(const shared<Node> &node);
 
-    bool isImportSpecifier(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ImportSpecifier;
-    }
+    bool isImportSpecifier(const shared<Node> &node);
 
-    bool isExportAssignment(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ExportAssignment;
-    }
+    bool isExportAssignment(const shared<Node> &node);
 
-    bool isExportDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ExportDeclaration;
-    }
+    bool isExportDeclaration(const shared<Node> &node);
 
-    bool isNamedExports(const shared<Node> &node) {
-        return node->kind == SyntaxKind::NamedExports;
-    }
+    bool isNamedExports(const shared<Node> &node);
 
-    bool isExportSpecifier(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ExportSpecifier;
-    }
+    bool isExportSpecifier(const shared<Node> &node);
 
-    bool isMissingDeclaration(const shared<Node> &node) {
-        return node->kind == SyntaxKind::MissingDeclaration;
-    }
+    bool isMissingDeclaration(const shared<Node> &node);
 
-    bool isNotEmittedStatement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::NotEmittedStatement;
-    }
+    bool isNotEmittedStatement(const shared<Node> &node);
 
     /* @internal */
-    bool isSyntheticReference(const shared<Node> &node) {
-        return node->kind == SyntaxKind::SyntheticReferenceExpression;
-    }
+    bool isSyntheticReference(const shared<Node> &node);
 
     /* @internal */
-    bool isMergeDeclarationMarker(const shared<Node> &node) {
-        return node->kind == SyntaxKind::MergeDeclarationMarker;
-    }
+    bool isMergeDeclarationMarker(const shared<Node> &node);
 
     /* @internal */
-    bool isEndOfDeclarationMarker(const shared<Node> &node) {
-        return node->kind == SyntaxKind::EndOfDeclarationMarker;
-    }
+    bool isEndOfDeclarationMarker(const shared<Node> &node);
 
     // Module References
 
-    bool isExternalModuleReference(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ExternalModuleReference;
-    }
+    bool isExternalModuleReference(const shared<Node> &node);
 
     // JSX
 
-    bool isJsxElement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxElement;
-    }
+    bool isJsxElement(const shared<Node> &node);
 
-    bool isJsxSelfClosingElement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxSelfClosingElement;
-    }
+    bool isJsxSelfClosingElement(const shared<Node> &node);
 
-    bool isJsxOpeningElement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxOpeningElement;
-    }
+    bool isJsxOpeningElement(const shared<Node> &node);
 
-    bool isJsxClosingElement(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxClosingElement;
-    }
+    bool isJsxClosingElement(const shared<Node> &node);
 
-    bool isJsxFragment(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxFragment;
-    }
+    bool isJsxFragment(const shared<Node> &node);
 
-    bool isJsxOpeningFragment(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxOpeningFragment;
-    }
+    bool isJsxOpeningFragment(const shared<Node> &node);
 
-    bool isJsxClosingFragment(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxClosingFragment;
-    }
+    bool isJsxClosingFragment(const shared<Node> &node);
 
-    bool isJsxAttribute(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxAttribute;
-    }
+    bool isJsxAttribute(const shared<Node> &node);
 
-    bool isJsxAttributes(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxAttributes;
-    }
+    bool isJsxAttributes(const shared<Node> &node);
 
-    bool isJsxSpreadAttribute(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxSpreadAttribute;
-    }
+    bool isJsxSpreadAttribute(const shared<Node> &node);
 
-    bool isJsxExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JsxExpression;
-    }
+    bool isJsxExpression(const shared<Node> &node);
 
     // Clauses
 
-    bool isCaseClause(const shared<Node> &node) {
-        return node->kind == SyntaxKind::CaseClause;
-    }
+    bool isCaseClause(const shared<Node> &node);
 
-    bool isDefaultClause(const shared<Node> &node) {
-        return node->kind == SyntaxKind::DefaultClause;
-    }
+    bool isDefaultClause(const shared<Node> &node);
 
-    bool isHeritageClause(const shared<Node> &node) {
-        return node->kind == SyntaxKind::HeritageClause;
-    }
-
-    bool isCatchClause(const shared<Node> &node) {
-        return node->kind == SyntaxKind::CatchClause;
-    }
+    bool isHeritageClause(const shared<Node> &node);
+    bool isCatchClause(const shared<Node> &node);
 
     // Property assignments
 
-    bool isPropertyAssignment(const shared<Node> &node) {
-        return node->kind == SyntaxKind::PropertyAssignment;
-    }
+    bool isPropertyAssignment(const shared<Node> &node);
 
-    bool isShorthandPropertyAssignment(const shared<Node> &node) {
-        return node->kind == SyntaxKind::ShorthandPropertyAssignment;
-    }
+    bool isShorthandPropertyAssignment(const shared<Node> &node);
 
-    bool isSpreadAssignment(const shared<Node> &node) {
-        return node->kind == SyntaxKind::SpreadAssignment;
-    }
+    bool isSpreadAssignment(const shared<Node> &node);
 
     // Enum
 
-    bool isEnumMember(const shared<Node> &node) {
-        return node->kind == SyntaxKind::EnumMember;
-    }
+    bool isEnumMember(const shared<Node> &node);
 
     // Unparsed
 
     // TODO(rbuckton): isUnparsedPrologue
 
-    bool isUnparsedPrepend(const shared<Node> &node) {
-        return node->kind == SyntaxKind::UnparsedPrepend;
-    }
-
+    bool isUnparsedPrepend(const shared<Node> &node);
     // TODO(rbuckton): isUnparsedText
     // TODO(rbuckton): isUnparsedInternalText
     // TODO(rbuckton): isUnparsedSyntheticReference
 
     // Top-level nodes
-    bool isSourceFile(const shared<Node> &node) {
-        return node->kind == SyntaxKind::SourceFile;
-    }
+    bool isSourceFile(const shared<Node> &node);
 
-    bool isBundle(const shared<Node> &node) {
-        return node->kind == SyntaxKind::Bundle;
-    }
+    bool isBundle(const shared<Node> &node);
 
-    bool isUnparsedSource(const shared<Node> &node) {
-        return node->kind == SyntaxKind::UnparsedSource;
-    }
+    bool isUnparsedSource(const shared<Node> &node);
 
     // TODO(rbuckton): isInputFiles
 
     // JSDoc Elements
 
-    bool isJSDocTypeExpression(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocTypeExpression;
-    }
+    bool isJSDocTypeExpression(const shared<Node> &node);
 
-    bool isJSDocNameReference(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocNameReference;
-    }
+    bool isJSDocNameReference(const shared<Node> &node);
 
-    bool isJSDocMemberName(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocMemberName;
-    }
+    bool isJSDocMemberName(const shared<Node> &node);
 
-    bool isJSDocLink(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocLink;
-    }
+    bool isJSDocLink(const shared<Node> &node);
 
-    bool isJSDocLinkCode(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocLinkCode;
-    }
+    bool isJSDocLinkCode(const shared<Node> &node);
 
-    bool isJSDocLinkPlain(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocLinkPlain;
-    }
+    bool isJSDocLinkPlain(const shared<Node> &node);
 
-    bool isJSDocAllType(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocAllType;
-    }
+    bool isJSDocAllType(const shared<Node> &node);
 
-    bool isJSDocUnknownType(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocUnknownType;
-    }
+    bool isJSDocUnknownType(const shared<Node> &node);
 
-    bool isJSDocNullableType(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocNullableType;
-    }
+    bool isJSDocNullableType(const shared<Node> &node);
 
-    bool isJSDocNonNullableType(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocNonNullableType;
-    }
+    bool isJSDocNonNullableType(const shared<Node> &node);
 
-    bool isJSDocOptionalType(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocOptionalType;
-    }
+    bool isJSDocOptionalType(const shared<Node> &node);
 
-    bool isJSDocFunctionType(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocFunctionType;
-    }
+    bool isJSDocFunctionType(const shared<Node> &node);
 
-    bool isJSDocVariadicType(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocVariadicType;
-    }
+    bool isJSDocVariadicType(const shared<Node> &node);
 
-    bool isJSDocNamepathType(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocNamepathType;
-    }
+    bool isJSDocNamepathType(const shared<Node> &node);
 
-    bool isJSDoc(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDoc;
-    }
+    bool isJSDoc(const shared<Node> &node);
 
-    bool isJSDocTypeLiteral(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocTypeLiteral;
-    }
+    bool isJSDocTypeLiteral(const shared<Node> &node);
 
-    bool isJSDocSignature(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocSignature;
-    }
+    bool isJSDocSignature(const shared<Node> &node);
 
     // JSDoc Tags
 
-    bool isJSDocAugmentsTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocAugmentsTag;
-    }
+    bool isJSDocAugmentsTag(const shared<Node> &node);
 
-    bool isJSDocAuthorTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocAuthorTag;
-    }
+    bool isJSDocAuthorTag(const shared<Node> &node);
 
-    bool isJSDocClassTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocClassTag;
-    }
+    bool isJSDocClassTag(const shared<Node> &node);
 
-    bool isJSDocCallbackTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocCallbackTag;
-    }
+    bool isJSDocCallbackTag(const shared<Node> &node);
 
-    bool isJSDocPublicTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocPublicTag;
-    }
+    bool isJSDocPublicTag(const shared<Node> &node);
 
-    bool isJSDocPrivateTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocPrivateTag;
-    }
+    bool isJSDocPrivateTag(const shared<Node> &node);
 
-    bool isJSDocProtectedTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocProtectedTag;
-    }
+    bool isJSDocProtectedTag(const shared<Node> &node);
+    bool isJSDocReadonlyTag(const shared<Node> &node);
 
-    bool isJSDocReadonlyTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocReadonlyTag;
-    }
+    bool isJSDocOverrideTag(const shared<Node> &node);
 
-    bool isJSDocOverrideTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocOverrideTag;
-    }
+    bool isJSDocDeprecatedTag(const shared<Node> &node);
 
-    bool isJSDocDeprecatedTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocDeprecatedTag;
-    }
+    bool isJSDocSeeTag(const shared<Node> &node);
 
-    bool isJSDocSeeTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocSeeTag;
-    }
+    bool isJSDocEnumTag(const shared<Node> &node);
 
-    bool isJSDocEnumTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocEnumTag;
-    }
+    bool isJSDocParameterTag(const shared<Node> &node);
 
-    bool isJSDocParameterTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocParameterTag;
-    }
+    bool isJSDocReturnTag(const shared<Node> &node);
 
-    bool isJSDocReturnTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocReturnTag;
-    }
+    bool isJSDocThisTag(const shared<Node> &node);
 
-    bool isJSDocThisTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocThisTag;
-    }
+    bool isJSDocTypeTag(const shared<Node> &node);
 
-    bool isJSDocTypeTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocTypeTag;
-    }
+    bool isJSDocTemplateTag(const shared<Node> &node);
+    bool isJSDocTypedefTag(const shared<Node> &node);
 
-    bool isJSDocTemplateTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocTemplateTag;
-    }
+    bool isJSDocUnknownTag(const shared<Node> &node);
 
-    bool isJSDocTypedefTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocTypedefTag;
-    }
+    bool isJSDocPropertyTag(const shared<Node> &node);
 
-    bool isJSDocUnknownTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocTag;
-    }
-
-    bool isJSDocPropertyTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocPropertyTag;
-    }
-
-    bool isJSDocImplementsTag(const shared<Node> &node) {
-        return node->kind == SyntaxKind::JSDocImplementsTag;
-    }
+    bool isJSDocImplementsTag(const shared<Node> &node);
 
     // Synthesized list
 
     /* @internal */
-    bool isSyntaxList(const shared<Node> &node) {
-        return node->kind == SyntaxKind::SyntaxList;
-    }
+    bool isSyntaxList(const shared<Node> &node);
 }
