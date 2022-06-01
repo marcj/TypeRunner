@@ -4,6 +4,7 @@
 #include "types.h"
 #include "utilities.h"
 #include "core.h"
+#include <fmt/core.h>
 
 namespace ts {
     LanguageVariant getLanguageVariant(ScriptKind scriptKind) {
@@ -258,17 +259,17 @@ namespace ts {
 
     //unordered_map<string, string> localizedDiagnosticMessages{};
 
-    string getLocaleSpecificMessage(DiagnosticMessage message) {
+    string_view getLocaleSpecificMessage(const shared<DiagnosticMessage> &message) {
 //        if (has(localizedDiagnosticMessages, message.key)) {
 //            return localizedDiagnosticMessages[message.key];
 //        }
-        return message.message;
+        return message->message;
     }
 
     using DiagnosticArg = string;
 
     string formatStringFromArg(string &text, int i, string &v) {
-        return replaceAll(text, format("{%d}", i), v);
+        return replaceAll(text, fmt::format("{}", i), v);
 //        return text.replace(/{(\d+)}/g, (_match, index: string) => "" + Debug.checkDefined(args[+index + baseIndex]));
     }
 
@@ -276,7 +277,7 @@ namespace ts {
         return v; //currently only string supported
     }
 
-    DiagnosticWithDetachedLocation createDetachedDiagnostic(string fileName, int start, int length, DiagnosticMessage message, vector<DiagnosticArg> textArg) {
+    DiagnosticWithDetachedLocation createDetachedDiagnostic(string fileName, int start, int length, const shared<DiagnosticMessage> &message, vector<DiagnosticArg> textArg) {
         //    assertDiagnosticLocation(/*file*/ undefined, start, length);
         auto text = getLocaleSpecificMessage(message);
 
@@ -296,10 +297,10 @@ namespace ts {
                 {
                         {
                                 .messageText = text,
-                                .category = message.category,
-                                .code = message.code,
+                                .category = message->category,
+                                .code = message->code,
                         },
-                        .reportsUnnecessary = message.reportsUnnecessary,
+                        .reportsUnnecessary = message->reportsUnnecessary,
                 },
                 .fileName = fileName,
                 .start = start,
@@ -417,7 +418,7 @@ namespace ts {
             case SyntaxKind::PartiallyEmittedExpression:
                 return node->to<PartiallyEmittedExpression>().expression;
         }
-        throw runtime_error(format("No expression found in type %d", (int) node->kind));
+        throw runtime_error(fmt::format("No expression found in type {}", (int) node->kind));
     }
 
     shared<Node> skipOuterExpressions(shared<Node> node, int kinds) {

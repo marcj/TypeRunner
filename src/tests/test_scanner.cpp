@@ -29,7 +29,7 @@ TEST(scanner, basisc) {
         scanner.setOnError(nullopt);
     }
     std::chrono::duration<double, std::milli> took = std::chrono::high_resolution_clock::now() - start;
-    debug("scan %d took %fms", i, took.count());
+    debug("scan {} took {}ms", i, took.count());
 
 //    std::cout << enum_name(scanner.scan()) << "\n";
 //    std::cout << enum_name(scanner.scan()) << "\n";

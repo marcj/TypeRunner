@@ -1,4 +1,5 @@
 #include "factory.h"
+#include <fmt/core.h>
 
 namespace ts {
     int Factory::propagatePropertyNameFlagsOfChild(shared<ts::Node> &node, int transformFlags) {
@@ -18,11 +19,11 @@ namespace ts {
         return propagateChildFlags(std::move(node)) & ~(int) TransformFlags::ContainsPossibleTopLevelAwait;
     }
 
-    int Factory::propagateChildrenFlags(sharedOpt<NodeArray> children) {
+    int Factory::propagateChildrenFlags(const sharedOpt<NodeArray> &children) {
         return children ? children->transformFlags : (int) TransformFlags::None;
     }
 
-    void Factory::aggregateChildrenFlags(shared<NodeArray> &children) {
+    void Factory::aggregateChildrenFlags(const shared<NodeArray> &children) {
         int subtreeFlags = (int) TransformFlags::None;
         for (auto &&child: children->list) {
             subtreeFlags |= propagateChildFlags(child);
@@ -30,30 +31,29 @@ namespace ts {
         children->transformFlags = subtreeFlags;
     }
 
-    shared<NodeArray> Factory::createNodeArray(sharedOpt<NodeArray> elements, optional<bool> hasTrailingComma) {
+    shared<NodeArray> Factory::createNodeArray(const sharedOpt<NodeArray> &elements, bool hasTrailingComma) {
         ZoneScoped;
-        if (elements) {
-            if (!hasTrailingComma || elements->hasTrailingComma == *hasTrailingComma) {
-                // Ensure the transform flags have been aggregated for this NodeArray
-                if (elements->transformFlags == (int) types::TransformFlags::None) {
-                    aggregateChildrenFlags(elements);
-                }
-//                Debug.attachNodeArrayDebugInfo(elements);
-                return elements;
+        if (elements && elements->hasTrailingComma == hasTrailingComma) {
+            // Ensure the transform flags have been aggregated for this NodeArray
+            if (elements->transformFlags == (int) types::TransformFlags::None) {
+                aggregateChildrenFlags(elements);
             }
+//                Debug.attachNodeArrayDebugInfo(elements);
+            return elements;
         }
-
+        elements->hasTrailingComma = hasTrailingComma;
+        return elements;
         // This *was* a `NodeArray`, but the `hasTrailingComma` option differs. Recreate the
         // array with the same elements, text range, and transform flags but with the updated
         // value for `hasTrailingComma`
-        auto array = make_shared<NodeArray>();
-        if (elements) array = elements;
-        array->pos = elements->pos;
-        array->end = elements->end;
-        array->hasTrailingComma = *hasTrailingComma;
-        array->transformFlags = elements->transformFlags;
-//            Debug.attachNodeArrayDebugInfo(array);
-        return array;
+//        auto array = make_shared<NodeArray>();
+//        if (elements) array = elements;
+//        array->pos = elements->pos;
+//        array->end = elements->end;
+//        array->hasTrailingComma = *hasTrailingComma;
+//        array->transformFlags = elements->transformFlags;
+////            Debug.attachNodeArrayDebugInfo(array);
+//        return array;
     }
 
     sharedOpt<NodeArray> Factory::asNodeArray(sharedOpt<NodeArray> elements) {
@@ -2498,7 +2498,7 @@ namespace ts {
                 node->transformFlags |= (int) TransformFlags::ContainsESNext;
                 break;
             default:
-                throw runtime_error(format("invalid keyword token %d", keywordToken));
+                throw runtime_error(fmt::format("invalid keyword token {}", keywordToken));
         }
         return node;
     }
@@ -2555,7 +2555,7 @@ namespace ts {
     }
 
     // @api
-   shared<VariableDeclarationList> Factory::createVariableDeclarationList(shared<NodeArray> declarations, int flags) {
+   shared<VariableDeclarationList> Factory::createVariableDeclarationList(const shared<NodeArray> &declarations, int flags) {
         auto node = createBaseNode<VariableDeclarationList>(SyntaxKind::VariableDeclarationList);
         node->flags |= flags & (int) NodeFlags::BlockScoped;
         node->declarations = declarations;
@@ -2570,10 +2570,6 @@ namespace ts {
         return node;
     }
 
-   shared<VariableDeclarationList> Factory::createVariableDeclarationList(vector<shared<VariableDeclaration>> declarations, int flags) {
-        return createVariableDeclarationList(createNodeArray<VariableDeclaration>(declarations), flags);
-    }
-
 //        // @api
 //        function updateBlock(node: Block, statements: readonly Statement[]) {
 //            return node->statements != statements
@@ -2582,14 +2578,9 @@ namespace ts {
 //        }
 
     // @api
-   shared<VariableStatement> Factory::createVariableStatement(sharedOpt<NodeArray> modifiers, variant<shared<VariableDeclarationList>, vector<shared<VariableDeclaration>>> declarationList) {
+   shared<VariableStatement> Factory::createVariableStatement(sharedOpt<NodeArray> modifiers, shared<VariableDeclarationList> declarationList) {
         auto node = createBaseDeclaration<VariableStatement>(SyntaxKind::VariableStatement, /*decorators*/ nullptr, modifiers);
-
-        if (holds_alternative<shared<VariableDeclarationList>>(declarationList)) {
-            node->declarationList = get<shared<VariableDeclarationList>>(declarationList);
-        } else {
-            node->declarationList = createVariableDeclarationList(get<vector<shared<VariableDeclaration>>>(declarationList));
-        }
+        node->declarationList = declarationList;
         node->transformFlags |=
                 propagateChildFlags(node->declarationList);
         if (modifiersToFlags(node->modifiers) & (int) ModifierFlags::Ambient) {
@@ -2597,6 +2588,23 @@ namespace ts {
         }
         return node;
     }
+
+//    // @api
+//   shared<VariableStatement> Factory::createVariableStatement(sharedOpt<NodeArray> modifiers, variant<shared<VariableDeclarationList>, vector<shared<VariableDeclaration>>> declarationList) {
+//        auto node = createBaseDeclaration<VariableStatement>(SyntaxKind::VariableStatement, /*decorators*/ nullptr, modifiers);
+//
+//        if (holds_alternative<shared<VariableDeclarationList>>(declarationList)) {
+//            node->declarationList = get<shared<VariableDeclarationList>>(declarationList);
+//        } else {
+//            node->declarationList = createVariableDeclarationList(get<vector<shared<VariableDeclaration>>>(declarationList));
+//        }
+//        node->transformFlags |=
+//                propagateChildFlags(node->declarationList);
+//        if (modifiersToFlags(node->modifiers) & (int) ModifierFlags::Ambient) {
+//            node->transformFlags = (int) TransformFlags::ContainsTypeScript;
+//        }
+//        return node;
+//    }
 
 //        // @api
 //        function updateVariableStatement(node: VariableStatement, sharedOpt<NodeArray> modifiers, declarationList: VariableDeclarationList) {
@@ -2933,6 +2941,7 @@ namespace ts {
 //
     // @api
    shared<VariableDeclaration> Factory::createVariableDeclaration(NameType name, sharedOpt<ExclamationToken> exclamationToken, sharedOpt<TypeNode> type, sharedOpt<Expression> initializer) {
+        ZoneScoped;
         auto node = createBaseVariableLikeDeclaration<VariableDeclaration>(
                 SyntaxKind::VariableDeclaration,
                 /*decorators*/ nullptr,

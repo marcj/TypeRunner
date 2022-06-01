@@ -37,6 +37,7 @@ namespace ts {
     }
 
     string Scanner::scanString(bool jsxAttributeString) {
+        ZoneScoped;
         auto quote = charCodeAt(text, pos);
         pos++;
         string result;
@@ -85,6 +86,7 @@ namespace ts {
     }
 
     string Scanner::scanHexDigits(int minCount, bool scanAsManyAsPossible, bool canHaveSeparators) {
+        ZoneScoped;
         auto allowSeparator = false;
         auto isPreviousTokenSeparator = false;
         auto found = 0;
@@ -146,6 +148,7 @@ namespace ts {
     }
 
     string Scanner::scanExtendedUnicodeEscape() {
+        ZoneScoped;
         auto escapedValueString = scanMinimumNumberOfHexDigits(1, /*canHaveSeparators*/ false);
         auto escapedValue = !escapedValueString.empty() ? stoi(escapedValueString, nullptr, 16) : -1;
         auto isInvalidExtendedEscape = false;
@@ -179,6 +182,7 @@ namespace ts {
     }
 
     string Scanner::scanEscapeSequence(bool isTaggedTemplate) {
+        ZoneScoped;
         auto start = pos;
         pos++;
         if (pos >= end) {
@@ -292,6 +296,7 @@ namespace ts {
     }
 
     SyntaxKind Scanner::scanTemplateAndSetTokenValue(bool isTaggedTemplate) {
+        ZoneScoped;
         auto startedWithBacktick = charCodeAt(text, pos).code == CharacterCodes::backtick;
 
         pos++;
@@ -359,6 +364,7 @@ namespace ts {
     }
 
     string Scanner::scanNumberFragment() {
+        ZoneScoped;
         auto start = pos;
         auto allowSeparator = false;
         auto isPreviousTokenSeparator = false;
@@ -394,89 +400,6 @@ namespace ts {
         return result + substring(text, start, pos);
     }
 
-    static map<string, SyntaxKind> textToKeyword{
-            {"abstract",    SyntaxKind::AbstractKeyword},
-            {"any",         SyntaxKind::AnyKeyword},
-            {"as",          SyntaxKind::AsKeyword},
-            {"asserts",     SyntaxKind::AssertsKeyword},
-            {"assert",      SyntaxKind::AssertKeyword},
-            {"bigint",      SyntaxKind::BigIntKeyword},
-            {"boolean",     SyntaxKind::BooleanKeyword},
-            {"break",       SyntaxKind::BreakKeyword},
-            {"case",        SyntaxKind::CaseKeyword},
-            {"catch",       SyntaxKind::CatchKeyword},
-            {"class",       SyntaxKind::ClassKeyword},
-            {"continue",    SyntaxKind::ContinueKeyword},
-            {"const",       SyntaxKind::ConstKeyword},
-            {"constructor", SyntaxKind::ConstructorKeyword},
-            {"debugger",    SyntaxKind::DebuggerKeyword},
-            {"declare",     SyntaxKind::DeclareKeyword},
-            {"default",     SyntaxKind::DefaultKeyword},
-            {"delete",      SyntaxKind::DeleteKeyword},
-            {"do",          SyntaxKind::DoKeyword},
-            {"else",        SyntaxKind::ElseKeyword},
-            {"enum",        SyntaxKind::EnumKeyword},
-            {"export",      SyntaxKind::ExportKeyword},
-            {"extends",     SyntaxKind::ExtendsKeyword},
-            {"false",       SyntaxKind::FalseKeyword},
-            {"finally",     SyntaxKind::FinallyKeyword},
-            {"for",         SyntaxKind::ForKeyword},
-            {"from",        SyntaxKind::FromKeyword},
-            {"function",    SyntaxKind::FunctionKeyword},
-            {"get",         SyntaxKind::GetKeyword},
-            {"if",          SyntaxKind::IfKeyword},
-            {"implements",  SyntaxKind::ImplementsKeyword},
-            {"import",      SyntaxKind::ImportKeyword},
-            {"in",          SyntaxKind::InKeyword},
-            {"infer",       SyntaxKind::InferKeyword},
-            {"instanceof",  SyntaxKind::InstanceOfKeyword},
-            {"interface",   SyntaxKind::InterfaceKeyword},
-            {"intrinsic",   SyntaxKind::IntrinsicKeyword},
-            {"is",          SyntaxKind::IsKeyword},
-            {"keyof",       SyntaxKind::KeyOfKeyword},
-            {"let",         SyntaxKind::LetKeyword},
-            {"module",      SyntaxKind::ModuleKeyword},
-            {"namespace",   SyntaxKind::NamespaceKeyword},
-            {"never",       SyntaxKind::NeverKeyword},
-            {"new",         SyntaxKind::NewKeyword},
-            {"null",        SyntaxKind::NullKeyword},
-            {"number",      SyntaxKind::NumberKeyword},
-            {"object",      SyntaxKind::ObjectKeyword},
-            {"package",     SyntaxKind::PackageKeyword},
-            {"private",     SyntaxKind::PrivateKeyword},
-            {"protected",   SyntaxKind::ProtectedKeyword},
-            {"public",      SyntaxKind::PublicKeyword},
-            {"override",    SyntaxKind::OverrideKeyword},
-            {"out",         SyntaxKind::OutKeyword},
-            {"readonly",    SyntaxKind::ReadonlyKeyword},
-            {"require",     SyntaxKind::RequireKeyword},
-            {"global",      SyntaxKind::GlobalKeyword},
-            {"return",      SyntaxKind::ReturnKeyword},
-            {"set",         SyntaxKind::SetKeyword},
-            {"static",      SyntaxKind::StaticKeyword},
-            {"string",      SyntaxKind::StringKeyword},
-            {"super",       SyntaxKind::SuperKeyword},
-            {"switch",      SyntaxKind::SwitchKeyword},
-            {"symbol",      SyntaxKind::SymbolKeyword},
-            {"this",        SyntaxKind::ThisKeyword},
-            {"throw",       SyntaxKind::ThrowKeyword},
-            {"true",        SyntaxKind::TrueKeyword},
-            {"try",         SyntaxKind::TryKeyword},
-            {"type",        SyntaxKind::TypeKeyword},
-            {"typeof",      SyntaxKind::TypeOfKeyword},
-            {"undefined",   SyntaxKind::UndefinedKeyword},
-            {"unique",      SyntaxKind::UniqueKeyword},
-            {"unknown",     SyntaxKind::UnknownKeyword},
-            {"var",         SyntaxKind::VarKeyword},
-            {"void",        SyntaxKind::VoidKeyword},
-            {"while",       SyntaxKind::WhileKeyword},
-            {"with",        SyntaxKind::WithKeyword},
-            {"yield",       SyntaxKind::YieldKeyword},
-            {"async",       SyntaxKind::AsyncKeyword},
-            {"await",       SyntaxKind::AwaitKeyword},
-            {"of",          SyntaxKind::OfKeyword},
-    };
-
 /**
  * Test for whether a single line comment with leading whitespace trimmed's text contains a directive.
  */
@@ -492,6 +415,7 @@ namespace ts {
     const unsigned long mergeConflictMarkerLength = size("<<<<<<<") - 1;
 
     bool isConflictMarkerTrivia(const string &text, int pos) {
+        ZoneScoped;
         assert(pos >= 0);
 
         // Conflict markers must be at the start of a line.
@@ -512,10 +436,10 @@ namespace ts {
         return false;
     }
 
-    int Scanner::error(const DiagnosticMessage &message, int errPos, int length) {
+    int Scanner::error(const shared<DiagnosticMessage> &message, int errPos, int length) {
         if (errPos == -1) errPos = pos;
 
-        cout << "Error: " << message.code << ": " << message.message << " at " << errPos << "\n";
+        cout << "Error: " << message->code << ": " << message->message << " at " << errPos << "\n";
 
         if (onError) {
             (*onError)(message, length);
@@ -523,6 +447,7 @@ namespace ts {
     }
 
     int scanConflictMarkerTrivia(string &text, int pos) {
+        ZoneScoped;
         auto ch = charCodeAt(text, pos);
         auto len = text.size();
 
@@ -553,6 +478,7 @@ namespace ts {
     }
 
     bool lookupInUnicodeMap(CharCode code, vector<int> &map) {
+        ZoneScoped;
         // Bail out quickly if it couldn't possibly be in the map.
         if (code.code < map[0]) {
             return false;
@@ -639,7 +565,7 @@ namespace ts {
         return isWhiteSpaceSingleLine(ch) || isLineBreak(ch);
     }
 
-/* @internal */
+    /* @internal */
     int ts::skipTrivia(string &text, int pos, optional<bool> stopAfterLineBreak, optional<bool> stopAtComments, optional<bool> inJSDoc) {
         ZoneScoped;
         if (positionIsSynthesized(pos)) {
@@ -814,6 +740,7 @@ namespace ts {
     }
 
     SyntaxKind Scanner::checkBigIntSuffix() {
+        ZoneScoped;
         if (charCodeAt(text, pos).code == CharacterCodes::n) {
             tokenValue += "n";
             // Use base 10 instead of base 2 or base 8 for shorter literals
@@ -830,7 +757,7 @@ namespace ts {
                                 : tokenFlags & TokenFlags::OctalSpecifier
                                   ? stoi(substring(tokenValue, 2), 0, 8) // skip "0o"
                                   : stoi(tokenValue);
-            tokenValue = "" + std::to_string(numericValue);
+            tokenValue = std::to_string(numericValue);
             return SyntaxKind::NumericLiteral;
         }
     }
@@ -844,6 +771,7 @@ namespace ts {
     }
 
     SyntaxKind Scanner::scanJsxAttributeValue() {
+        ZoneScoped;
         startPos = pos;
 
         switch (charCodeAt(text, pos).code) {
@@ -858,6 +786,7 @@ namespace ts {
     }
 
     SyntaxKind Scanner::scanJsxIdentifier() {
+        ZoneScoped;
         if (tokenIsIdentifierOrKeyword(token)) {
             // An identifier or keyword has already been parsed - check for a `-` or a single instance of `:` and then append it and
             // everything after it to the token
@@ -894,6 +823,7 @@ namespace ts {
     }
 
     SyntaxKind Scanner::scanJsxToken(bool allowMultilineJsxText) {
+        ZoneScoped;
         startPos = tokenPos = pos;
 
         if (pos >= end) {
@@ -998,6 +928,7 @@ namespace ts {
     }
 
     ScanNumber Scanner::scanNumber() {
+        ZoneScoped;
         auto start = pos;
         auto mainFragment = scanNumberFragment();
         string decimalFragment;
@@ -1052,6 +983,7 @@ namespace ts {
     }
 
     string Scanner::scanBinaryOrOctalDigits(int base) {
+        ZoneScoped;
         string value;
         // For counting number of digits; Valid binaryIntegerLiteral must have at least one binary digit following B or b.
         // Similarly valid octalIntegerLiteral must have at least one octal digit following o or O.
@@ -1089,21 +1021,186 @@ namespace ts {
     }
 
     SyntaxKind Scanner::getIdentifierToken() {
+        ZoneScoped;
         // Reserved words are between 2 and 12 characters long and start with a lowercase letter
         auto len = tokenValue.size();
         if (len >= 2 && len <= 12) {
             auto ch = charCodeAt(tokenValue, 0);
             if (ch.code >= CharacterCodes::a && ch.code <= CharacterCodes::z) {
-                auto it = textToKeyword.find(tokenValue);
-                if (it != textToKeyword.end()) {
-                    return token = it->second;
+                switch (const_hash(tokenValue)) {
+                    case "abstract"_hash:
+                        return SyntaxKind::AbstractKeyword;
+                    case "any"_hash:
+                        return SyntaxKind::AnyKeyword;
+                    case "as"_hash:
+                        return SyntaxKind::AsKeyword;
+                    case "asserts"_hash:
+                        return SyntaxKind::AssertsKeyword;
+                    case "assert"_hash:
+                        return SyntaxKind::AssertKeyword;
+                    case "bigint"_hash:
+                        return SyntaxKind::BigIntKeyword;
+                    case "boolean"_hash:
+                        return SyntaxKind::BooleanKeyword;
+                    case "break"_hash:
+                        return SyntaxKind::BreakKeyword;
+                    case "case"_hash:
+                        return SyntaxKind::CaseKeyword;
+                    case "catch"_hash:
+                        return SyntaxKind::CatchKeyword;
+                    case "class"_hash:
+                        return SyntaxKind::ClassKeyword;
+                    case "continue"_hash:
+                        return SyntaxKind::ContinueKeyword;
+                    case "const"_hash:
+                        return SyntaxKind::ConstKeyword;
+                    case "constructor"_hash:
+                        return SyntaxKind::ConstructorKeyword;
+                    case "debugger"_hash:
+                        return SyntaxKind::DebuggerKeyword;
+                    case "declare"_hash:
+                        return SyntaxKind::DeclareKeyword;
+                    case "default"_hash:
+                        return SyntaxKind::DefaultKeyword;
+                    case "delete"_hash:
+                        return SyntaxKind::DeleteKeyword;
+                    case "do"_hash:
+                        return SyntaxKind::DoKeyword;
+                    case "else"_hash:
+                        return SyntaxKind::ElseKeyword;
+                    case "enum"_hash:
+                        return SyntaxKind::EnumKeyword;
+                    case "export"_hash:
+                        return SyntaxKind::ExportKeyword;
+                    case "extends"_hash:
+                        return SyntaxKind::ExtendsKeyword;
+                    case "false"_hash:
+                        return SyntaxKind::FalseKeyword;
+                    case "finally"_hash:
+                        return SyntaxKind::FinallyKeyword;
+                    case "for"_hash:
+                        return SyntaxKind::ForKeyword;
+                    case "from"_hash:
+                        return SyntaxKind::FromKeyword;
+                    case "function"_hash:
+                        return SyntaxKind::FunctionKeyword;
+                    case "get"_hash:
+                        return SyntaxKind::GetKeyword;
+                    case "if"_hash:
+                        return SyntaxKind::IfKeyword;
+                    case "implements"_hash:
+                        return SyntaxKind::ImplementsKeyword;
+                    case "import"_hash:
+                        return SyntaxKind::ImportKeyword;
+                    case "in"_hash:
+                        return SyntaxKind::InKeyword;
+                    case "infer"_hash:
+                        return SyntaxKind::InferKeyword;
+                    case "instanceof"_hash:
+                        return SyntaxKind::InstanceOfKeyword;
+                    case "interface"_hash:
+                        return SyntaxKind::InterfaceKeyword;
+                    case "intrinsic"_hash:
+                        return SyntaxKind::IntrinsicKeyword;
+                    case "is"_hash:
+                        return SyntaxKind::IsKeyword;
+                    case "keyof"_hash:
+                        return SyntaxKind::KeyOfKeyword;
+                    case "let"_hash:
+                        return SyntaxKind::LetKeyword;
+                    case "module"_hash:
+                        return SyntaxKind::ModuleKeyword;
+                    case "namespace"_hash:
+                        return SyntaxKind::NamespaceKeyword;
+                    case "never"_hash:
+                        return SyntaxKind::NeverKeyword;
+                    case "new"_hash:
+                        return SyntaxKind::NewKeyword;
+                    case "null"_hash:
+                        return SyntaxKind::NullKeyword;
+                    case "number"_hash:
+                        return SyntaxKind::NumberKeyword;
+                    case "object"_hash:
+                        return SyntaxKind::ObjectKeyword;
+                    case "package"_hash:
+                        return SyntaxKind::PackageKeyword;
+                    case "private"_hash:
+                        return SyntaxKind::PrivateKeyword;
+                    case "protected"_hash:
+                        return SyntaxKind::ProtectedKeyword;
+                    case "public"_hash:
+                        return SyntaxKind::PublicKeyword;
+                    case "override"_hash:
+                        return SyntaxKind::OverrideKeyword;
+                    case "out"_hash:
+                        return SyntaxKind::OutKeyword;
+                    case "readonly"_hash:
+                        return SyntaxKind::ReadonlyKeyword;
+                    case "require"_hash:
+                        return SyntaxKind::RequireKeyword;
+                    case "global"_hash:
+                        return SyntaxKind::GlobalKeyword;
+                    case "return"_hash:
+                        return SyntaxKind::ReturnKeyword;
+                    case "set"_hash:
+                        return SyntaxKind::SetKeyword;
+                    case "static"_hash:
+                        return SyntaxKind::StaticKeyword;
+                    case "string"_hash:
+                        return SyntaxKind::StringKeyword;
+                    case "super"_hash:
+                        return SyntaxKind::SuperKeyword;
+                    case "switch"_hash:
+                        return SyntaxKind::SwitchKeyword;
+                    case "symbol"_hash:
+                        return SyntaxKind::SymbolKeyword;
+                    case "this"_hash:
+                        return SyntaxKind::ThisKeyword;
+                    case "throw"_hash:
+                        return SyntaxKind::ThrowKeyword;
+                    case "true"_hash:
+                        return SyntaxKind::TrueKeyword;
+                    case "try"_hash:
+                        return SyntaxKind::TryKeyword;
+                    case "type"_hash:
+                        return SyntaxKind::TypeKeyword;
+                    case "typeof"_hash:
+                        return SyntaxKind::TypeOfKeyword;
+                    case "undefined"_hash:
+                        return SyntaxKind::UndefinedKeyword;
+                    case "unique"_hash:
+                        return SyntaxKind::UniqueKeyword;
+                    case "unknown"_hash:
+                        return SyntaxKind::UnknownKeyword;
+                    case "var"_hash:
+                        return SyntaxKind::VarKeyword;
+                    case "void"_hash:
+                        return SyntaxKind::VoidKeyword;
+                    case "while"_hash:
+                        return SyntaxKind::WhileKeyword;
+                    case "with"_hash:
+                        return SyntaxKind::WithKeyword;
+                    case "yield"_hash:
+                        return SyntaxKind::YieldKeyword;
+                    case "async"_hash:
+                        return SyntaxKind::AsyncKeyword;
+                    case "await"_hash:
+                        return SyntaxKind::AwaitKeyword;
+                    case "of"_hash:
+                        return SyntaxKind::OfKeyword;
                 }
+
+//                auto it = textToKeyword.find(tokenValue);
+//                if (it != textToKeyword.end()) {
+//                    return token = it->second;
+//                }
             }
         }
         return token = SyntaxKind::Identifier;
     }
 
-    SyntaxKind Scanner::scanIdentifier(CharCode startCharacter, ScriptTarget languageVersion) {
+    SyntaxKind Scanner::scanIdentifier(const CharCode &startCharacter, ScriptTarget languageVersion) {
+        ZoneScoped;
         auto ch = startCharacter;
         if (isIdentifierStart(ch, languageVersion)) {
             pos += ch.length;
@@ -1118,6 +1215,7 @@ namespace ts {
     }
 
     SyntaxKind Scanner::scan() {
+        ZoneScoped;
         startPos = pos;
         tokenFlags = TokenFlags::None;
         bool asteriskSeen = false;
@@ -1132,7 +1230,7 @@ namespace ts {
             auto ch = charCodeAt(text, pos);
 
             // Special handling for shebang
-            if (ch.code == CharacterCodes::hash && pos == 0 && isShebangTrivia(text, pos)) {
+            if (pos == 0 && ch.code == CharacterCodes::hash && isShebangTrivia(text, pos)) {
                 pos = scanShebangTrivia(text, pos);
                 if (skipTrivia) {
                     continue;
@@ -1611,6 +1709,7 @@ namespace ts {
     }
 
     SyntaxKind Scanner::reScanGreaterToken() {
+        ZoneScoped;
         if (token == SyntaxKind::GreaterThanToken) {
             if (charCodeAt(text, pos).code == CharacterCodes::greaterThan) {
                 if (charCodeAt(text, pos + 1).code == CharacterCodes::greaterThan) {
@@ -1634,6 +1733,7 @@ namespace ts {
     }
 
     SyntaxKind Scanner::reScanSlashToken() {
+        ZoneScoped;
         if (token == SyntaxKind::SlashToken || token == SyntaxKind::SlashEqualsToken) {
             auto p = tokenPos + 1;
             auto inEscape = false;
@@ -1684,6 +1784,7 @@ namespace ts {
     }
 
     SyntaxKind Scanner::reScanInvalidIdentifier() {
+        ZoneScoped;
 //            Debug.assert(token == SyntaxKind::Unknown, "'reScanInvalidIdentifier' should only be called when the current token is 'SyntaxKind::Unknown'.");
         pos = tokenPos = startPos;
         tokenFlags = 0;

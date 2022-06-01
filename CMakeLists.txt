@@ -1,12 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 project(typescript)
 
-set(CMAKE_CXX_STANDARD 20)
-
-# enable for profiling
-#add_definitions(-DTRACY_ENABLE)
+set(CMAKE_CXX_STANDARD 23)
 
 include_directories(libs/tracy/)
+include_directories(libs/fmt/include/)
+include_directories(libs)
 
 list(APPEND CMAKE_MODULE_PATH libs/)
 
@@ -14,8 +13,12 @@ list(APPEND CMAKE_MODULE_PATH libs/)
 #include_directories(libs/tracy/)
 
 add_subdirectory(libs/tracy)
+add_subdirectory(libs/fmt)
 
-link_libraries(Tracy::TracyClient)
+# enable for profiling
+#add_definitions(-DTRACY_ENABLE)
+#link_libraries(Tracy::TracyClient)
+
 add_subdirectory(src)
 
 include_directories(libs)

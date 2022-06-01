@@ -41,20 +41,20 @@ namespace ts {
 
         int propagateIdentifierNameFlags(shared<Node> node);
 
-        int propagateChildrenFlags(sharedOpt<NodeArray> children);
+        int propagateChildrenFlags(const sharedOpt<NodeArray> &children);
 
-        void aggregateChildrenFlags(shared<NodeArray> &children);
+        void aggregateChildrenFlags(const shared<NodeArray> &children);
 
-        shared<NodeArray> createNodeArray(sharedOpt<NodeArray> elements, optional<bool> hasTrailingComma = {});
+        shared<NodeArray> createNodeArray(const sharedOpt<NodeArray> &elements, bool hasTrailingComma = false);
 
         sharedOpt<NodeArray> asNodeArray(sharedOpt<NodeArray> elements);
 
-        template<class T>
-        inline shared<NodeArray> asNodeArray(const vector<shared<T>> &array) {
-            auto nodeArray = make_shared<NodeArray>();
-            for (auto &&node: array) nodeArray->list.push_back(node);
-            return nodeArray;
-        }
+//        template<class T>
+//        inline shared<NodeArray> asNodeArray(const vector<shared<T>> &array) {
+//            auto nodeArray = make_shared<NodeArray>();
+//            for (auto &&node: array) nodeArray->list.push_back(node);
+//            return nodeArray;
+//        }
 
 //        template<class T>
 //        sharedOpt<NodeArray> asNodeArray(optional<vector<shared<T>>> &array) {
@@ -65,7 +65,7 @@ namespace ts {
 
         // @api
         template<class T>
-        shared<NodeArray> createNodeArray(const vector<shared<T>> &elements, optional<bool> hasTrailingComma = {}) {
+        shared<NodeArray> createNodeArray(const vector<shared<T>> &elements, bool hasTrailingComma = false) {
             // Since the element list of a node array is typically created by starting with an empty array and
             // repeatedly calling push(), the list may not have the optimal memory layout. We invoke slice() for
             // small arrays (1 to 4 elements) to give the VM a chance to allocate an optimal representation.
@@ -128,6 +128,7 @@ namespace ts {
 //        function createToken<TKind extends SyntaxKind>(token: TKind): Token<TKind>;
         template<class T>
         shared<T> createToken(SyntaxKind token) {
+            ZoneScoped
 //        Debug::asserts(token >= SyntaxKind::FirstToken && token <= SyntaxKind::LastToken, "Invalid token");
 //        Debug::asserts(token <= SyntaxKind::FirstTemplateToken || token >= SyntaxKind::LastTemplateToken, "Invalid token. Use 'createTemplateLiteralLikeNode' to create template literals.");
 //        Debug::asserts(token <= SyntaxKind::FirstLiteralToken || token >= SyntaxKind::LastLiteralToken, "Invalid token. Use 'createLiteralLikeNode' to create literals.");
@@ -1873,9 +1874,7 @@ namespace ts {
         shared<Block> createBlock(shared<NodeArray> statements, bool multiLine);
 
         // @api
-       shared<VariableDeclarationList> createVariableDeclarationList(shared<NodeArray> declarations, int flags = (int) NodeFlags::None);
-
-       shared<VariableDeclarationList> createVariableDeclarationList(vector<shared<VariableDeclaration>> declarations, int flags = (int) NodeFlags::None);
+       shared<VariableDeclarationList> createVariableDeclarationList(const shared<NodeArray> &declarations, int flags = (int) NodeFlags::None);
 
 //        // @api
 //        function updateBlock(node: Block, statements: readonly Statement[]) {
@@ -1885,7 +1884,9 @@ namespace ts {
 //        }
 
         // @api
-       shared<VariableStatement> createVariableStatement(sharedOpt<NodeArray> modifiers, variant<shared<VariableDeclarationList>, vector<shared<VariableDeclaration>>> declarationList);
+        shared<VariableStatement> createVariableStatement(sharedOpt<NodeArray> modifiers, shared<VariableDeclarationList> declarationList);
+
+//       shared<VariableStatement> createVariableStatement(sharedOpt<NodeArray> modifiers, variant<shared<VariableDeclarationList>, vector<shared<VariableDeclaration>>> declarationList);
 
 //        // @api
 //        function updateVariableStatement(node: VariableStatement, sharedOpt<NodeArray> modifiers, declarationList: VariableDeclarationList) {

@@ -2,14 +2,15 @@
 
 #include "types.h"
 #include <string>
+#include <memory>
 #include <type_traits>
 
 namespace ts {
     using types::DiagnosticMessage;
     using types::DiagnosticCategory;
 
-    static DiagnosticMessage diag(int code, DiagnosticCategory category, const std::string &key, const std::string &message, bool reportsUnnecessary = false, bool elidedInCompatabilityPyramid = false, bool reportsDeprecated = false) {
-        return DiagnosticMessage{code, category, key, message, reportsUnnecessary, elidedInCompatabilityPyramid, reportsDeprecated};
+    inline shared<DiagnosticMessage> diag(int code, DiagnosticCategory category, const std::string_view &key, const std::string_view &message, bool reportsUnnecessary = false, bool elidedInCompatabilityPyramid = false, bool reportsDeprecated = false) {
+        return std::make_shared<DiagnosticMessage>(code, category, key, message, reportsUnnecessary, elidedInCompatabilityPyramid, reportsDeprecated);
     }
 
     class Diagnostics {

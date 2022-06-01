@@ -16,6 +16,7 @@
 #include "factory.h"
 #include "utilities.h"
 #include "diagnostic_messages.h"
+#include <fmt/core.h>
 
 using namespace ts::types;
 
@@ -983,13 +984,13 @@ namespace ts {
 
         SyntaxKind nextTokenWithoutCheck();
 
-        optional<DiagnosticWithDetachedLocation> parseErrorAtPosition(int start, int length, const DiagnosticMessage &message, DiagnosticArg arg = "");
+        optional<DiagnosticWithDetachedLocation> parseErrorAtPosition(int start, int length, const shared<DiagnosticMessage> &message, DiagnosticArg arg = "");
 
-        optional<DiagnosticWithDetachedLocation> parseErrorAt(int start, int end, const DiagnosticMessage &message, DiagnosticArg arg = "") {
+        optional<DiagnosticWithDetachedLocation> parseErrorAt(int start, int end, const shared<DiagnosticMessage> &message, DiagnosticArg arg = "") {
             return parseErrorAtPosition(start, end - start, message, arg);
         }
 
-        void scanError(const DiagnosticMessage &message, int length) {
+        void scanError(const shared<DiagnosticMessage> &message, int length) {
             parseErrorAtPosition(scanner.getTextPos(), length, message);
         }
 
@@ -1294,7 +1295,7 @@ namespace ts {
             setContextFlag(val, NodeFlags::AwaitContext);
         }
 
-        optional<DiagnosticWithDetachedLocation> parseErrorAtCurrentToken(DiagnosticMessage message, DiagnosticArg arg = "") {
+        optional<DiagnosticWithDetachedLocation> parseErrorAtCurrentToken(const shared<DiagnosticMessage> &message, DiagnosticArg arg = "") {
             return parseErrorAt(scanner.getTokenPos(), scanner.getTextPos(), message, arg);
         }
 //
@@ -1313,7 +1314,7 @@ namespace ts {
 //            return result;
 //        }
 
-        void parseErrorAtRange(shared<Node> range, DiagnosticMessage message, DiagnosticArg arg = "") {
+        void parseErrorAtRange(shared<Node> range, const shared<DiagnosticMessage> &message, DiagnosticArg arg = "") {
             parseErrorAt(range->pos, range->end, message, arg);
         }
 
@@ -1362,15 +1363,15 @@ namespace ts {
             ZoneScoped;
             // Keep track of the state we'll need to rollback to if lookahead fails (or if the
             // caller asked us to always reset our state).
-            auto saveToken = currentToken;
-            auto saveParseDiagnosticsLength = parseDiagnostics.size();
-            auto saveParseErrorBeforeNextFinishedNode = parseErrorBeforeNextFinishedNode;
+            const auto saveToken = currentToken;
+            const auto saveParseDiagnosticsLength = parseDiagnostics.size();
+            const auto saveParseErrorBeforeNextFinishedNode = parseErrorBeforeNextFinishedNode;
 
             // Note: it is not actually necessary to save/restore the context flags here.  That's
             // because the saving/restoring of these flags happens naturally through the recursive
             // descent nature of our parser.  However, we still store this here just so we can
             // assert that invariant holds.
-            auto saveContextFlags = contextFlags;
+            const auto saveContextFlags = contextFlags;
 
             // If we're only looking ahead, then tell the scanner to only lookahead as well.
             // Otherwise, if we're actually speculatively parsing, then tell the scanner to do the
@@ -1383,7 +1384,7 @@ namespace ts {
 
             // If our callback returned something 'falsy' or we're just looking ahead,
             // then unconditionally restore us to where we were.
-            if (!(bool) result || (speculationKind != SpeculationKind::TryParse)) {
+            if ((speculationKind != SpeculationKind::TryParse) || !(bool) result) {
                 currentToken = saveToken;
                 if (speculationKind != SpeculationKind::Reparse) {
                     parseDiagnostics.resize(saveParseDiagnosticsLength);
@@ -1446,7 +1447,7 @@ namespace ts {
          * @param nameDiagnostic Diagnostic to report for all other cases.
          * @param tokenIfBlankName Current token if the name was invalid for being blank (not provided / skipped).
          */
-        void parseErrorForInvalidName(DiagnosticMessage nameDiagnostic, DiagnosticMessage blankDiagnostic, SyntaxKind tokenIfBlankName) {
+        void parseErrorForInvalidName(shared<DiagnosticMessage> nameDiagnostic, shared<DiagnosticMessage> blankDiagnostic, SyntaxKind tokenIfBlankName) {
             if (token() == tokenIfBlankName) {
                 parseErrorAtCurrentToken(blankDiagnostic);
             } else {
@@ -1666,32 +1667,36 @@ namespace ts {
 //            nextTokenJSDoc();
 //            return finishNode(factory.createToken(kind), pos) as T;
 //        }
-//
+
         bool parseSemicolon() {
             return tryParseSemicolon() || parseExpected(SyntaxKind::SemicolonToken);
         }
 
-        shared<NodeArray> createNodeArray(const vector<shared<Node>> &elements, int pos, optional<int> end = {}, optional<bool> hasTrailingComma = {}) {
-            auto array = factory.createNodeArray(elements, hasTrailingComma);
+        shared<NodeArray> createNodeArray(const shared<NodeArray> &array, int pos, optional<int> end = {}, bool hasTrailingComma = false) {
             setTextRangePosEnd(array, pos, end ? *end : scanner.getStartPos());
             return array;
         }
-
-        //for empty call: createNodeArray(nullptr)
-        shared<NodeArray> createNodeArray(vector<shared<Node>> *elements, int pos, optional<int> end = {}, optional<bool> hasTrailingComma = {}) {
-            auto array = factory.createNodeArray(elements ? *elements : (vector<shared<Node>>) {}, hasTrailingComma);
-            setTextRangePosEnd(array, pos, end ? *end : scanner.getStartPos());
-            return array;
-        }
+//        shared<NodeArray> createNodeArray(const vector<shared<Node>> &elements, int pos, optional<int> end = {}, bool hasTrailingComma = false) {
+//            auto array = factory.createNodeArray(elements, hasTrailingComma);
+//            setTextRangePosEnd(array, pos, end ? *end : scanner.getStartPos());
+//            return array;
+//        }
+//
+//        //for empty call: createNodeArray(nullptr)
+//        shared<NodeArray> createNodeArray(vector<shared<Node>> *elements, int pos, optional<int> end = {}, bool hasTrailingComma = false) {
+//            auto array = factory.createNodeArray(elements ? *elements : (vector<shared<Node>>) {}, hasTrailingComma);
+//            setTextRangePosEnd(array, pos, end ? *end : scanner.getStartPos());
+//            return array;
+//        }
 
 //        function createMissingNode<T extends Node>(kind: T["kind"], reportAtCurrentPosition: false, optional<DiagnosticMessage> diagnosticMessage, arg0?: any): T;
 //        function createMissingNode<T extends Node>(kind: T["kind"], reportAtCurrentPosition: boolean, diagnosticMessage: DiagnosticMessage, arg0?: any): T;
         template<typename T>
-        shared<T> createMissingNode(SyntaxKind kind, bool reportAtCurrentPosition, optional<DiagnosticMessage> diagnosticMessage = {}, DiagnosticArg arg = "") {
+        shared<T> createMissingNode(SyntaxKind kind, bool reportAtCurrentPosition, const sharedOpt<DiagnosticMessage> &diagnosticMessage = nullptr, DiagnosticArg arg = "") {
             if (reportAtCurrentPosition && diagnosticMessage) {
-                parseErrorAtPosition(scanner.getStartPos(), 0, *diagnosticMessage, arg);
+                parseErrorAtPosition(scanner.getStartPos(), 0, diagnosticMessage, arg);
             } else if (diagnosticMessage) {
-                parseErrorAtCurrentToken(*diagnosticMessage, arg);
+                parseErrorAtCurrentToken(diagnosticMessage, arg);
             }
 
             auto pos = getNodePos();
@@ -1705,8 +1710,10 @@ namespace ts {
             return to<T>(finishNode(result, pos));
         }
 
+
         string internIdentifier(const string &text) {
-            //todo: add back
+            //this was used in the JS version as optimization to not reuse text instances.
+            //we do not need that.
             return text;
 //            auto identifier = get(identifiers, text);
 //            if (!identifier) {
@@ -1726,12 +1733,12 @@ namespace ts {
             return token() > SyntaxKind::LastReservedWord;
         }
 
-        shared<Identifier> parseBindingIdentifier(optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {}) {
+        shared<Identifier> parseBindingIdentifier(const sharedOpt<DiagnosticMessage> &privateIdentifierDiagnosticMessage = nullptr) {
             ZoneScoped;
             return createIdentifier(isBindingIdentifier(), /*diagnosticMessage*/ {}, privateIdentifierDiagnosticMessage);
         }
 
-        shared<Identifier> parseIdentifierName(optional<DiagnosticMessage> diagnosticMessage = {}) {
+        shared<Identifier> parseIdentifierName(const sharedOpt<DiagnosticMessage> &diagnosticMessage = nullptr) {
             return createIdentifier(tokenIsIdentifierOrKeyword(token()), diagnosticMessage);
         }
 
@@ -2812,12 +2819,12 @@ namespace ts {
 //            return parameter.initializer == undefined;
 //        }
 //
-        optional<DiagnosticMessage> getExpectedCommaDiagnostic(ParsingContext kind) {
+        sharedOpt<DiagnosticMessage> getExpectedCommaDiagnostic(ParsingContext kind) {
             if (kind == ParsingContext::EnumMembers) return Diagnostics::An_enum_member_name_must_be_followed_by_a_or;
-            return nullopt;
+            return nullptr;
         }
 
-        bool parseExpected(SyntaxKind kind, optional<DiagnosticMessage> diagnosticMessage = {}, bool shouldAdvance = true) {
+        bool parseExpected(SyntaxKind kind, const sharedOpt<DiagnosticMessage> &diagnosticMessage = nullptr, bool shouldAdvance = true) {
             if (token() == kind) {
                 if (shouldAdvance) {
                     nextToken();
@@ -2827,7 +2834,7 @@ namespace ts {
 
             // Report specific message if provided with one.  Otherwise, report generic fallback message.
             if (diagnosticMessage) {
-                parseErrorAtCurrentToken(*diagnosticMessage);
+                parseErrorAtCurrentToken(diagnosticMessage);
             } else {
                 parseErrorAtCurrentToken(Diagnostics::_0_expected, tokenToString(kind));
             }
@@ -2934,15 +2941,14 @@ namespace ts {
             ZoneScoped;
             int saveParsingContext = parsingContext;
             parsingContext |= 1 << (int) kind;
-            vector<shared<Node>> list;
-
+            auto list = make_shared<NodeArray>();
             auto listPos = getNodePos();
 
             while (!isListTerminator(kind)) {
                 if (isListElement(kind, /*inErrorRecovery*/ false)) {
                     auto n = parseListElement(kind, parseElement);
                     if (!n) throw runtime_error("No node given");
-                    list.push_back(n);
+                    list->push(n);
 
                     continue;
                 }
@@ -2963,7 +2969,7 @@ namespace ts {
             ZoneScoped;
             auto saveParsingContext = parsingContext;
             parsingContext |= 1 << (int) kind;
-            vector<shared<Node>> list;
+            auto list = make_shared<NodeArray>();
             auto listPos = getNodePos();
 
             int commaStart = -1; // Meaning the previous token was not a comma
@@ -2975,7 +2981,7 @@ namespace ts {
                         parsingContext = saveParsingContext;
                         return nullptr;
                     }
-                    list.push_back(result);
+                    list->push(result);
                     commaStart = scanner.getTokenPos();
 
                     if (parseOptional(SyntaxKind::CommaToken)) {
@@ -3046,7 +3052,7 @@ namespace ts {
         // An identifier that starts with two underscores has an extra underscore character prepended to it to avoid issues
         // with magic property names like '__proto__'. The 'identifiers' object is used to share a single string instance for
         // each identifier in order to reduce memory consumption.
-        shared<Identifier> createIdentifier(bool isIdentifier, optional<DiagnosticMessage> diagnosticMessage = {}, optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {}) {
+        shared<Identifier> createIdentifier(bool isIdentifier, const sharedOpt<DiagnosticMessage> &diagnosticMessage = nullptr, const sharedOpt<DiagnosticMessage> &privateIdentifierDiagnosticMessage = nullptr) {
             ZoneScoped;
             if (isIdentifier) {
                 identifierCount++;
@@ -3059,7 +3065,7 @@ namespace ts {
             }
 
             if (token() == SyntaxKind::PrivateIdentifier) {
-                parseErrorAtCurrentToken(privateIdentifierDiagnosticMessage ? *privateIdentifierDiagnosticMessage : Diagnostics::Private_identifiers_are_not_allowed_outside_class_bodies);
+                parseErrorAtCurrentToken(privateIdentifierDiagnosticMessage ? privateIdentifierDiagnosticMessage : Diagnostics::Private_identifiers_are_not_allowed_outside_class_bodies);
                 return createIdentifier(/*isIdentifier*/ true);
             }
 
@@ -3079,10 +3085,10 @@ namespace ts {
                                   Diagnostics::Identifier_expected_0_is_a_reserved_word_that_cannot_be_used_here :
                                   Diagnostics::Identifier_expected;
 
-            return createMissingNode<Identifier>(SyntaxKind::Identifier, reportAtCurrentPosition, diagnosticMessage ? *diagnosticMessage : defaultMessage);
+            return createMissingNode<Identifier>(SyntaxKind::Identifier, reportAtCurrentPosition, diagnosticMessage ? diagnosticMessage : defaultMessage);
         }
 
-        shared<Identifier> parseIdentifier(optional<DiagnosticMessage> diagnosticMessage = {}, optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {}) {
+        shared<Identifier> parseIdentifier(const sharedOpt<DiagnosticMessage> &diagnosticMessage = nullptr, const sharedOpt<DiagnosticMessage> &privateIdentifierDiagnosticMessage = nullptr) {
             return createIdentifier(isIdentifier(), diagnosticMessage, privateIdentifierDiagnosticMessage);
         }
 
@@ -3199,9 +3205,9 @@ namespace ts {
 
 //        function parseExpectedToken<TKind extends SyntaxKind>(t: TKind, optional<DiagnosticMessage> diagnosticMessage, arg0?: any): Token<TKind>;
         template<class T>
-        shared<T> parseExpectedToken(SyntaxKind t, optional<DiagnosticMessage> diagnosticMessage = {}, DiagnosticArg arg0 = "") {
+        shared<T> parseExpectedToken(SyntaxKind t, const sharedOpt<DiagnosticMessage> &diagnosticMessage = nullptr, DiagnosticArg arg0 = "") {
             if (auto a = parseOptionalToken<T>(t)) return a;
-            return createMissingNode<T>(t, /*reportAtCurrentPosition*/ false, diagnosticMessage ? *diagnosticMessage : Diagnostics::_0_expected, arg0 != "" ? arg0 : tokenToString(t));
+            return createMissingNode<T>(t, /*reportAtCurrentPosition*/ false, diagnosticMessage ? diagnosticMessage : Diagnostics::_0_expected, arg0 != "" ? arg0 : tokenToString(t));
         }
 
         shared<Node> parseLiteralOfTemplateSpan(bool isTaggedTemplate) {
@@ -3227,11 +3233,11 @@ namespace ts {
 
         shared<NodeArray> parseTemplateSpans(bool isTaggedTemplate) {
             auto pos = getNodePos();
-            vector<shared<Node>> list;
+            auto list = make_shared<NodeArray>();
             sharedOpt<TemplateSpan> node;
             do {
                 node = parseTemplateSpan(isTaggedTemplate);
-                list.push_back(node);
+                list->push(node);
             } while (node->literal->kind == SyntaxKind::TemplateMiddle);
             return createNodeArray(list, pos);
         }
@@ -3256,7 +3262,7 @@ namespace ts {
             );
         }
 
-        shared<Node> parseEntityName(bool allowReservedWords, optional<DiagnosticMessage> diagnosticMessage = {}) {
+        shared<Node> parseEntityName(bool allowReservedWords, const sharedOpt<DiagnosticMessage> &diagnosticMessage = nullptr) {
             auto pos = getNodePos();
             shared<Node> entity = allowReservedWords ? parseIdentifierName(diagnosticMessage) : parseIdentifier(diagnosticMessage);
             auto dotPos = getNodePos();
@@ -3639,12 +3645,12 @@ namespace ts {
             ZoneScoped;
             auto pos = getNodePos();
             sharedOpt<Node> decorator;
-            vector<shared<Node>> list;
-//            auto list, decorator;
+            sharedOpt<NodeArray> list;
             while (decorator = tryParseDecorator()) {
-                list = append(list, decorator);
+                if (!list) list = make_shared<NodeArray>();
+                list->push(decorator);
             }
-            if (list.empty()) return nullptr;
+            if (!list) return nullptr;
             return createNodeArray(list, pos);
         }
 
@@ -3654,8 +3660,8 @@ namespace ts {
 
         sharedOpt<Modifier> tryParseModifier(bool permitInvalidConstAsModifier = false, bool stopOnStartOfClassStaticBlock = false, bool hasSeenStaticModifier = false) {
             ZoneScoped;
-            auto pos = getNodePos();
-            auto kind = token();
+            const auto pos = getNodePos();
+            const auto kind = token();
 
             if (token() == SyntaxKind::ConstKeyword && permitInvalidConstAsModifier) {
                 // We need to ensure that any subsequent modifiers appear on the same line
@@ -3685,15 +3691,16 @@ namespace ts {
          */
         sharedOpt<NodeArray> parseModifiers(bool permitInvalidConstAsModifier = false, bool stopOnStartOfClassStaticBlock = false) {
             ZoneScoped;
-            auto pos = getNodePos();
+            const auto pos = getNodePos();
             auto hasSeenStatic = false;
-            vector<shared<Node>> list;
+            sharedOpt<NodeArray> list;
             sharedOpt<Node> modifier;
             while ((modifier = tryParseModifier(permitInvalidConstAsModifier, stopOnStartOfClassStaticBlock, hasSeenStatic))) {
                 if (modifier->kind == SyntaxKind::StaticKeyword) hasSeenStatic = true;
-                list = append(list, modifier);
+                if (!list) list = make_shared<NodeArray>();
+                list->push(modifier);
             }
-            if (!list.empty()) return createNodeArray(list, pos);
+            if (list) return createNodeArray(list, pos);
             return nullptr;
         }
 
@@ -3963,7 +3970,7 @@ namespace ts {
             return finishNode(factory.createObjectBindingPattern(elements), pos);
         }
 
-        shared<UnionNode<Identifier, BindingPattern>> parseIdentifierOrPattern(optional<DiagnosticMessage> privateIdentifierDiagnosticMessage = {}) {
+        shared<UnionNode<Identifier, BindingPattern>> parseIdentifierOrPattern(const shared<DiagnosticMessage> &privateIdentifierDiagnosticMessage = nullptr) {
             ZoneScoped;
             if (token() == SyntaxKind::OpenBracketToken) {
                 return parseArrayBindingPattern();
@@ -4042,7 +4049,9 @@ namespace ts {
                 auto pos = getNodePos();
                 nextToken();
                 auto modifier = finishNode(factory.createToken<AbstractKeyword>(SyntaxKind::AbstractKeyword), pos);
-                modifiers = createNodeArray({modifier}, pos);
+                auto list = make_shared<NodeArray>();
+                list->push(modifier);
+                modifiers = createNodeArray(list, pos);
             }
             return modifiers;
         }
@@ -4214,7 +4223,7 @@ namespace ts {
                 case SyntaxKind::LessThanToken:
                     return parseJsxElementOrSelfClosingElementOrFragment(/*inExpressionContext*/ false, /*topInvalidNodePosition*/ {}, openingTag);
                 default:
-                    throw runtime_error(format("Should not reach %d", token));
+                    throw runtime_error(fmt::format("Should not reach {}", token));
 //                    return Debug::assertsNever(token);
             }
         }
@@ -4246,7 +4255,7 @@ namespace ts {
         }
 
         shared<NodeArray> parseJsxChildren(shared<NodeUnion(JsxOpeningElement, JsxOpeningFragment)> openingTag) {
-            vector<shared<Node>> list;
+            auto list = make_shared<NodeArray>();
             auto listPos = getNodePos();
             auto saveParsingContext = parsingContext;
             parsingContext |= 1 << (int) ParsingContext::JsxChildren;
@@ -4254,7 +4263,7 @@ namespace ts {
             while (true) {
                 auto child = parseJsxChild(openingTag, currentToken = scanner.reScanJsxToken());
                 if (!child) break;
-                list.push_back(child);
+                list->push(child);
                 if (isJsxOpeningElement(openingTag)
                     && (child && child->kind == SyntaxKind::JsxElement)
                     && !tagNamesAreEquivalent(getTagName(child->to<JsxElement>().openingElement), getTagName(child->to<JsxElement>().closingElement))
@@ -4328,7 +4337,7 @@ namespace ts {
 
                     auto c = children->slice(0, children->length() - 1);
                     c.push_back(newLast);
-                    children = createNodeArray(c, children->pos, end);
+                    children = createNodeArray(make_shared<NodeArray>(c), children->pos, end);
                     closingElement = jsxElement.closingElement;
                 } else {
                     closingElement = parseJsxClosingElement(opening, inExpressionContext);
@@ -4561,7 +4570,7 @@ namespace ts {
             }
         }
 
-        shared<Block> parseBlock(bool ignoreMissingOpenBrace, optional<DiagnosticMessage> diagnosticMessage = {}) {
+        shared<Block> parseBlock(bool ignoreMissingOpenBrace, const sharedOpt<DiagnosticMessage> &diagnosticMessage = nullptr) {
             auto pos = getNodePos();
             auto hasJSDoc = hasPrecedingJSDocComment();
             auto openBracePosition = scanner.getTokenPos();
@@ -4583,7 +4592,7 @@ namespace ts {
             }
         }
 
-        shared<Block> parseFunctionBlock(int flags, optional<DiagnosticMessage> diagnosticMessage = {}) {
+        shared<Block> parseFunctionBlock(int flags, const sharedOpt<DiagnosticMessage> &diagnosticMessage = nullptr) {
             auto savedYieldContext = inYieldContext();
             setYieldContext(!!(flags & (int) SignatureFlags::Yield));
 
@@ -4613,7 +4622,7 @@ namespace ts {
             return block;
         }
 
-        sharedOpt<Block> parseFunctionBlockOrSemicolon(int flags, optional<DiagnosticMessage> diagnosticMessage = {}) {
+        sharedOpt<Block> parseFunctionBlockOrSemicolon(int flags, const sharedOpt<DiagnosticMessage> &diagnosticMessage = nullptr) {
             if (token() != SyntaxKind::OpenBraceToken && canParseSemicolon()) {
                 parseSemicolon();
                 return nullptr;
@@ -4859,7 +4868,7 @@ namespace ts {
                 shared<Node> name,
                 sharedOpt<QuestionToken> questionToken,
                 sharedOpt<ExclamationToken> exclamationToken,
-                optional<DiagnosticMessage> diagnosticMessage = {}
+                const sharedOpt<DiagnosticMessage> &diagnosticMessage = nullptr
         ) {
             auto isGenerator = asteriskToken ? SignatureFlags::Yield : SignatureFlags::None;
             auto isAsync = some(modifiers, isAsyncModifier) ? SignatureFlags::Await : SignatureFlags::None;
@@ -5811,7 +5820,7 @@ namespace ts {
                 auto elements = parseDelimitedList(ParsingContext::AssertEntries, CALLBACK(parseAssertEntry), /*considerSemicolonAsDelimiter*/ true);
                 if (!parseExpected(SyntaxKind::CloseBraceToken)) {
                     auto lastError = lastOrUndefined(parseDiagnostics);
-                    if (lastError && lastError->code == Diagnostics::_0_expected.code) {
+                    if (lastError && lastError->code == Diagnostics::_0_expected->code) {
                         addRelatedInfo(
                                 *lastError,
                                 {createDetachedDiagnostic(fileName, openBracePosition, 1, Diagnostics::The_parser_expected_to_find_a_1_to_match_the_0_token_here, {"{", "}"})}
@@ -5835,7 +5844,7 @@ namespace ts {
             auto clause = parseAssertClause(/*skipAssertKeyword*/ true);
             if (!parseExpected(SyntaxKind::CloseBraceToken)) {
                 auto lastError = lastOrUndefined(parseDiagnostics);
-                if (lastError && lastError->code == Diagnostics::_0_expected.code) {
+                if (lastError && lastError->code == Diagnostics::_0_expected->code) {
                     addRelatedInfo(
                             *lastError,
                             {createDetachedDiagnostic(fileName, openBracePosition, 1, Diagnostics::The_parser_expected_to_find_a_1_to_match_the_0_token_here, {"{", "}"})}
@@ -5990,11 +5999,11 @@ namespace ts {
 
         shared<NodeArray> parseTemplateTypeSpans() {
             auto pos = getNodePos();
-            vector<shared<Node>> list;
+            auto list = make_shared<NodeArray>();
             shared<TemplateLiteralTypeSpan> node;
             do {
                 node = parseTemplateTypeSpan();
-                list.push_back(node);
+                list->push(node);
             } while (node->literal->kind == SyntaxKind::TemplateMiddle);
             return createNodeArray(list, pos);
         }
@@ -6144,7 +6153,7 @@ namespace ts {
             // try to parse them gracefully and issue a helpful message.
             if (isStartOfFunctionTypeOrConstructorType()) {
                 auto type = parseFunctionOrConstructorType();
-                DiagnosticMessage diagnostic;
+                shared<DiagnosticMessage> diagnostic;
                 if (isFunctionTypeNode(type)) {
                     diagnostic = isInUnionType
                                  ? Diagnostics::Function_type_notation_must_be_parenthesized_when_used_in_a_union_type
@@ -6170,15 +6179,15 @@ namespace ts {
             auto hasLeadingOperator = parseOptional(operatorKind);
             sharedOpt<TypeNode> type = hasLeadingOperator ? parseFunctionOrConstructorTypeToError(isUnionType) : parseConstituentType();
             if (token() == operatorKind || hasLeadingOperator) {
-                vector<shared<Node>> types = {type};
+                auto types = make_shared<NodeArray>(type);
                 while (parseOptional(operatorKind)) {
                     if (auto a = parseFunctionOrConstructorTypeToError(isUnionType)) {
-                        types.push_back(a);
+                        types->push(a);
                     } else {
-                        types.push_back(parseConstituentType());
+                        types->push(parseConstituentType());
                     }
                 }
-                type = finishNode<TypeNode>(createTypeNode(createNodeArray(types, pos)), pos);
+                type = finishNode<TypeNode>(createTypeNode(types), pos);
             }
             return type;
         }
@@ -6192,6 +6201,7 @@ namespace ts {
         }
 
         shared<TypeNode> parseType() {
+            ZoneScoped;
             if (contextFlags & (int) NodeFlags::TypeExcludesFlags) {
                 return doOutsideOfContext<shared<TypeNode>>(NodeFlags::TypeExcludesFlags, CALLBACK(parseType));
             }
@@ -6214,6 +6224,7 @@ namespace ts {
         }
 
         sharedOpt<TypeNode> parseTypeAnnotation() {
+            ZoneScoped;
             return parseOptional(SyntaxKind::ColonToken) ? parseType() : nullptr;
         }
 
@@ -6528,7 +6539,9 @@ namespace ts {
                 auto pos = getNodePos();
                 nextToken();
                 auto modifier = finishNode(factory.createToken<AsyncKeyword>(SyntaxKind::AsyncKeyword), pos);
-                return factory.createNodeArray<Node>({modifier}, pos);
+                auto list = make_shared<NodeArray>();
+                list->push(modifier);
+                return factory.createNodeArray(list, pos);
             }
             return nullptr;
         }
@@ -6709,7 +6722,7 @@ namespace ts {
             );
             finishNode(parameter, identifier->pos);
 
-            auto parameters = createNodeArray({parameter}, parameter->pos, parameter->end);
+            auto parameters = createNodeArray(make_shared<NodeArray>(parameter), parameter->pos, parameter->end);
 
             auto equalsGreaterThanToken = parseExpectedToken<EqualsGreaterThanToken>(SyntaxKind::EqualsGreaterThanToken);
             auto body = parseArrowFunctionExpressionBody(/*isAsync*/ !!asyncModifier);
@@ -6797,8 +6810,8 @@ namespace ts {
             // Otherwise, we try to parse out the conditional expression bit.  We want to allow any
             // binary expression here, so we pass in the 'lowest' precedence here so that it matches
             // and consumes anything.
-            auto pos = getNodePos();
-            auto expr = parseBinaryExpressionOrHigher((int) OperatorPrecedence::Lowest);
+            const auto pos = getNodePos();
+            const auto expr = parseBinaryExpressionOrHigher((int) OperatorPrecedence::Lowest);
 
             // To avoid a look-ahead, we did not handle the case of an arrow function with a single un-parenthesized
             // parameter ('x => ...') above. We handle it here by checking if the parsed expression was a single
@@ -7095,17 +7108,17 @@ namespace ts {
 
         shared<VariableDeclaration> parseVariableDeclaration(optional<bool> allowExclamation = {}) {
             ZoneScoped;
-            auto pos = getNodePos();
-            auto hasJSDoc = hasPrecedingJSDocComment();
-            auto name = parseIdentifierOrPattern(Diagnostics::Private_identifiers_are_not_allowed_in_variable_declarations);
+            const auto pos = getNodePos();
+            const auto hasJSDoc = hasPrecedingJSDocComment();
+            const auto name = parseIdentifierOrPattern(Diagnostics::Private_identifiers_are_not_allowed_in_variable_declarations);
             sharedOpt<ExclamationToken> exclamationToken;
             if (isTrue(allowExclamation) && name->kind == SyntaxKind::Identifier &&
                 token() == SyntaxKind::ExclamationToken && !scanner.hasPrecedingLineBreak()) {
                 exclamationToken = parseTokenNode<ExclamationToken>();
             }
-            auto type = parseTypeAnnotation();
+            const auto type = parseTypeAnnotation();
             sharedOpt<Expression> initializer = isInOrOfKeyword(token()) ? nullptr : parseInitializer();
-            auto node = factory.createVariableDeclaration(name, exclamationToken, type, initializer);
+            const auto node = factory.createVariableDeclaration(name, exclamationToken, type, initializer);
             return withJSDoc(finishNode(node, pos), hasJSDoc);
         }
 
@@ -7204,7 +7217,6 @@ namespace ts {
 
         shared<Statement> parseDeclaration() {
             ZoneScoped;
-
             // TODO: Can we hold onto the parsed decorators/modifiers and advance the scanner
             //       if we can't reuse the declaration, so that we don't do this work twice?
             //

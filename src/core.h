@@ -9,6 +9,7 @@
 #include <optional>
 #include <sstream>
 #include <iostream>
+#include <fmt/core.h>
 
 #define CALLBACK(name) [this](auto ...a) { return name(a...); }
 
@@ -36,7 +37,7 @@ namespace ts {
         return const_hash(input.c_str());
     }
 
-    inline constexpr unsigned operator ""_hash(const char *s, size_t) {
+    inline consteval unsigned operator ""_hash(const char *s, size_t) {
         return const_hash(s);
     }
 
@@ -242,10 +243,9 @@ namespace ts {
         return map.find(key) != map.end();
     };
 
-    std::string format(const std::string &fmt, ...);
-
-    template<typename...Args>
-    inline void debug(const std::string &fmt, Args &&...args) {
-        std::cout << format(fmt, args...) << "\n";
+    template<typename T, typename...Args>
+    inline void debug(T fmt, Args &&...args) {
+//        std::cout << fmt::format(fmt, std::forward<Args>(args)...) << "\n";
+        std::cout << fmt::format(fmt, args...) << "\n";
     }
 }

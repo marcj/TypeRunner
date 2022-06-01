@@ -16,8 +16,8 @@ namespace ts {
         string value;
     };
     using ErrorCallback = function<
-            void(DiagnosticMessage
-                 message,
+            void(const shared<DiagnosticMessage>
+                 &message,
                  int length
             )>;
 
@@ -412,7 +412,7 @@ namespace ts {
 
         SyntaxKind scan();
 
-        SyntaxKind scanIdentifier(CharCode startCharacter, ScriptTarget languageVersion);
+        SyntaxKind scanIdentifier(const CharCode &startCharacter, ScriptTarget languageVersion);
 
         bool hasUnicodeEscape() {
             //todo
@@ -457,7 +457,7 @@ namespace ts {
         }
 
         bool hasPrecedingJSDocComment() {
-            //todo
+            //JSDoc is not supported
             return false;
         }
 
@@ -492,17 +492,17 @@ namespace ts {
         template<typename T>
         T speculationHelper(const function<T()> &callback, bool isLookahead) {
             ZoneScoped;
-            auto savePos = pos;
-            auto saveStartPos = startPos;
-            auto saveTokenPos = tokenPos;
-            auto saveToken = token;
-            auto saveTokenValue = tokenValue;
-            auto saveTokenFlags = tokenFlags;
-            auto result = callback();
+            const auto savePos = pos;
+            const auto saveStartPos = startPos;
+            const auto saveTokenPos = tokenPos;
+            const auto saveToken = token;
+            const auto saveTokenValue = tokenValue;
+            const auto saveTokenFlags = tokenFlags;
+            const auto result = callback();
 
             // If our callback returned something 'falsy' or we're just looking ahead,
             // then unconditionally restore us to where we were.
-            if (!(bool)result || isLookahead) {
+            if (isLookahead || !(bool)result) {
                 pos = savePos;
                 startPos = saveStartPos;
                 tokenPos = saveTokenPos;
@@ -510,7 +510,7 @@ namespace ts {
                 tokenValue = saveTokenValue;
                 tokenFlags = saveTokenFlags;
             }
-            return result;;
+            return result;
         }
 
         bool hasPrecedingLineBreak() {
@@ -621,7 +621,7 @@ namespace ts {
 
         bool isOctalDigit(const CharCode &code);
 
-        int error(const DiagnosticMessage &message, int errPos = -1, int length = -1);
+        int error(const shared<DiagnosticMessage> &message, int errPos = -1, int length = -1);
 
         vector<CommentDirective> appendIfCommentDirective(vector<CommentDirective> &commentDirectives, const string &text, const regex &commentDirectiveRegEx, int lineStart);
 

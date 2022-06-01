@@ -1,4 +1,5 @@
 #include "node_test.h"
+#include <fmt/core.h>
 
 namespace ts {
     /**
@@ -127,7 +128,7 @@ namespace ts {
                 return reinterpret_pointer_cast<PrivateIdentifier>(node);
         }
 
-        throw runtime_error(format("resolveNamToNode with kind %d no valid name property", (int) node->kind));
+        throw runtime_error(fmt::format("resolveNamToNode with kind {} no valid name property", (int) node->kind));
     }
 
     bool isFunctionOrConstructorTypeNode(shared<Node> node) {
@@ -168,7 +169,7 @@ namespace ts {
             case SyntaxKind::IndexSignature:
                 return node->to<IndexSignatureDeclaration>().typeParameters;
             default:
-                throw runtime_error(format("node %d has no typeParameters", node->kind));
+                throw runtime_error(fmt::format("node {} has no typeParameters", node->kind));
         }
     }
 
@@ -179,7 +180,7 @@ namespace ts {
             case SyntaxKind::JsxOpeningElement:
                 return node->to<JsxOpeningElement>().tagName;
             default:
-                throw runtime_error(format("node %d has no tagName", node->kind));
+                throw runtime_error(fmt::format("node {} has no tagName", node->kind));
         }
     }
 
@@ -191,7 +192,7 @@ namespace ts {
                 return reinterpret_pointer_cast<PrivateIdentifier>(node)->escapedText;
         }
 
-        throw runtime_error(format("getEscapedName with kind %d no valid", (int) node->kind));
+        throw runtime_error(fmt::format("getEscapedName with kind {} no valid", (int) node->kind));
     }
 
     sharedOpt<NodeUnion(PropertyName)> getName(const shared<Node> &node) {

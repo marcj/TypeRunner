@@ -10,6 +10,9 @@
 #include <type_traits>
 #include <stdexcept>
 #include "core.h"
+#include <fmt/core.h>
+#include <fmt/format.h>
+#include "magic_enum.hpp"
 
 namespace ts {
     struct SourceFile;
@@ -32,8 +35,8 @@ namespace ts::types {
 
     /* @internal */
     enum class Comparison {
-        LessThan    = -1,
-        EqualTo     = 0,
+        LessThan = -1,
+        EqualTo = 0,
         GreaterThan = 1
     };
 
@@ -97,12 +100,14 @@ namespace ts::types {
     struct DiagnosticMessage {
         int code;
         DiagnosticCategory category;
-        string key;
-        string message;
+        string_view key;
+        string_view message;
         bool reportsUnnecessary;
-        bool reportsDeprecated;
         /* @internal */
         bool elidedInCompatabilityPyramid;
+        bool reportsDeprecated;
+
+        DiagnosticMessage(int code, DiagnosticCategory category, const string_view &key, const string_view &message, bool reportsUnnecessary, bool elidedInCompatabilityPyramid, bool reportsDeprecated);
     };
 
     struct DiagnosticMessageChain {
@@ -116,9 +121,9 @@ namespace ts::types {
         DiagnosticCategory category;
         int code;
         SourceFile *file;
-        int start = - 1; //-1 = undefined
-        int length = - 1; //-1 = undefined
-        string messageText;
+        int start = -1; //-1 = undefined
+        int length = -1; //-1 = undefined
+        string_view messageText;
         DiagnosticMessageChain *messageChain = nullptr;
     };
 
@@ -1020,7 +1025,7 @@ namespace ts::types {
         PropertyExcludes = NodeExcludes | ContainsLexicalThis | ContainsLexicalSuper,
         ClassExcludes = NodeExcludes | ContainsTypeScriptClassSyntax | ContainsComputedPropertyName,
         ModuleExcludes = NodeExcludes | ContainsTypeScriptClassSyntax | ContainsLexicalThis | ContainsLexicalSuper | ContainsBlockScopedBinding | ContainsHoistedDeclarationOrCompletion | ContainsPossibleTopLevelAwait,
-        TypeExcludes = ~ ContainsTypeScript,
+        TypeExcludes = ~ContainsTypeScript,
         ObjectLiteralExcludes = NodeExcludes | ContainsTypeScriptClassSyntax | ContainsComputedPropertyName | ContainsObjectRestOrSpread,
         ArrayLiteralOrCallOrNewExcludes = NodeExcludes | ContainsRestOrSpread,
         VariableDeclarationListExcludes = NodeExcludes | ContainsBindingPattern | ContainsObjectRestOrSpread,
@@ -1077,7 +1082,6 @@ namespace ts {
         printTupleManual(kinds, tp, std::make_index_sequence<TupSize>{});
         return kinds;
     }
-
 
     struct Decorator;
     struct Modifier;
@@ -1181,6 +1185,14 @@ namespace ts {
         bool isMissingList = false; //replaces `MissingList extends NodeArray {bool isMissingList;}`
         /* @internal */ int transformFlags = 0;   // Flags for transforms, possibly undefined
 
+        NodeArray() {}
+
+        NodeArray(const vector<shared<Node>> &list, bool hasTrailingComma = false): list(list), hasTrailingComma(hasTrailingComma) {}
+
+        NodeArray(const shared<Node> &item) {
+            list.push_back(item);
+        }
+
         int length() {
             return list.size();
         }
@@ -1204,7 +1216,8 @@ namespace ts {
         }
 
         vector<shared<Node>> slice(int start, int end = 0) {
-            return slice<shared<Node>>(list, start, end);
+            return slice < shared<Node>>
+            (list, start, end);
         }
     };
 
@@ -1301,14 +1314,15 @@ namespace ts {
 //        /* @internal */ contextualType?: Type;                // Used to temporarily assign a contextual type during overload resolution
 //        /* @internal */ inferenceContext?: InferenceContext;  // Inference context for contextual type
 
-        virtual ~Node() {}
+        virtual ~Node() {
+        }
 
         bool hasParent() {
             return &parent != this;
         }
 
         Node &getParent() {
-            if (! hasParent()) throw std::runtime_error("Node has no parent set");
+            if (!hasParent()) throw std::runtime_error("Node has no parent set");
             return parent;
         }
 
@@ -1333,7 +1347,7 @@ namespace ts {
         template<typename T>
         T &to() {
             if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
-            if (kind != T::KIND) throw std::runtime_error(format("Can not convert Node, from kind %d to %d", kind, T::KIND));
+            if (kind != T::KIND) throw std::runtime_error(fmt::format("Can not convert Node, from kind {} to {}", kind, T::KIND));
             return *reinterpret_cast<T *>(this);
         }
     };
@@ -2856,3 +2870,23 @@ namespace ts {
 
     };
 }
+
+template<>
+struct fmt::formatter<ts::types::SyntaxKind> {
+//    // Presentation format: 'f' - fixed, 'e' - exponential.
+//    char presentation = 'f';
+
+    // Parses format specifications of the form ['f' | 'e'].
+    constexpr auto parse(format_parse_context &ctx)->decltype(ctx.begin()) {
+        return ctx.begin();
+    }
+
+    // Formats the point p using the parsed format specification (presentation)
+    // stored in this formatter.
+    template<typename FormatContext>
+    auto format(const ts::types::SyntaxKind &p, FormatContext &ctx)->decltype(ctx.out()) {
+        fmt::format_to(ctx.out(), magic_enum::enum_name<ts::types::SyntaxKind>(p));
+        // ctx.out() is an output iterator to write to.
+//        return magic_enum::enum_name<ts::types::SyntaxKind>(p);
+    }
+};

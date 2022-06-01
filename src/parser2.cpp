@@ -10,7 +10,7 @@ namespace ts {
         return currentToken = scanner.scan();
     }
 
-    optional<DiagnosticWithDetachedLocation> Parser::parseErrorAtPosition(int start, int length, const DiagnosticMessage &message, DiagnosticArg arg) {
+    optional<DiagnosticWithDetachedLocation> Parser::parseErrorAtPosition(int start, int length, const shared<DiagnosticMessage> &message, DiagnosticArg arg) {
         ZoneScoped;
 
         auto lastError = lastOrUndefined(parseDiagnostics);

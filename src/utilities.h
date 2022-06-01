@@ -294,7 +294,7 @@ namespace ts {
 
     //unordered_map<string, string> localizedDiagnosticMessages{};
 
-    string getLocaleSpecificMessage(DiagnosticMessage message);
+    string_view getLocaleSpecificMessage(const shared<DiagnosticMessage> &message);
 
     using DiagnosticArg = string;
 
@@ -302,7 +302,7 @@ namespace ts {
 
     string DiagnosticArgToString(DiagnosticArg &v) ;
 
-    DiagnosticWithDetachedLocation createDetachedDiagnostic(string fileName, int start, int length, DiagnosticMessage message, vector<DiagnosticArg> textArg = {});
+    DiagnosticWithDetachedLocation createDetachedDiagnostic(string fileName, int start, int length, const shared<DiagnosticMessage> &message, vector<DiagnosticArg> textArg = {});
 
     DiagnosticWithDetachedLocation &addRelatedInfo(DiagnosticWithDetachedLocation &diagnostic, vector<DiagnosticRelatedInformation> relatedInformation) ;
 
