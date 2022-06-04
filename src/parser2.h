@@ -1083,7 +1083,7 @@ namespace ts {
         }
 
         template<class T>
-        shared<T> withJSDoc(shared<T> node, bool hasJSDoc) {
+        shared<T> withJSDoc(const shared<T> &node, bool hasJSDoc) {
             return node;
             //we do not care about JSDoc
 //            return hasJSDoc ? addJSDocComment(node) : node;
@@ -1673,6 +1673,7 @@ namespace ts {
         }
 
         shared<NodeArray> createNodeArray(const shared<NodeArray> &array, int pos, optional<int> end = {}, bool hasTrailingComma = false) {
+            if (!array) throw runtime_error("No array passed");
             setTextRangePosEnd(array, pos, end ? *end : scanner.getStartPos());
             return array;
         }
@@ -3040,7 +3041,7 @@ namespace ts {
 //        }
 
         shared<NodeArray> createMissingList() {
-            auto list = createNodeArray(nullptr, getNodePos());
+            auto list = createNodeArray(make_shared<NodeArray>(), getNodePos());
             list->isMissingList = true;
             return list;
         }
@@ -7085,8 +7086,6 @@ namespace ts {
             auto hasParen = token() == SyntaxKind::OpenParenToken;
             auto expression = allowInAnd<shared<Expression>>(CALLBACK(parseExpression));
             if (ts::isIdentifier(expression) && parseOptional(SyntaxKind::ColonToken)) {
-//                parseStatement();
-//                node = make_shared<LabeledStatement>({.label});
                 node = factory.createLabeledStatement(expression, parseStatement());
             } else {
                 if (!tryParseSemicolon()) {
@@ -7098,8 +7097,7 @@ namespace ts {
                     hasJSDoc = false;
                 }
             }
-            return finishNode(node, pos);
-//            return withJSDoc(finishNode(node, pos), hasJSDoc);
+            return withJSDoc(finishNode(node, pos), hasJSDoc);
         }
 
         bool canFollowContextualOfKeyword() {
@@ -7273,8 +7271,8 @@ namespace ts {
 //                    return parseClassDeclaration(pos, hasJSDoc, decorators, modifiers);
 //                case SyntaxKind::InterfaceKeyword:
 //                    return parseInterfaceDeclaration(pos, hasJSDoc, decorators, modifiers);
-//                case SyntaxKind::TypeKeyword:
-//                    return parseTypeAliasDeclaration(pos, hasJSDoc, decorators, modifiers);
+                case SyntaxKind::TypeKeyword:
+                    return parseTypeAliasDeclaration(pos, hasJSDoc, decorators, modifiers);
 //                case SyntaxKind::EnumKeyword:
 //                    return parseEnumDeclaration(pos, hasJSDoc, decorators, modifiers);
 //                case SyntaxKind::GlobalKeyword:
@@ -7442,18 +7440,18 @@ namespace ts {
 //            auto node = factory.createInterfaceDeclaration(decorators, modifiers, name, typeParameters, heritageClauses, members);
 //            return withJSDoc(finishNode(node, pos), hasJSDoc);
 //        }
-//
-//        function parseTypeAliasDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): TypeAliasDeclaration {
-//            parseExpected(SyntaxKind::TypeKeyword);
-//            auto name = parseIdentifier();
-//            auto typeParameters = parseTypeParameters();
-//            parseExpected(SyntaxKind::EqualsToken);
-//            auto type = token() == SyntaxKind::IntrinsicKeyword && tryParse(parseKeywordAndNoDot) || parseType();
-//            parseSemicolon();
-//            auto node = factory.createTypeAliasDeclaration(decorators, modifiers, name, typeParameters, type);
-//            return withJSDoc(finishNode(node, pos), hasJSDoc);
-//        }
-//
+
+        shared<TypeAliasDeclaration> parseTypeAliasDeclaration(int pos, bool hasJSDoc, const sharedOpt<NodeArray> &decorators, const sharedOpt<NodeArray> &modifiers) {
+            parseExpected(SyntaxKind::TypeKeyword);
+            auto name = parseIdentifier();
+            auto typeParameters = parseTypeParameters();
+            parseExpected(SyntaxKind::EqualsToken);
+            shared<TypeNode> type = token() == SyntaxKind::IntrinsicKeyword ? tryParse<sharedOpt<TypeNode>>(CALLBACK(parseKeywordAndNoDot)) : parseType();
+            parseSemicolon();
+            auto node = factory.createTypeAliasDeclaration(decorators, modifiers, name, typeParameters, type);
+            return withJSDoc(finishNode(node, pos), hasJSDoc);
+        }
+
 //        // In an ambient declaration, the grammar only allows integer literals as initializers.
 //        // In a non-ambient declaration, the grammar allows uninitialized members only in a
 //        // ConstantEnumMemberSection, which starts at the beginning of an enum declaration

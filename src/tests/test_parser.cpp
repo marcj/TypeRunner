@@ -30,21 +30,54 @@ TEST(parser, bench) {
     Parser parser;
     string code;
 
-    for (int i = 0; i <20000; i++) {
+    for (int i = 0; i <100; i++) {
         code += string("const i").append(to_string(i)).append(" = 123;");
     }
 
     usleep(100'000);
 
-    auto start = std::chrono::high_resolution_clock::now();
-
-    auto i = 0;
-//    for (i = 0; i <10000; i++) {
+    bench(1, [&]{
         auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
 //        auto sourceFile = parser.createSourceFile("app.ts", ts::types::ScriptTarget::Latest, ScriptKind::TS, false, make_shared<NodeArray>(), make_shared<EndOfFileToken>(), 0, [](auto s) {});
-//    }
-    std::chrono::duration<double, std::milli> took = std::chrono::high_resolution_clock::now() - start;
-    fmt::print("parse {} bytes took {}ms", code.size(), took.count());
+    });
+    fmt::print("parse {} bytes ", code.size());
+
+    usleep(100'000);
+}
+
+TEST(parser, bench2) {
+    Parser parser;
+    string code = R"(
+type Person = { name: string, age: number }
+
+type Student = { name: string, age: number, gpa: number }
+
+type FunctionContravarianceTest = (student: Student) => boolean
+
+const contravariance: FunctionContravarianceTest = (person: Person) => true
+
+type MyFn = (name: string) => { name: string}
+
+const woops: MyFn = (name: number) => ({ name })
+
+type Union = string number boolean
+
+const arr: Union[] = ["hello", 420, false, (}]
+
+const fibonacci = (n: number): number => n <= 1 ? n : fibonacci(n - 1) + fibonacci(n - 2)
+
+type RedundantBigAssUnion = string | number string| number string number string| number| string number boolean boolean number
+
+const thisWorks: RedundantBigAssUnion[] = ["hello", 123]
+)";
+
+    usleep(100'000);
+
+    bench(1, [&]{
+        auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+//        auto sourceFile = parser.createSourceFile("app.ts", ts::types::ScriptTarget::Latest, ScriptKind::TS, false, make_shared<NodeArray>(), make_shared<EndOfFileToken>(), 0, [](auto s) {});
+    });
+    fmt::print("parse {} bytes ", code.size());
 
     usleep(100'000);
 }

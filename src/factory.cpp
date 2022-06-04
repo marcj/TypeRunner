@@ -2555,7 +2555,7 @@ namespace ts {
     }
 
     // @api
-   shared<VariableDeclarationList> Factory::createVariableDeclarationList(const shared<NodeArray> &declarations, int flags) {
+   shared<VariableDeclarationList> Factory::createVariableDeclarationList(shared<NodeArray> declarations, int flags) {
         auto node = createBaseNode<VariableDeclarationList>(SyntaxKind::VariableDeclarationList);
         node->flags |= flags & (int) NodeFlags::BlockScoped;
         node->declarations = declarations;

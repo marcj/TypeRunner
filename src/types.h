@@ -12,6 +12,8 @@
 #include "core.h"
 #include <fmt/core.h>
 #include <fmt/format.h>
+#define MAGIC_ENUM_RANGE_MIN 0
+#define MAGIC_ENUM_RANGE_MAX 512
 #include "magic_enum.hpp"
 
 namespace ts {
@@ -1055,6 +1057,13 @@ namespace ts::types {
     };
 }
 
+template <> struct fmt::formatter<ts::types::SyntaxKind> : formatter<std::string_view> {
+    template <typename FormatContext> auto format(ts::types::SyntaxKind p, FormatContext &ctx) {
+        return formatter<string_view>::format(magic_enum::enum_name(p), ctx);
+    }
+};
+
+
 namespace ts {
     using namespace std;
 
@@ -1571,8 +1580,8 @@ namespace ts {
 
     struct Identifier: BrandKind<SyntaxKind::Identifier, PrimaryExpression> {
         /**
-         * Prefer to use `id.unescapedText`. (Note: This is available only in services, not internally to the TypeScript compiler.)
-         * Text of identifier, but if the identifier begins with two underscores, this will begin with three.
+         * This is called `escaped` because in TS compiler they prefixed it with __ because of naming issues with __proto__, etc,
+         * so regular objects can be used as hash map. We do not need that. `escapedText` is thus just the text, not escaped at all.
          */
         string escapedText;
         optional<SyntaxKind> originalKeywordKind;// Original syntaxKind which get set so that we can report an error later
@@ -2870,23 +2879,3 @@ namespace ts {
 
     };
 }
-
-template<>
-struct fmt::formatter<ts::types::SyntaxKind> {
-//    // Presentation format: 'f' - fixed, 'e' - exponential.
-//    char presentation = 'f';
-
-    // Parses format specifications of the form ['f' | 'e'].
-    constexpr auto parse(format_parse_context &ctx)->decltype(ctx.begin()) {
-        return ctx.begin();
-    }
-
-    // Formats the point p using the parsed format specification (presentation)
-    // stored in this formatter.
-    template<typename FormatContext>
-    auto format(const ts::types::SyntaxKind &p, FormatContext &ctx)->decltype(ctx.out()) {
-        fmt::format_to(ctx.out(), magic_enum::enum_name<ts::types::SyntaxKind>(p));
-        // ctx.out() is an output iterator to write to.
-//        return magic_enum::enum_name<ts::types::SyntaxKind>(p);
-    }
-};

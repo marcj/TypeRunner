@@ -10,6 +10,7 @@
 #include <sstream>
 #include <iostream>
 #include <fmt/core.h>
+#include <fmt/ranges.h>
 
 #define CALLBACK(name) [this](auto ...a) { return name(a...); }
 
@@ -173,7 +174,7 @@ namespace ts {
 
     template<typename T, typename Func>
     inline void remove(vector<T> &vector, const Func &filter) {
-        auto new_end = remove_if(vector.begin(), vector.end(), filter);
+        auto new_end = std::remove_if(vector.begin(), vector.end(), filter);
         vector.erase(new_end, vector.end());
     }
 
@@ -245,7 +246,18 @@ namespace ts {
 
     template<typename T, typename...Args>
     inline void debug(T fmt, Args &&...args) {
+//        fmt::print(fmt, std::forward<Args>(args)...);
 //        std::cout << fmt::format(fmt, std::forward<Args>(args)...) << "\n";
         std::cout << fmt::format(fmt, args...) << "\n";
+    }
+
+    inline void bench(int iterations, const function<void()> &callback) {
+        auto start = std::chrono::high_resolution_clock::now();
+        for (auto i = 0; i <10000; i++) {
+            callback();
+        }
+
+        std::chrono::duration<double, std::milli> took = std::chrono::high_resolution_clock::now() - start;
+        fmt::print("{} iterations took {}ms, {}ms per iteration", iterations, took.count(), took.count()/iterations);
     }
 }

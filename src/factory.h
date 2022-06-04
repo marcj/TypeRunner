@@ -604,9 +604,9 @@ namespace ts {
 //        //
 //
 //        // @api
-//        function createTypeParameterDeclaration(sharedOpt<NodeArray> modifiers, name: string | Identifier, constraint?: TypeNode, defaultType?: TypeNode): TypeParameterDeclaration;
+//        function createTypeParameterDeclaration(sharedOpt<NodeArray> modifiers, NameType name, constraint?: TypeNode, defaultType?: TypeNode): TypeParameterDeclaration;
 //        /** @deprecated */
-//        function createTypeParameterDeclaration(name: string | Identifier, constraint?: TypeNode, defaultType?: TypeNode): TypeParameterDeclaration;
+//        function createTypeParameterDeclaration(NameType name, constraint?: TypeNode, defaultType?: TypeNode): TypeParameterDeclaration;
        shared<TypeParameterDeclaration> createTypeParameterDeclaration(
                 optional<variant<shared<NodeArray>, shared<Node>, string>> modifiersOrName,
                 optional<variant<shared<TypeNode>, shared<Identifier>, string>> nameOrConstraint,
@@ -1874,7 +1874,7 @@ namespace ts {
         shared<Block> createBlock(shared<NodeArray> statements, bool multiLine);
 
         // @api
-       shared<VariableDeclarationList> createVariableDeclarationList(const shared<NodeArray> &declarations, int flags = (int) NodeFlags::None);
+       shared<VariableDeclarationList> createVariableDeclarationList(shared<NodeArray> declarations, int flags = (int) NodeFlags::None);
 
 //        // @api
 //        function updateBlock(node: Block, statements: readonly Statement[]) {
@@ -2295,7 +2295,7 @@ namespace ts {
 //        function createInterfaceDeclaration(
 //            sharedOpt<NodeArray> decorators,
 //            sharedOpt<NodeArray> modifiers,
-//            name: string | Identifier,
+//            NameType name,
 //            sharedOpt<NodeArray> typeParameters,
 //            sharedOpt<NodeArray> heritageClauses,
 //            members: readonly TypeElement[]
@@ -2333,26 +2333,26 @@ namespace ts {
 //                : node;
 //        }
 //
-//        // @api
-//        function createTypeAliasDeclaration(
-//            sharedOpt<NodeArray> decorators,
-//            sharedOpt<NodeArray> modifiers,
-//            name: string | Identifier,
-//            sharedOpt<NodeArray> typeParameters,
-//            shared<TypeNode> type
-//        ) {
-//            auto node = createBaseGenericNamedDeclaration<TypeAliasDeclaration>(
-//                SyntaxKind::TypeAliasDeclaration,
-//                decorators,
-//                modifiers,
-//                name,
-//                typeParameters
-//            );
-//            node->type = type;
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
+        // @api
+        shared<TypeAliasDeclaration> createTypeAliasDeclaration(
+            sharedOpt<NodeArray> decorators,
+            sharedOpt<NodeArray> modifiers,
+            NameType name,
+            sharedOpt<NodeArray> typeParameters,
+            shared<TypeNode> type
+        ) {
+            auto node = createBaseGenericNamedDeclaration<TypeAliasDeclaration>(
+                SyntaxKind::TypeAliasDeclaration,
+                decorators,
+                modifiers,
+                name,
+                typeParameters
+            );
+            node->type = type;
+            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
+            return node;
+        }
+
 //        // @api
 //        function updateTypeAliasDeclaration(
 //            node: TypeAliasDeclaration,
@@ -2375,7 +2375,7 @@ namespace ts {
 //        function createEnumDeclaration(
 //            sharedOpt<NodeArray> decorators,
 //            sharedOpt<NodeArray> modifiers,
-//            name: string | Identifier,
+//            NameType name,
 //            members: readonly EnumMember[]
 //        ) {
 //            auto node = createBaseNamedDeclaration<EnumDeclaration>(
@@ -2483,7 +2483,7 @@ namespace ts {
 //        }
 //
 //        // @api
-//        function createNamespaceExportDeclaration(name: string | Identifier) {
+//        function createNamespaceExportDeclaration(NameType name) {
 //            auto node = createBaseNamedDeclaration<NamespaceExportDeclaration>(
 //                SyntaxKind::NamespaceExportDeclaration,
 //                /*decorators*/ {},
@@ -2506,7 +2506,7 @@ namespace ts {
 //            sharedOpt<NodeArray> decorators,
 //            sharedOpt<NodeArray> modifiers,
 //            isTypeOnly: boolean,
-//            name: string | Identifier,
+//            NameType name,
 //            moduleReference: ModuleReference
 //        ) {
 //            auto node = createBaseNamedDeclaration<ImportEqualsDeclaration>(
@@ -2809,7 +2809,7 @@ namespace ts {
 //        }
 //
 //        // @api
-//        function createExportSpecifier(isTypeOnly: boolean, propertyName: string | Identifier | undefined, name: string | Identifier) {
+//        function createExportSpecifier(isTypeOnly: boolean, NameType propertyName, NameType name) {
 //            auto node = createBaseNode<ExportSpecifier>(SyntaxKind::ExportSpecifier);
 //            node->isTypeOnly = isTypeOnly;
 //            node->propertyName = asName(propertyName);
@@ -3952,7 +3952,7 @@ namespace ts {
 //                : createStrictEquality(createTypeOfExpression(value), createStringLiteral(tag));
 //        }
 //
-//        function createMethodCall(object: Expression, methodName: string | Identifier, argumentsList: readonly Expression[]) {
+//        function createMethodCall(object: Expression, methodNameType name, argumentsList: readonly Expression[]) {
 //            // Preserve the optionality of `object`.
 //            if (isCallChain(object)) {
 //                return createCallChain(
