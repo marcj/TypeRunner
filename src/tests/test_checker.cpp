@@ -2,6 +2,7 @@
 
 #include "../parser2.h"
 #include "../checker/compiler.h"
+#include "../checker/vm.h"
 
 using namespace ts;
 
@@ -25,9 +26,9 @@ TEST(checker, program) {
 TEST(checker, type) {
     Parser parser;
 
-    auto code = R"(
+    std:string code = R"(
     const v1: string = "abc";
-    const v2: string = 123;
+    const v2: number = 123;
     )";
 
     auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
@@ -37,8 +38,34 @@ TEST(checker, type) {
     auto program = compiler.compileSourceFile(result);
     program.print();
     auto bin = program.build();
+    debug("Code {} chars, to {} bytes: {}", code.size(), bin.size(), bin);
 
-    debug("done: {}", bin);
+    bench(100, [&] {
+        vm::VM vm;
+        vm.call(bin);
+    });
+}
+
+TEST(checker, type2) {
+    Parser parser;
+
+    std:string code = R"(
+    type a = number;
+    type b = string | a;
+    const v1: b = 'abc';
+    )";
+
+    auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+
+    checker::Compiler compiler;
+
+    auto program = compiler.compileSourceFile(result);
+    program.print();
+    auto bin = program.build();
+    debug("Code {} chars, to {} bytes: {}", code.size(), bin.size(), bin);
+
+    vm::VM vm;
+    vm.call(bin);
 }
 
 TEST(checker, assign) {

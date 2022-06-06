@@ -18,15 +18,8 @@ namespace ts::checker {
         Variable,
         Function,
         Class,
-        Type
-    };
-
-    struct Symbol {
-        const string_view name;
-        const SymbolType type;
-        const unsigned int pos;
-
-        const unsigned int subroutineIndex = 0;
+        Type,
+        TypeVariable //template variable
     };
 
     //A subroutine is a sub program that can be executed by knowing its address.
@@ -35,15 +28,29 @@ namespace ts::checker {
         vector<unsigned char> ops; //OPs, and its parameters
         unordered_map<unsigned int, unsigned int> opSourceMap;
         string_view identifier;
-        unsigned int address; //final address in the binary
+        unsigned int address{}; //during compilation the index address, after the final address in the binary
         unsigned int pos{};
+        SymbolType type = SymbolType::Type;
 
         explicit Subroutine(string_view &identifier): identifier(identifier) {}
+    };
+
+    struct Frame;
+
+    struct Symbol {
+        const string_view name;
+        const SymbolType type;
+        const unsigned int index{}; //symbol index of the current frame
+        const unsigned int pos;
+        unsigned int declarations = 1;
+        Subroutine *routine = nullptr;
+        shared<Frame> frame = nullptr;
     };
 
     struct Frame {
         const bool conditional = false;
         shared<Frame> previous;
+        unsigned int id = 0; //in a tree the unique id, needed to resolve symbols during runtime.
         vector<Symbol> symbols{};
 
         Frame() = default;
@@ -80,17 +87,22 @@ namespace ts::checker {
         //implicit is when a OP itself triggers in the VM a new frame, without having explicitly a OP::Frame
         shared<Frame> pushFrame(bool implicit = false) {
             if (!implicit) this->pushOp(OP::Frame);
+            auto id = frame->id;
             frame = make_shared<Frame>(frame);
+            frame->id = id + 1;
             return frame;
         }
 
+        /**
+         * Push the subroutine from the symbol as active. This means it will now be populated with OPs.
+         */
         unsigned int pushSubroutine(string_view name) {
             //find subroutine
             for (auto &&s: frame->symbols) {
                 if (s.name == name) {
                     pushFrame(true); //subroutines have implicit stack frames due to call convention
-                    activeSubroutines.push_back(&subroutines[s.subroutineIndex]);
-                    return s.subroutineIndex;
+                    activeSubroutines.push_back(s.routine);
+                    return s.routine->address;
                 }
             }
             throw runtime_error(fmt::format("no symbol found for {}", name));
@@ -103,6 +115,9 @@ namespace ts::checker {
             if (activeSubroutines.empty()) throw runtime_error("No active subroutine found");
             popFrameImplicit();
             auto subroutine = activeSubroutines.back();
+            if (subroutine->ops.empty()) {
+                throw runtime_error("Routine is empty");
+            }
             subroutine->ops.push_back(OP::Return);
             activeSubroutines.pop_back();
         }
@@ -110,21 +125,20 @@ namespace ts::checker {
         /**
          * The returning index will be replaced for all Call OP with the real subroutine address.
          */
-        unsigned int findSubroutineIndex(const string_view &identifier) {
-            //todo: this should go through frame->symbols, because there could be multiple subroutines with the same name
+        Symbol &findSymbol(const string_view &identifier) {
             Frame *current = frame.get();
 
             while (true) {
                 for (auto &&s: current->symbols) {
                     if (s.name == identifier) {
-                        return s.subroutineIndex;
+                        return s;
                     }
                 }
                 if (!current->previous) break;
                 current = current->previous.get();
             };
 
-            throw runtime_error(fmt::format("No subroutine for {} found", identifier));
+            throw runtime_error(fmt::format("No symbol for {} found", identifier));
         }
 
         /**
@@ -144,6 +158,12 @@ namespace ts::checker {
         void pushAddress(unsigned int address) {
             auto &ops = getOPs();
             writeUint32(ops, ops.size(), address);
+        }
+
+        void pushSymbolAddress(Symbol &symbol) {
+            auto &ops = getOPs();
+            writeUint32(ops, ops.size(), symbol.frame->id);
+            writeUint32(ops, ops.size(), symbol.index);
         }
 
         vector<unsigned char> &getOPs() {
@@ -177,38 +197,37 @@ namespace ts::checker {
          * Symbols will be created first before a body is extracted. This makes sure all
          * symbols are known before their reference is used.
          */
-        void pushSymbol(string_view name, SymbolType type, unsigned int pos, shared<Frame> frameToUse = nullptr) {
+        Symbol &pushSymbol(string_view name, SymbolType type, unsigned int pos, shared<Frame> frameToUse = nullptr) {
             if (!frameToUse) frameToUse = frame;
+
+            for (auto &&v: frameToUse->symbols) {
+                if (v.name == name) {
+                    v.declarations++;
+                    return v;
+                }
+            }
+
+            frameToUse->symbols.push_back(Symbol{
+                    .frame = frameToUse,
+                    .name = name,
+                    .pos = pos,
+                    .index = (unsigned int) frameToUse->symbols.size()
+            });
+            return frameToUse->symbols.back();
+        }
+
+        Symbol &pushSymbolForRoutine(string_view name, SymbolType type, unsigned int pos, shared<Frame> frameToUse = nullptr) {
+            auto &symbol = pushSymbol(name, type, pos, frameToUse);
+            if (symbol.routine) return symbol;
 
             Subroutine routine{name};
             routine.pos = pos;
-            frameToUse->symbols.push_back(Symbol{.name = name, .subroutineIndex = (unsigned int)subroutines.size()});
-
+            routine.type = type;
+            routine.address = subroutines.size();
             subroutines.push_back(std::move(routine));
+            symbol.routine = &subroutines.back();
 
-//            const unsigned int index = frameToUse->symbols.size();
-//            frameToUse->symbols.push_back(Symbol{.name = name, .index = index});
-//
-//            const auto nameAddress = registerStorage(name);
-//
-//            ops.insert(ops.begin() + frameToUse->headerOffset, OP::Var);
-//            ops.insert(ops.begin() + frameToUse->headerOffset + 1, {0, 0, 0, 0}); //is there a faster way?
-//            writeUint(ops, frameToUse->headerOffset + 1, nameAddress);
-//
-//            unsigned int frameOffset = 0;
-//            shared<Frame>& current = frame;
-//
-//            while (current) {
-//                current->headerOffset += 5;  //for each frame in between active `frame` and including `frameToUse` we have to increase headerOffset
-//
-//                if (current == frameToUse) break;
-//                frameOffset++;
-//                current = current->previous;
-//            }
-//
-////            opSourceMap[address] = pos; //todo sourcemap
-//
-//            return FrameOffset{.frame = frameOffset, .symbol = index};
+            return symbol;
         }
 
         //note: make sure the same name is not added twice. needs hashmap
@@ -217,7 +236,7 @@ namespace ts::checker {
 
             const auto address = storageIndex;
             storage.push_back(s);
-            storageIndex += s.size();
+            storageIndex += 2 + s.size();
             return address;
         }
 
@@ -226,15 +245,15 @@ namespace ts::checker {
         }
 
         string_view findStorage(unsigned int index) {
-            unsigned int i = 2;
+            unsigned int i = 5;
             for (auto &&s: storage) {
                 if (i == index) return s;
-                i += s.size();
+                i += 2 + s.size();
             }
             return "!unknown";
         }
 
-        vector<unsigned char> build() {
+        string build() {
             vector<unsigned char> bin;
             unsigned int address = 0;
 
@@ -272,7 +291,7 @@ namespace ts::checker {
 
             bin.insert(bin.end(), ops.begin(), ops.end());
 
-            return bin;
+            return string(bin.begin(), bin.end());
         }
 
         void setFinalBinaryAddress(vector<unsigned char> &ops) {
@@ -282,13 +301,13 @@ namespace ts::checker {
                 switch (op) {
                     case OP::Call: {
                         //adjust binary address
-                        auto index = readUint32(ops, i);
+                        auto index = readUint32(ops, i + 1);
                         auto &routine = subroutines[index];
-                        writeUint32(ops, i, routine.address);
+                        writeUint32(ops, i + 1, routine.address);
                         i += 4;
                         break;
                     }
-                    case OP::Assign:
+                    case OP::Loads: //2 bytes each: frame id + symbol index
                     case OP::NumberLiteral:
                     case OP::BigIntLiteral:
                     case OP::StringLiteral: {
@@ -305,11 +324,15 @@ namespace ts::checker {
                 auto op = (OP) ops[i];
                 std::string params = "";
                 switch (op) {
-                    case OP::Assign: {
+                    case OP::Call: {
                         params += fmt::format(" &{}", readUint32(ops, i + 1));
                         i += 4;
                         break;
                     }
+                    case OP::Loads:
+                        params += fmt::format(" &{}:{}", readUint16(ops, i + 1), readUint16(ops, i + 3));
+                        i += 4;
+                        break;
                     case OP::NumberLiteral:
                     case OP::BigIntLiteral:
                     case OP::StringLiteral: {
@@ -394,46 +417,65 @@ namespace ts::checker {
 //                    debug("type reference {}", to<TypeReferenceNode>(node)->typeName->to<Identifier>().escapedText);
 //                    program.pushOp(OP::Number);
 
-                    program.pushOp(OP::Call);
                     const auto name = to<TypeReferenceNode>(node)->typeName->to<Identifier>().escapedText;
-                    program.pushAddress(program.findSubroutineIndex(name));
+                    auto &symbol = program.findSymbol(name);
+                    if (symbol.type == SymbolType::TypeVariable) {
+                        program.pushOp(OP::Loads);
+                        program.pushSymbolAddress(symbol);
+                    } else {
+                        program.pushOp(OP::Call);
+                        program.pushAddress(symbol.routine->address);
+                    }
                     break;
                 }
                 case types::SyntaxKind::TypeAliasDeclaration: {
                     const auto n = to<TypeAliasDeclaration>(node);
 
-                    //1. create new subroutine
-                    program.pushSubroutine(n->name->escapedText);
+                    auto &symbol = program.pushSymbolForRoutine(n->name->escapedText, SymbolType::Type, n->pos); //move this to earlier symbol-scan round
+                    if (symbol.declarations > 1) {
+                        //todo: for functions/variable embed an error that symbol was declared twice in the same scope
+                    } else {
+                        //populate routine
+                        program.pushSubroutine(n->name->escapedText);
 
-                    //2. extract type parameters
+                        //todo: extract type parameters
+                        if (n->typeParameters) {
+                            for (auto &&p: n->typeParameters->list) {
+                                auto symbol = program.pushSymbol(n->name->escapedText, SymbolType::TypeVariable, n->pos);
+                                program.pushOp(instructions::Var);
+                            }
+                        }
 
-                    //3. extract type
-                    handle(n->type, program);
-
-                    program.popSubroutine();
+                        handle(n->type, program);
+                        program.popSubroutine();
+                    }
                     break;
                 }
                 case types::SyntaxKind::FunctionDeclaration: {
                     const auto n = to<FunctionDeclaration>(node);
                     if (const auto id = to<Identifier>(n->name)) {
-                        program.pushSymbol(id->escapedText, SymbolType::Function, id->pos); //move this to earlier symbol-scan round
-                        program.pushSubroutine(id->escapedText);
-
-                        for (auto &&param: n->parameters->list) {
-                            handle(n, program);
-                        }
-                        if (n->type) {
-                            handle(n->type, program);
+                        auto &symbol = program.pushSymbolForRoutine(id->escapedText, SymbolType::Function, id->pos); //move this to earlier symbol-scan round
+                        if (symbol.declarations > 1) {
+                            //todo: embed error since function is declared twice
                         } else {
-                            //todo: Infer from body
-                            program.pushOp(OP::Unknown);
-                            if (n->body) {
-                            } else {
-                            }
-                        }
+                            program.pushSubroutine(id->escapedText);
 
-                        program.pushOp(OP::Function);
-                        program.popSubroutine();
+                            for (auto &&param: n->parameters->list) {
+                                handle(n, program);
+                            }
+                            if (n->type) {
+                                handle(n->type, program);
+                            } else {
+                                //todo: Infer from body
+                                program.pushOp(OP::Unknown);
+                                if (n->body) {
+                                } else {
+                                }
+                            }
+
+                            program.pushOp(OP::Function);
+                            program.popSubroutine();
+                        }
                     } else {
                         debug("No identifier in name");
                     }
@@ -449,21 +491,26 @@ namespace ts::checker {
                 case types::SyntaxKind::VariableDeclaration: {
                     const auto n = to<VariableDeclaration>(node);
                     if (const auto id = to<Identifier>(n->name)) {
-                        program.pushSymbol(id->escapedText, SymbolType::Variable, id->pos); //move this to earlier symbol-scan round
-                        const auto subroutineIndex = program.pushSubroutine(id->escapedText);
-
-                        if (n->type) {
-                            handle(n->type, program);
+                        auto &symbol = program.pushSymbolForRoutine(id->escapedText, SymbolType::Variable, id->pos); //move this to earlier symbol-scan round
+                        if (symbol.declarations > 1) {
+                            //todo: embed error since variable is declared twice
                         } else {
-                            program.pushOp(OP::Unknown);
-                        }
-                        program.popSubroutine();
+                            const auto subroutineIndex = program.pushSubroutine(id->escapedText);
 
-                        if (n->initializer) {
-                            //varName = initializer
-                            handle(n->initializer, program);
-                            program.pushOp(OP::Assign);
-                            program.pushAddress(subroutineIndex);
+                            if (n->type) {
+                                handle(n->type, program);
+                            } else {
+                                program.pushOp(OP::Unknown);
+                            }
+                            program.popSubroutine();
+
+                            if (n->initializer) {
+                                //varName = initializer
+                                handle(n->initializer, program);
+                                program.pushOp(OP::Call);
+                                program.pushAddress(subroutineIndex);
+                                program.pushOp(OP::Assign);
+                            }
                         }
                     } else {
                         debug("No identifier in name");

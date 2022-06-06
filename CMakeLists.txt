@@ -3,6 +3,10 @@ project(typescript)
 
 set(CMAKE_CXX_STANDARD 23)
 
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(CMAKE_CXX_FLAGS "-Wall -Wextra -O3 -ffast-math")
+endif()
+
 include_directories(libs/tracy/)
 include_directories(libs/fmt/include/)
 include_directories(libs)

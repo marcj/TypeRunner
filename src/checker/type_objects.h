@@ -5,7 +5,7 @@
 #include <vector>
 #include <memory>
 
-namespace ts::checker {
+namespace ts::vm {
     using std::string_view;
     using std::array;
     using std::reference_wrapper;
@@ -61,17 +61,19 @@ namespace ts::checker {
 
     struct Type {
         string_view typeName;
-        array<reference_wrapper<Type>, 0> typeArguments;
+        TypeKind kind = TypeKind::Never;
+//        array<reference_wrapper<Type>, 0> typeArguments;
     };
 
     template<TypeKind T, class ... Base>
     struct BrandKind: Base ... {
-//        constexpr static const TypeKind KIND = T;
-//        const TypeKind kind = T;
+        constexpr static const TypeKind KIND = T;
+        BrandKind() {
+            this->kind = T;
+        }
     };
 
     struct TypeNever: BrandKind<TypeKind::Never, Type> {};
-
     struct TypeAny: BrandKind<TypeKind::Any, Type> {};
     struct TypeUnknown: BrandKind<TypeKind::Unknown, Type> {};
     struct TypeVoid: BrandKind<TypeKind::Void, Type> {};
@@ -83,8 +85,22 @@ namespace ts::checker {
     struct TypeSymbol: BrandKind<TypeKind::Symbol, Type> {};
     struct TypeNull: BrandKind<TypeKind::Null, Type> {};
     struct TypeUndefined: BrandKind<TypeKind::Undefined, Type> {};
+
+    struct TypeUnion: BrandKind<TypeKind::Undefined, Type> {
+        vector<shared<Type>> types;
+    };
+
+    enum class TypeLiteralType {
+        Number,
+        String,
+        Bigint
+    };
+
     struct TypeLiteral: BrandKind<TypeKind::Literal, Type> {
         //symbol, string, number, boolean, bigint (regexp)
+        string_view literal;
+        TypeLiteralType type;
+        TypeLiteral(const string_view literal, TypeLiteralType type): literal(literal), type(type) {}
     };
 
     struct TypeParameter: BrandKind<TypeKind::Parameter, Type> {
@@ -98,4 +114,47 @@ namespace ts::checker {
         std::unique_ptr<TypeParameter> t;
         std::array<std::unique_ptr<TypeParameter>, 42> m_dates;
     };
+
+    template<class T>
+    sharedOpt<T> to(sharedOpt<Type> p) {
+        if (!p) return nullptr;
+        if (T::KIND != TypeKind::Unknown && p->kind != T::KIND) return nullptr;
+        return reinterpret_pointer_cast<T>(p);
+    }
+
+    string_view stringify(shared < Type > type) {
+        //todo: recursive types
+
+        switch (type->kind) {
+            case TypeKind::Never: return "never";
+            case TypeKind::Void: return "void";
+            case TypeKind::Unknown: return "unknown";
+            case TypeKind::Undefined: return "undefined";
+            case TypeKind::Null: return "null";
+            case TypeKind::String: return "string";
+            case TypeKind::Number: return "number";
+            case TypeKind::Boolean: return "boolean";
+            case TypeKind::Bigint: return "bigint";
+            case TypeKind::Literal: {
+                auto literal = to<TypeLiteral>(type);
+                switch (literal->type) {
+                    case TypeLiteralType::String: return string("\"").append(literal->literal).append("\"");
+                    case TypeLiteralType::Number: return literal->literal;
+                }
+            }
+            case TypeKind::Union: {
+                auto t = to<TypeUnion>(type);
+                auto i = 0;
+                string r = "";
+                for (auto &&v: t->types) {
+                    if (i > 0) r += " | ";
+                    r += stringify(v);
+                    i++;
+                }
+                return r;
+            }
+        }
+
+        return "error";
+    }
 }

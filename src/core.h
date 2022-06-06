@@ -253,7 +253,7 @@ namespace ts {
 
     inline void bench(int iterations, const function<void()> &callback) {
         auto start = std::chrono::high_resolution_clock::now();
-        for (auto i = 0; i <10000; i++) {
+        for (auto i = 0; i <iterations; i++) {
             callback();
         }
 

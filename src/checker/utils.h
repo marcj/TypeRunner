@@ -10,6 +10,10 @@ namespace ts::checker {
         return *(uint32_t *) (bin.data() + offset);
     }
 
+    uint32_t readUint32(const string_view &bin, unsigned int offset) {
+        return *(uint32_t *) (bin.begin() + offset);
+    }
+
     void writeUint32(vector<unsigned char> &bin, unsigned int offset, uint32_t value) {
         if (offset + 4 > bin.size()) bin.resize(bin.size() + 4);
         *(uint32_t *) (bin.data() + offset) = value;
@@ -17,6 +21,10 @@ namespace ts::checker {
 
     uint16_t readUint16(const vector<unsigned char> &bin, unsigned int offset) {
         return *(uint16_t *) (bin.data() + offset);
+    }
+
+    uint16_t readUint16(const string_view &bin, unsigned int offset) {
+        return *(uint16_t *) (bin.begin() + offset);
     }
 
     void writeUint16(vector<unsigned char> &bin, unsigned int offset, uint16_t value) {
