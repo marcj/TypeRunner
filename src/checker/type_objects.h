@@ -81,18 +81,19 @@ namespace ts::vm {
     struct TypeString: BrandKind<TypeKind::String, Type> {};
     struct TypeNumber: BrandKind<TypeKind::Number, Type> {};
     struct TypeBigint: BrandKind<TypeKind::Bigint, Type> {};
-    struct TypeBoolean: BrandKind<TypeKind::Boolean, Type> {};
+    struct TypeBoolean: BrandKind<TypeKind::Boolean, Type> { };
     struct TypeSymbol: BrandKind<TypeKind::Symbol, Type> {};
     struct TypeNull: BrandKind<TypeKind::Null, Type> {};
     struct TypeUndefined: BrandKind<TypeKind::Undefined, Type> {};
 
-    struct TypeUnion: BrandKind<TypeKind::Undefined, Type> {
+    struct TypeUnion: BrandKind<TypeKind::Union, Type> {
         vector<shared<Type>> types;
     };
 
     enum class TypeLiteralType {
         Number,
         String,
+        Boolean,
         Bigint
     };
 
@@ -116,13 +117,13 @@ namespace ts::vm {
     };
 
     template<class T>
-    sharedOpt<T> to(sharedOpt<Type> p) {
+    sharedOpt<T> to(const sharedOpt<Type> &p) {
         if (!p) return nullptr;
         if (T::KIND != TypeKind::Unknown && p->kind != T::KIND) return nullptr;
         return reinterpret_pointer_cast<T>(p);
     }
 
-    string_view stringify(shared < Type > type) {
+    string stringify(shared < Type > type) {
         //todo: recursive types
 
         switch (type->kind) {
@@ -139,8 +140,11 @@ namespace ts::vm {
                 auto literal = to<TypeLiteral>(type);
                 switch (literal->type) {
                     case TypeLiteralType::String: return string("\"").append(literal->literal).append("\"");
-                    case TypeLiteralType::Number: return literal->literal;
+                    case TypeLiteralType::Number: return string(literal->literal);
+                    case TypeLiteralType::Bigint: return string(literal->literal);
+                    case TypeLiteralType::Boolean: return string(literal->literal);
                 }
+                return "unknown-literal";
             }
             case TypeKind::Union: {
                 auto t = to<TypeUnion>(type);

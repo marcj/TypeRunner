@@ -37,8 +37,15 @@ namespace ts::instructions {
 
         Class,
 
+        Tuple,
+        TupleMember,
+
         Union,
         Intersection,
+
+        Extends, //expected 2 entries on the stack
+        Condition, //expected 3 entries on the stack
+        JumpCondition, //expected 1 entry on the stack + two uint16 parameters
 
         /**
          * Stack parameter. For each JS variable, JS function, as well as type variables (mapped-type variable for example).
@@ -49,6 +56,17 @@ namespace ts::instructions {
          *  2. position in source code. necessary to determine if a reference is made to a const symbol before it was defined.
          */
         Var,
+
+        /**
+         * Makes sure that in the current variable slot is a type placed if nothing was provided as parameter.
+         *
+         * For reach type argument like here `T` a TypeArgument OP is generated.
+         * Different to Var OP since Var does reserve an entry on the stack, whereas TypeArgument does nothing on the stack per default.
+         * ```typescript
+         * type A<T> = T;
+         * ```
+         */
+        TypeArgument,
 
         /**
          * Reserves a type variable on the stack, which contains a type object. Unknown as default.
@@ -63,7 +81,9 @@ namespace ts::instructions {
         Return,
 
         Jump,
+        Distribute, //calls a subroutine for each union member. one parameter (address to subroutine)
         Call //call a subroutine and push the result on the stack
+
     };
 }
 

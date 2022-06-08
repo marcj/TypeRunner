@@ -26,7 +26,8 @@ TEST(checker, program) {
 TEST(checker, type) {
     Parser parser;
 
-    std:string code = R"(
+    std:
+    string code = R"(
     const v1: string = "abc";
     const v2: number = 123;
     )";
@@ -49,7 +50,8 @@ TEST(checker, type) {
 TEST(checker, type2) {
     Parser parser;
 
-    std:string code = R"(
+    std:
+    string code = R"(
     type a = number;
     type b = string | a;
     const v1: b = 'abc';
@@ -66,6 +68,62 @@ TEST(checker, type2) {
 
     vm::VM vm;
     vm.call(bin);
+}
+
+TEST(checker, type3) {
+    Parser parser;
+
+    string code = R"(
+    type a<K, T> = K | (T extends string ? 'yes' : 'no');
+    const v1: a<true, number> = 'no';
+    const v2: a<true, string> = 'yes';
+    const v3: a<true, string> = true;
+    const v4: a<true, string | number> = 'yes';
+    const v5: a<true, string> = 'nope';
+    )";
+
+    auto result = parser.parseSourceFile("app.ts", code, ScriptTarget::Latest, false, ScriptKind::TS, {});
+
+    checker::Compiler compiler;
+    auto program = compiler.compileSourceFile(result);
+    program.print();
+    auto bin = program.build();
+
+    vm::VM vm;
+    vm.call(bin);
+    vm.printErrors();
+    EXPECT_EQ(vm.errors.size(), 1);
+
+    bench(10, [&] {
+        vm::VM vm;
+        vm.call(bin);
+    });
+}
+
+TEST(checker, tuple) {
+    Parser parser;
+
+    string code = R"(
+    type a<T> = [1?, T?];
+    const v1: a<string> = [1, 'abc'];
+    )";
+
+    auto result = parser.parseSourceFile("app.ts", code, ScriptTarget::Latest, false, ScriptKind::TS, {});
+
+    checker::Compiler compiler;
+    auto program = compiler.compileSourceFile(result);
+    program.print();
+    auto bin = program.build();
+
+    vm::VM vm;
+    vm.call(bin);
+    vm.printErrors();
+    EXPECT_EQ(vm.errors.size(), 1);
+
+    bench(10, [&] {
+        vm::VM vm;
+        vm.call(bin);
+    });
 }
 
 TEST(checker, assign) {

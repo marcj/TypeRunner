@@ -5936,13 +5936,12 @@ namespace ts {
                 return finishNode(factory.createRestTypeNode(parseType()), pos);
             }
             auto type = parseType();
-            //no JSDoc support
-//            if (isJSDocNullableType(type) && type->pos == type->type->pos) {
-//                auto node = factory.createOptionalTypeNode(type->type);
-//                setTextRange(node, type);
-//                Node->flags = type->flags;
-//                return node;
-//            }
+            if (isJSDocNullableType(type) && type->pos == to<JSDocNullableType>(type)->type->pos) {
+                auto node = factory.createOptionalTypeNode(to<JSDocNullableType>(type)->type);
+                setTextRange(node, type);
+                node->flags = type->flags;
+                return node;
+            }
             return type;
         }
 
@@ -6104,18 +6103,18 @@ namespace ts {
             while (!scanner.hasPrecedingLineBreak()) {
                 switch (token()) {
                     case SyntaxKind::ExclamationToken:
-                        throw runtime_error("No JSDoc support");
-//                        nextToken();
-//                        type = finishNode(factory.createJSDocNonNullableType(type, /*postfix*/ true), pos);
+                        nextToken();
+                        //although it's called "JSDoc" it will be filtered out later on, e.g. for optional tuple member, see parseTupleElementType()
+                        type = finishNode(factory.createJSDocNonNullableType(type, /*postfix*/ true), pos);
                         break;
                     case SyntaxKind::QuestionToken:
                         // If next token is start of a type we have a conditional type
                         if (lookAhead<bool>(CALLBACK(nextTokenIsStartOfType))) {
                             return type;
                         }
-                        throw runtime_error("No JSDoc support");
-//                        nextToken();
-//                        type = finishNode(factory.createJSDocNullableType(type, /*postfix*/ true), pos);
+                        nextToken();
+                        //although it's called "JSDoc" it will be filtered out later on, e.g. for optional tuple member, see parseTupleElementType()
+                        type = finishNode(factory.createJSDocNullableType(type, /*postfix*/ true), pos);
                         break;
                     case SyntaxKind::OpenBracketToken:
                         parseExpected(SyntaxKind::OpenBracketToken);

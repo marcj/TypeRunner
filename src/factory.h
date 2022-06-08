@@ -1152,14 +1152,14 @@ namespace ts {
 //                : node;
 //        }
 //
-//        // @api
-//        function createOptionalTypeNode(shared<TypeNode> type) {
-//            auto node = createBaseNode<OptionalTypeNode>(SyntaxKind::OptionalType);
-//            node->type = parenthesizer.parenthesizeTypeOfOptionalType(type);
-//            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
-//            return node;
-//        }
-//
+        // @api
+        shared<OptionalTypeNode> createOptionalTypeNode(shared<TypeNode> type) {
+            auto node = createBaseNode<OptionalTypeNode>(SyntaxKind::OptionalType);
+            node->type = parenthesizer.parenthesizeTypeOfOptionalType(type);
+            node->transformFlags = (int)TransformFlags::ContainsTypeScript;
+            return node;
+        }
+
 //        // @api
 //        function updateOptionalTypeNode(node: OptionalTypeNode, shared<TypeNode> type): OptionalTypeNode {
 //            return node->type != type
@@ -2864,23 +2864,26 @@ namespace ts {
 //            return createBaseNode(kind);
 //        }
 //
-//        // @api
-//        // createJSDocNullableType
-//        // createJSDocNonNullableType
-//        function createJSDocPrePostfixUnaryTypeWorker<T extends JSDocType & { readonly sharedOpt<TypeNode> type; readonly postfix: boolean }>(SyntaxKind kind, type: T["type"], postfix = false): T {
-//            auto node = createJSDocUnaryTypeWorker(
-//                kind,
-//                postfix ? type && parenthesizer.parenthesizeNonArrayTypeOfPostfixType(type) : type
-//            ) as Mutable<T>;
-//            node->postfix = postfix;
-//            return node;
-//        }
-//
-//        // @api
-//        // createJSDocOptionalType
-//        // createJSDocVariadicType
-//        // createJSDocNamepathType
-//        function createJSDocUnaryTypeWorker<T extends JSDocType & { readonly sharedOpt<TypeNode> type; }>(SyntaxKind kind, type: T["type"]): T {
+        // @api
+        shared<JSDocNonNullableType> createJSDocNonNullableType(shared<TypeNode> type, bool postfix = false) {
+            auto node = createBaseNode<JSDocNonNullableType>();
+            node->type = postfix ? type ? parenthesizer.parenthesizeNonArrayTypeOfPostfixType(type) : nullptr : type;
+            node->postfix = postfix;
+            return node;
+        }
+
+        shared<JSDocNullableType> createJSDocNullableType(shared<TypeNode> type, bool postfix = false) {
+            auto node = createBaseNode<JSDocNullableType>();
+            node->type = postfix ? type ? parenthesizer.parenthesizeNonArrayTypeOfPostfixType(type) : nullptr : type;
+            node->postfix = postfix;
+            return node;
+        }
+
+        // @api
+        // createJSDocOptionalType
+        // createJSDocVariadicType
+        // createJSDocNamepathType
+//        shared<Node> createJSDocUnaryTypeWorker(SyntaxKind kind, shared<TypeNode> type) {
 //            auto node = createBaseNode<T>(kind);
 //            node->type = type;
 //            return node;

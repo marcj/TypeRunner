@@ -15,6 +15,41 @@ namespace ts::vm {
             if (right->kind == TypeKind::Literal) return to<TypeLiteral>(right)->type == TypeLiteralType::String;
         }
 
+        if (left->kind == TypeKind::Number) {
+            if (right->kind == TypeKind::Number) return true;
+            if (right->kind == TypeKind::Literal) return to<TypeLiteral>(right)->type == TypeLiteralType::Number;
+        }
+
+        if (left->kind == TypeKind::Literal && right->kind == TypeKind::Literal) {
+            return to<TypeLiteral>(left)->type == to<TypeLiteral>(right)->type &&
+                    to<TypeLiteral>(left)->literal == to<TypeLiteral>(right)->literal;
+        }
+
+        if (left->kind == TypeKind::Union) {
+            if (right->kind != TypeKind::Union) {
+                for (auto &&l: to<TypeUnion>(left)->types) {
+                    if (isAssignable(l, right)) return true;
+                }
+                return false;
+            } else {
+                //e.g.: string|number = string|boolean
+                const auto leftTypes = to<TypeUnion>(left)->types;
+                const auto rightTypes = to<TypeUnion>(right)->types;
+
+                for (auto &&r: rightTypes) {
+                    bool valid = false;
+                    for (auto &&l: leftTypes) {
+                        if (isAssignable(l, r)) {
+                            valid = true;
+                            break;
+                        };
+                    }
+                    if (!valid) return false;
+                }
+                return true;
+            }
+        }
+
         return false;
     }
 }

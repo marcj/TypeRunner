@@ -18,7 +18,8 @@ namespace ts::checker {
         Variable,
         Function,
         Class,
-        Type,
+        TypeFunction, //parts of conditional type, mapped type, ..
+        Type, //type alias
         TypeVariable //template variable
     };
 
@@ -27,11 +28,12 @@ namespace ts::checker {
     struct Subroutine {
         vector<unsigned char> ops; //OPs, and its parameters
         unordered_map<unsigned int, unsigned int> opSourceMap;
-        string_view identifier;
+        string_view identifier{};
         unsigned int address{}; //during compilation the index address, after the final address in the binary
         unsigned int pos{};
         SymbolType type = SymbolType::Type;
 
+        explicit Subroutine() {}
         explicit Subroutine(string_view &identifier): identifier(identifier) {}
     };
 
@@ -43,7 +45,7 @@ namespace ts::checker {
         const unsigned int index{}; //symbol index of the current frame
         const unsigned int pos;
         unsigned int declarations = 1;
-        Subroutine *routine = nullptr;
+        sharedOpt<Subroutine> routine = nullptr;
         shared<Frame> frame = nullptr;
     };
 
@@ -81,8 +83,8 @@ namespace ts::checker {
         shared<Frame> frame = make_shared<Frame>();
 
         //tracks which subroutine is active (end() is), so that pushOp calls are correctly assigned.
-        vector<Subroutine *> activeSubroutines;
-        vector<Subroutine> subroutines;
+        vector<shared<Subroutine>> activeSubroutines;
+        vector<shared<Subroutine>> subroutines;
 
         //implicit is when a OP itself triggers in the VM a new frame, without having explicitly a OP::Frame
         shared<Frame> pushFrame(bool implicit = false) {
@@ -91,6 +93,22 @@ namespace ts::checker {
             frame = make_shared<Frame>(frame);
             frame->id = id + 1;
             return frame;
+        }
+
+        /**
+         * Creates a new nameless subroutine, used for example in mapped-type, conditional type
+         * @return
+         */
+        unsigned int pushSubroutine2(unsigned int pos) {
+            auto routine = make_shared<Subroutine>();
+            routine->pos = pos;
+            routine->type = SymbolType::TypeFunction;
+            routine->address = subroutines.size();
+
+            pushFrame(true); //subroutines have implicit stack frames due to call convention
+            subroutines.push_back(routine);
+            activeSubroutines.push_back(subroutines.back());
+            return routine->address;
         }
 
         /**
@@ -108,10 +126,7 @@ namespace ts::checker {
             throw runtime_error(fmt::format("no symbol found for {}", name));
         }
 
-        /**
-         * Returns the index of the sub routine. Will be replaced in build() with the real address.
-         */
-        void popSubroutine() {
+        shared<Subroutine> popSubroutine() {
             if (activeSubroutines.empty()) throw runtime_error("No active subroutine found");
             popFrameImplicit();
             auto subroutine = activeSubroutines.back();
@@ -120,11 +135,9 @@ namespace ts::checker {
             }
             subroutine->ops.push_back(OP::Return);
             activeSubroutines.pop_back();
+            return subroutine;
         }
 
-        /**
-         * The returning index will be replaced for all Call OP with the real subroutine address.
-         */
         Symbol &findSymbol(const string_view &identifier) {
             Frame *current = frame.get();
 
@@ -160,10 +173,22 @@ namespace ts::checker {
             writeUint32(ops, ops.size(), address);
         }
 
+        void pushUint16(unsigned int v) {
+            auto &ops = getOPs();
+            writeUint16(ops, ops.size(), v);
+        }
+
         void pushSymbolAddress(Symbol &symbol) {
             auto &ops = getOPs();
-            writeUint32(ops, ops.size(), symbol.frame->id);
-            writeUint32(ops, ops.size(), symbol.index);
+            unsigned int frameOffset = 0;
+            auto current = frame;
+            while (current) {
+                if (current == symbol.frame) break;
+                frameOffset++;
+                current = current->previous;
+            }
+            writeUint16(ops, ops.size(), frameOffset);
+            writeUint16(ops, ops.size(), symbol.index);
         }
 
         vector<unsigned char> &getOPs() {
@@ -210,6 +235,7 @@ namespace ts::checker {
             frameToUse->symbols.push_back(Symbol{
                     .frame = frameToUse,
                     .name = name,
+                    .type = type,
                     .pos = pos,
                     .index = (unsigned int) frameToUse->symbols.size()
             });
@@ -220,12 +246,12 @@ namespace ts::checker {
             auto &symbol = pushSymbol(name, type, pos, frameToUse);
             if (symbol.routine) return symbol;
 
-            Subroutine routine{name};
-            routine.pos = pos;
-            routine.type = type;
-            routine.address = subroutines.size();
-            subroutines.push_back(std::move(routine));
-            symbol.routine = &subroutines.back();
+            auto routine = make_shared<Subroutine>(name);
+            routine->pos = pos;
+            routine->type = type;
+            routine->address = subroutines.size();
+            subroutines.push_back(routine);
+            symbol.routine = routine;
 
             return symbol;
         }
@@ -272,19 +298,19 @@ namespace ts::checker {
             //detect final binary address of all subroutines
             unsigned int routineAddress = address;
             for (auto &&routine: subroutines) {
-                routine.address = routineAddress;
-                routineAddress += routine.ops.size();
+                routine->address = routineAddress;
+                routineAddress += routine->ops.size();
             }
 
             //go through all OPs and adjust CALL parameter to the final binary address
             setFinalBinaryAddress(ops);
             for (auto &&routine: subroutines) {
-                setFinalBinaryAddress(routine.ops);
+                setFinalBinaryAddress(routine->ops);
             }
 
             for (auto &&routine: subroutines) {
-                bin.insert(bin.end(), routine.ops.begin(), routine.ops.end());
-                address += routine.ops.size();
+                bin.insert(bin.end(), routine->ops.begin(), routine->ops.end());
+                address += routine->ops.size();
             }
 
             writeUint32(bin, 1, address);
@@ -299,11 +325,27 @@ namespace ts::checker {
             for (unsigned int i = 0; i < end; i++) {
                 auto op = (OP) ops[i];
                 switch (op) {
+                    case OP::Distribute: {
+                        auto index = readUint32(ops, i + 1);
+                        auto &routine = subroutines[index];
+                        writeUint32(ops, i + 1, routine->address);
+                        i += 4;
+                        break;
+                    }
                     case OP::Call: {
                         //adjust binary address
                         auto index = readUint32(ops, i + 1);
                         auto &routine = subroutines[index];
-                        writeUint32(ops, i + 1, routine.address);
+                        writeUint32(ops, i + 1, routine->address);
+                        i += 6;
+                        break;
+                    }
+                    case OP::JumpCondition: {
+                        //adjust binary address
+                        auto first = readUint16(ops, i + 1);
+                        auto second = readUint16(ops, i + 3);
+                        writeUint16(ops, i + 1, subroutines[first]->address);
+                        writeUint16(ops, i + 3, subroutines[second]->address);
                         i += 4;
                         break;
                     }
@@ -325,14 +367,25 @@ namespace ts::checker {
                 std::string params = "";
                 switch (op) {
                     case OP::Call: {
+                        params += fmt::format(" &{}[{}]", readUint32(ops, i + 1), readUint16(ops, i + 5));
+                        i += 6;
+                        break;
+                    }
+                    case OP::JumpCondition: {
+                        params += fmt::format(" &{}:&{}", readUint16(ops, i + 1), readUint16(ops, i + 3));
+                        i += 4;
+                        break;
+                    }
+                    case OP::Distribute: {
                         params += fmt::format(" &{}", readUint32(ops, i + 1));
                         i += 4;
                         break;
                     }
-                    case OP::Loads:
+                    case OP::Loads: {
                         params += fmt::format(" &{}:{}", readUint16(ops, i + 1), readUint16(ops, i + 3));
                         i += 4;
                         break;
+                    }
                     case OP::NumberLiteral:
                     case OP::BigIntLiteral:
                     case OP::StringLiteral: {
@@ -354,8 +407,8 @@ namespace ts::checker {
         void print() {
             int i = 0;
             for (auto &&subroutine: subroutines) {
-                fmt::print("Subroutine {} &{}, {} bytes: ", subroutine.identifier, i++, subroutine.ops.size());
-                printOps(subroutine.ops);
+                fmt::print("Subroutine {} &{}, {} bytes: ", subroutine->identifier, i++, subroutine->ops.size());
+                printOps(subroutine->ops);
             }
 
             debug("Main {} bytes: {}", ops.size(), ops);
@@ -400,6 +453,11 @@ namespace ts::checker {
                     break;
                 case types::SyntaxKind::FalseKeyword: program.pushOp(OP::False);
                     break;
+                case types::SyntaxKind::LiteralType: {
+                    const auto n = to<LiteralTypeNode>(node);
+                    handle(n->literal, program);
+                    break;
+                }
                 case types::SyntaxKind::UnionType: {
                     const auto n = to<UnionTypeNode>(node);
                     program.pushFrame();
@@ -416,15 +474,28 @@ namespace ts::checker {
                     //todo: search in symbol table and get address
 //                    debug("type reference {}", to<TypeReferenceNode>(node)->typeName->to<Identifier>().escapedText);
 //                    program.pushOp(OP::Number);
-
-                    const auto name = to<TypeReferenceNode>(node)->typeName->to<Identifier>().escapedText;
+                    const auto n = to<TypeReferenceNode>(node);
+                    const auto name = n->typeName->to<Identifier>().escapedText;
                     auto &symbol = program.findSymbol(name);
                     if (symbol.type == SymbolType::TypeVariable) {
                         program.pushOp(OP::Loads);
                         program.pushSymbolAddress(symbol);
                     } else {
+                        if (n->typeArguments) {
+                            for (auto &&p: n->typeArguments->list) {
+                                handle(p, program);
+                            }
+                        }
                         program.pushOp(OP::Call);
+                        if (!symbol.routine) {
+                            throw runtime_error("Reference is not a reference to a existing routine.");
+                        }
                         program.pushAddress(symbol.routine->address);
+                        if (n->typeArguments) {
+                            program.pushUint16(n->typeArguments->length());
+                        } else {
+                            program.pushUint16(0);
+                        }
                     }
                     break;
                 }
@@ -438,11 +509,11 @@ namespace ts::checker {
                         //populate routine
                         program.pushSubroutine(n->name->escapedText);
 
-                        //todo: extract type parameters
                         if (n->typeParameters) {
                             for (auto &&p: n->typeParameters->list) {
-                                auto symbol = program.pushSymbol(n->name->escapedText, SymbolType::TypeVariable, n->pos);
-                                program.pushOp(instructions::Var);
+                                auto &symbol = program.pushSymbol(to<TypeParameterDeclaration>(p)->name->escapedText, SymbolType::TypeVariable, n->pos);
+                                program.pushOp(instructions::TypeArgument);
+                                //todo constraints + default
                             }
                         }
 
@@ -482,6 +553,83 @@ namespace ts::checker {
 
                     break;
                 }
+                case types::SyntaxKind::ConditionalExpression: {
+                    const auto n = to<ConditionalExpression>(node);
+                    debug("ConditionalExpression");
+                    break;
+                }
+                case types::SyntaxKind::ConditionalType: {
+                    const auto n = to<ConditionalTypeNode>(node);
+                    //Depending on whether this a distributive conditional type or not, the whole conditional type has to be moved to its own function
+                    //so it can be executed for each union member.
+                    // - the `checkType` is a simple identifier (just `T`, no `[T]`, no `T | x`, no `{a: T}`, etc)
+//                    let distributiveOverIdentifier: Identifier | undefined = isTypeReferenceNode(narrowed.checkType) && isIdentifier(narrowed.checkType.typeName) ? narrowed.checkType.typeName : undefined;
+                    sharedOpt<Identifier> distributiveOverIdentifier = isTypeReferenceNode(n->checkType) && isIdentifier(to<TypeReferenceNode>(n->checkType)->typeName) ? to<Identifier>(to<TypeReferenceNode>(n->checkType)->typeName) : nullptr;
+
+                    if (distributiveOverIdentifier) {
+//                        program.pushSymbol(distributiveOverIdentifier->escapedText, SymbolType::TypeVariable, distributiveOverIdentifier->pos);
+//                        handle(n->checkType, program);
+//                        program.pushFrame();
+//                        //first we add to the stack the origin type we distribute over.
+//                        handle(narrowed.checkType, program);
+//
+//                        //since the distributive conditional type is a loop that changes only the found `T`, it is necessary to add that as variable,
+//                        //so call convention can take over.
+//                        program.pushVariable(getIdentifierName(distributiveOverIdentifier));
+//                        program.pushCoRoutine();
+                        program.pushSubroutine2(node->pos);
+
+                        //in the subroutine of the conditional type we place a new type variable, which acts as input.
+                        //the `Distribute` OP makes then sure that the current stack entry is used as input
+                        program.pushSymbol(distributiveOverIdentifier->escapedText, SymbolType::TypeVariable, distributiveOverIdentifier->pos);
+                        program.pushOp(instructions::Var);
+                    }
+
+                    handle(n->checkType, program);
+                    handle(n->extendsType, program);
+                    program.pushOp(instructions::Extends);
+
+                    auto trueProgram = program.pushSubroutine2(n->trueType->pos);
+                    handle(n->trueType, program);
+                    program.popSubroutine();
+
+                    auto falseProgram = program.pushSubroutine2(n->falseType->pos);
+                    handle(n->falseType, program);
+                    program.popSubroutine();
+
+                    program.pushOp(OP::JumpCondition);
+                    //todo increase to 32bit each
+                    program.pushUint16(trueProgram);
+                    program.pushUint16(falseProgram);
+
+                    if (distributiveOverIdentifier) {
+                        auto routine = program.popSubroutine();
+                        handle(n->checkType, program); //LOADS the input type onto the stack. Distribute pops it then.
+                        program.pushOp(OP::Distribute);
+                        program.pushAddress(routine->address);
+                    }
+
+                    debug("ConditionalType {}", !!distributiveOverIdentifier);
+                    break;
+                }
+                case types::SyntaxKind::ParenthesizedType: {
+                    handle(to<ParenthesizedTypeNode>(node)->type, program);
+                    break;
+                }
+                case types::SyntaxKind::TupleType: {
+                    program.pushFrame();
+                    auto n = to<TupleTypeNode>(node);
+                    for (auto &&e: n->elements->list) {
+                        if (auto tm = to<NamedTupleMember>(e)) {
+//                            tm->
+                        } else {
+                            handle(e, program);
+                        }
+                    }
+                    program.pushOp(OP::Tuple);
+                    program.popFrameImplicit();
+                    break;
+                }
                 case types::SyntaxKind::VariableStatement: {
                     for (auto &&s: to<VariableStatement>(node)->declarationList->declarations->list) {
                         handle(s, program);
@@ -509,6 +657,7 @@ namespace ts::checker {
                                 handle(n->initializer, program);
                                 program.pushOp(OP::Call);
                                 program.pushAddress(subroutineIndex);
+                                program.pushUint16(0);
                                 program.pushOp(OP::Assign);
                             }
                         }

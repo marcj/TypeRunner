@@ -34,10 +34,16 @@ namespace ts {
     }
 
     sharedOpt<NodeArray> Parenthesizer::parenthesizeTypeArguments(sharedOpt<NodeArray> typeArguments) {
-        if (typeArguments && (*typeArguments).empty()) {
+        if (typeArguments && !typeArguments->empty()) {
             auto m = sameMap<TypeNode>(typeArguments, CALLBACK(parenthesizeOrdinalTypeArgument));
             return factory->createNodeArray(m);
         }
+        return typeArguments;
+    }
+
+    shared<TypeNode> Parenthesizer::parenthesizeTypeOfOptionalType(shared<TypeNode> type) {
+        if (hasJSDocPostfixQuestion(type)) return factory->createParenthesizedType(type);
+        return parenthesizeNonArrayTypeOfPostfixType(type);
     }
 
     shared<Expression> Parenthesizer::parenthesizeBranchOfConditionalExpression(shared<Expression> branch) {

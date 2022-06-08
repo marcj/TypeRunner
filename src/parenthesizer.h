@@ -374,22 +374,20 @@ namespace ts {
         //
         shared <NodeArray> parenthesizeElementTypesOfTupleType(shared <NodeArray> types);
 
-//    function hasJSDocPostfixQuestion(shared<TypeNode> type | NamedTupleMember): boolean {
-//        if (isJSDocNullableType(type)) return type.postfix;
-//        if (isNamedTupleMember(type)) return hasJSDocPostfixQuestion(type.type);
-//        if (isFunctionTypeNode(type) || isConstructorTypeNode(type) || isTypeOperatorNode(type)) return hasJSDocPostfixQuestion(type.type);
-//        if (isConditionalTypeNode(type)) return hasJSDocPostfixQuestion(type.falseType);
-//        if (isUnionTypeNode(type)) return hasJSDocPostfixQuestion(last(type.types));
-//        if (isIntersectionTypeNode(type)) return hasJSDocPostfixQuestion(last(type.types));
-//        if (isInferTypeNode(type)) return !!type.typeParameter.constraint && hasJSDocPostfixQuestion(type.typeParameter.constraint);
-//        return false;
-//    }
-//
-//    function parenthesizeTypeOfOptionalType(shared<TypeNode> type): TypeNode {
-//        if (hasJSDocPostfixQuestion(type)) return factory->createParenthesizedType(type);
-//        return parenthesizeNonArrayTypeOfPostfixType(type);
-//    }
-//
+    bool hasJSDocPostfixQuestion(shared<TypeNode> type) {
+        //todo: make this workable
+        if (isJSDocNullableType(type)) return type.postfix;
+        if (isNamedTupleMember(type)) return hasJSDocPostfixQuestion(type.type);
+        if (isFunctionTypeNode(type) || isConstructorTypeNode(type) || isTypeOperatorNode(type)) return hasJSDocPostfixQuestion(type.type);
+        if (isConditionalTypeNode(type)) return hasJSDocPostfixQuestion(type.falseType);
+        if (isUnionTypeNode(type)) return hasJSDocPostfixQuestion(last(type.types));
+        if (isIntersectionTypeNode(type)) return hasJSDocPostfixQuestion(last(type.types));
+        if (isInferTypeNode(type)) return !!type.typeParameter.constraint && hasJSDocPostfixQuestion(type.typeParameter.constraint);
+        return false;
+    }
+
+    shared<TypeNode> parenthesizeTypeOfOptionalType(shared<TypeNode> type);
+
 //    // function parenthesizeMemberOfElementType(member: TypeNode): TypeNode {
 //    //     switch (member.kind) {
 //    //         case SyntaxKind::UnionType:

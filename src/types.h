@@ -2222,6 +2222,20 @@ namespace ts {
         OptionalProperty(assertClause, AssertClause);
     };
 
+    //Those JSDoc* types are used because TypeScript tsc uses them to wrap information like optional/non-nullable tuple member. Only god knows why.
+    struct JSDocNullableType: BrandKind<SyntaxKind::JSDocNullableType, TypeNode> {
+        Property(type, TypeNode);
+        bool postfix = false;
+    };
+    struct JSDocNonNullableType: BrandKind<SyntaxKind::JSDocNonNullableType, TypeNode> {
+        Property(type, TypeNode);
+        bool postfix = false;
+    };
+    struct JSDocOptionalType: BrandKind<SyntaxKind::JSDocOptionalType, TypeNode> {
+        Property(type, TypeNode);
+    };
+
+
 #define NamedImportsOrExports NamedImports, NamedExports
 #define ImportOrExportSpecifier ImportSpecifier, ExportSpecifier
 #define TypeOnlyCompatibleAliasDeclaration ImportClause, ImportEqualsDeclaration, NamespaceImport, ImportOrExportSpecifier;
