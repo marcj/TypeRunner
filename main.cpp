@@ -34,7 +34,7 @@ bool exists(const string &file)
 int main(int argc, char *argv[]) {
 //    std::string cwd = "";
 //    if (argc > 0) cwd = argv[0];
-    std::string file = "/Users/marc/bude/typescript-cpp/tests/basic1.ts";
+    std::string file = "/Users/marc/bude/typescript-cpp/tests/generic2.ts";
     if (argc > 1) file = argv[1];
 
 //    cwd.append("/");
@@ -42,9 +42,10 @@ int main(int argc, char *argv[]) {
 
     auto bytecode = file + ".tsbytecode";
     if (exists(bytecode)) {
-        auto buffer = readFile(file);
+        auto buffer = readFile(bytecode);
         vm::VM vm;
         vm.call(buffer);
+        vm.printErrors();
     } else {
         auto buffer = readFile(file);
         checker::Compiler compiler;
@@ -56,6 +57,7 @@ int main(int argc, char *argv[]) {
         writeFile(bytecode, bin);
         vm::VM vm;
         vm.call(bin);
+        vm.printErrors();
     }
     return 0;
 }

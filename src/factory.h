@@ -1502,7 +1502,7 @@ namespace ts {
 //        }
 
         // @api
-        shared<TaggedTemplateExpression> createTaggedTemplateExpression(shared<Expression> tag, sharedOpt<NodeArray> typeArguments, shared<NodeUnion(TemplateLiteral)> templateLiteral);
+        shared<TaggedTemplateExpression> createTaggedTemplateExpression(shared<Expression> tag, sharedOpt<NodeArray> typeArguments, shared<NodeUnion(TemplateLiteralTypes)> templateLiteral);
 //
 //        // @api
 //        function updateTaggedTemplateExpression(node: TaggedTemplateExpression, tag: Expression, sharedOpt<NodeArray> typeArguments, template: TemplateLiteral) {

@@ -266,7 +266,7 @@ namespace ts::checker {
             return address;
         }
 
-        void pushStorage(const string_view &s) {
+        void pushStorage(string_view s) {
             pushAddress(registerStorage(s));
         }
 
@@ -325,6 +325,7 @@ namespace ts::checker {
             for (unsigned int i = 0; i < end; i++) {
                 auto op = (OP) ops[i];
                 switch (op) {
+                    case OP::TypeArgumentDefault:
                     case OP::Distribute: {
                         auto index = readUint32(ops, i + 1);
                         auto &routine = subroutines[index];
@@ -376,6 +377,7 @@ namespace ts::checker {
                         i += 4;
                         break;
                     }
+                    case OP::TypeArgumentDefault:
                     case OP::Distribute: {
                         params += fmt::format(" &{}", readUint32(ops, i + 1));
                         i += 4;
@@ -453,9 +455,48 @@ namespace ts::checker {
                     break;
                 case types::SyntaxKind::FalseKeyword: program.pushOp(OP::False);
                     break;
+                case types::SyntaxKind::IndexedAccessType: {
+                    const auto n = to<IndexedAccessTypeNode>(node);
+
+                    handle(n->objectType, program);
+                    handle(n->indexType, program);
+                    program.pushOp(OP::IndexAccess);
+                    break;
+                }
                 case types::SyntaxKind::LiteralType: {
                     const auto n = to<LiteralTypeNode>(node);
                     handle(n->literal, program);
+                    break;
+                }
+                case types::SyntaxKind::TemplateLiteralType: {
+                    auto t = to<TemplateLiteralTypeNode>(node);
+
+                    program.pushFrame();
+                    if (t->head->rawText && *t->head->rawText != "") {
+                        program.pushOp(OP::StringLiteral);
+                        program.pushStorage(*t->head->rawText);
+                    }
+
+                    for (auto &&sub: t->templateSpans->list) {
+                        auto span = to<TemplateLiteralTypeSpan>(sub);
+                        handle(to<TemplateLiteralTypeSpan>(span)->type, program);
+
+                        if (auto a = to<TemplateMiddle>(span->literal)) {
+                            if (a->rawText && *a->rawText != "") {
+                                program.pushOp(OP::StringLiteral);
+                                program.pushStorage(a->rawText ? *a->rawText : "");
+                            }
+                        } else if (auto a = to<TemplateTail>(span->literal)) {
+                            if (a->rawText && *a->rawText != "") {
+                                program.pushOp(OP::StringLiteral);
+                                program.pushStorage(a->rawText ? *a->rawText : "");
+                            }
+                        }
+                    }
+
+                    program.pushOp(OP::TemplateLiteral);
+                    program.popFrameImplicit();
+
                     break;
                 }
                 case types::SyntaxKind::UnionType: {
@@ -511,8 +552,17 @@ namespace ts::checker {
 
                         if (n->typeParameters) {
                             for (auto &&p: n->typeParameters->list) {
-                                auto &symbol = program.pushSymbol(to<TypeParameterDeclaration>(p)->name->escapedText, SymbolType::TypeVariable, n->pos);
+                                auto tp = to<TypeParameterDeclaration>(p);
+                                if (!tp) throw runtime_error("no type parameter");
+                                auto &symbol = program.pushSymbol(tp->name->escapedText, SymbolType::TypeVariable, n->pos);
                                 program.pushOp(instructions::TypeArgument);
+                                if (tp->defaultType) {
+                                    program.pushSubroutine2(tp->defaultType->pos);
+                                    handle(tp->defaultType, program);
+                                    auto routine = program.popSubroutine();
+                                    program.pushOp(instructions::TypeArgumentDefault);
+                                    program.pushAddress(routine->address);
+                                }
                                 //todo constraints + default
                             }
                         }
@@ -616,14 +666,43 @@ namespace ts::checker {
                     handle(to<ParenthesizedTypeNode>(node)->type, program);
                     break;
                 }
+                case types::SyntaxKind::RestType: {
+                    handle(to<RestTypeNode>(node)->type, program);
+                    program.pushOp(OP::Rest);
+                    break;
+                }
+//                case types::SyntaxKind::OptionalType: {
+//
+//                    break;
+//                }
+                    //value inference
+                case types::SyntaxKind::ArrayLiteralExpression: {
+                    program.pushFrame();
+                    for (auto &&v: to<ArrayLiteralExpression>(node)->elements->list) {
+                        handle(v, program);
+                        program.pushOp(OP::TupleMember);
+                    }
+                    program.pushOp(OP::Tuple);
+                    program.popFrameImplicit();
+                    //todo: handle `as const`, widen if not const
+                    break;
+                }
                 case types::SyntaxKind::TupleType: {
                     program.pushFrame();
                     auto n = to<TupleTypeNode>(node);
                     for (auto &&e: n->elements->list) {
                         if (auto tm = to<NamedTupleMember>(e)) {
-//                            tm->
+                            handle(tm->type, program);
+                            if (tm->dotDotDotToken) program.pushOp(OP::Rest);
+                            program.pushOp(OP::TupleMember);
+                            if (tm->questionToken) program.pushOp(OP::Optional);
+                        } else if (auto ot = to<OptionalTypeNode>(e)) {
+                            handle(ot->type, program);
+                            program.pushOp(OP::TupleMember);
+                            program.pushOp(OP::Optional);
                         } else {
                             handle(e, program);
+                            program.pushOp(OP::TupleMember);
                         }
                     }
                     program.pushOp(OP::Tuple);

@@ -18,7 +18,6 @@ namespace ts::instructions {
         Null,
         Undefined,
 
-
         StringLiteral,
         NumberLiteral,
         BigIntLiteral,
@@ -39,6 +38,10 @@ namespace ts::instructions {
 
         Tuple,
         TupleMember,
+        TupleNamedMember, //has one parameter, the name in the storage
+
+        Optional,
+        Rest,
 
         Union,
         Intersection,
@@ -60,13 +63,24 @@ namespace ts::instructions {
         /**
          * Makes sure that in the current variable slot is a type placed if nothing was provided as parameter.
          *
-         * For reach type argument like here `T` a TypeArgument OP is generated.
-         * Different to Var OP since Var does reserve an entry on the stack, whereas TypeArgument does nothing on the stack per default.
+         * For each type argument like here `T` a TypeArgument OP is generated.
+         * Different to Var OP since Var does reserve an entry on the stack,
+         * whereas TypeArgument ensures there is a stack entry if not already provided via call parameters..
          * ```typescript
          * type A<T> = T;
          * ```
          */
         TypeArgument,
+        TypeArgumentDefault, //expects an entry on the stack
+        TypeArgumentConstraint, //expects an entry on the stack
+
+
+        TemplateLiteral,
+
+        IndexAccess,
+        KeyOf,
+        Infer,
+        TypeOf,
 
         /**
          * Reserves a type variable on the stack, which contains a type object. Unknown as default.
@@ -87,8 +101,10 @@ namespace ts::instructions {
     };
 }
 
-template <> struct fmt::formatter<ts::instructions::OP> : formatter<std::string_view> {
-    template <typename FormatContext> auto format(ts::instructions::OP p, FormatContext &ctx) {
+template<>
+struct fmt::formatter<ts::instructions::OP>: formatter<std::string_view> {
+    template<typename FormatContext>
+    auto format(ts::instructions::OP p, FormatContext &ctx) {
         return formatter<string_view>::format(magic_enum::enum_name<ts::instructions::OP>(p), ctx);
     }
 };

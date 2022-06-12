@@ -2,9 +2,11 @@
 
 #include <utility>
 #include <vector>
+#include <string>
 
 namespace ts::checker {
     using std::vector;
+    using std::string_view;
 
     uint32_t readUint32(const vector<unsigned char> &bin, unsigned int offset) {
         return *(uint32_t *) (bin.data() + offset);

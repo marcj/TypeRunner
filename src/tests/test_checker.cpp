@@ -26,7 +26,6 @@ TEST(checker, program) {
 TEST(checker, type) {
     Parser parser;
 
-    std:
     string code = R"(
     const v1: string = "abc";
     const v2: number = 123;
@@ -41,7 +40,7 @@ TEST(checker, type) {
     auto bin = program.build();
     debug("Code {} chars, to {} bytes: {}", code.size(), bin.size(), bin);
 
-    bench(100, [&] {
+    bench(10, [&] {
         vm::VM vm;
         vm.call(bin);
     });
@@ -50,7 +49,6 @@ TEST(checker, type) {
 TEST(checker, type2) {
     Parser parser;
 
-    std:
     string code = R"(
     type a = number;
     type b = string | a;
@@ -64,7 +62,6 @@ TEST(checker, type2) {
     auto program = compiler.compileSourceFile(result);
     program.print();
     auto bin = program.build();
-    debug("Code {} chars, to {} bytes: {}", code.size(), bin.size(), bin);
 
     vm::VM vm;
     vm.call(bin);
@@ -104,11 +101,28 @@ TEST(checker, tuple) {
     Parser parser;
 
     string code = R"(
-    type a<T> = [1?, T?];
-    const v1: a<string> = [1, 'abc'];
+//    type a<T> = [1, ...T];
+//    const v1: a<[string, number]> = [1, 'abc'];
+
+//    type a = [string, number];
+//    const var1: a['length'] = 3;
+//
+//    type a = [string, boolean];
+//    type b = [...a, number];
+//    const var1: b = ['asd', 123];
+
+//    type a<T = string> = T;
+//    const var1: a<number> = 'asd';
+
+    type StringToNum<T extends string, A extends 0[] = []> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>;
+    const var1: StringToNum<'999'> = 1002;
     )";
 
     auto result = parser.parseSourceFile("app.ts", code, ScriptTarget::Latest, false, ScriptKind::TS, {});
+
+    vector<unsigned char> bin2{0, 0, 0, 0};
+    checker::writeUint16(bin2, 0, 1);
+    debug("bin2 {}", bin2);
 
     checker::Compiler compiler;
     auto program = compiler.compileSourceFile(result);
@@ -118,7 +132,7 @@ TEST(checker, tuple) {
     vm::VM vm;
     vm.call(bin);
     vm.printErrors();
-    EXPECT_EQ(vm.errors.size(), 1);
+//    EXPECT_EQ(vm.errors.size(), 1);
 
     bench(10, [&] {
         vm::VM vm;

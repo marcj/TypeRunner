@@ -333,7 +333,7 @@ namespace ts {
 //        return getScriptKindFromFileName(fileName) || ScriptKind::TS;
     }
     /** @internal */
-    bool hasInvalidEscape(shared<NodeUnion(TemplateLiteral)> templateLiteral) {
+    bool hasInvalidEscape(shared<NodeUnion(TemplateLiteralTypes)> templateLiteral) {
         if (isNoSubstitutionTemplateLiteral(templateLiteral)) {
             return !!templateLiteral->to<NoSubstitutionTemplateLiteral>().templateFlags;
         }

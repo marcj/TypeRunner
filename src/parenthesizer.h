@@ -375,14 +375,23 @@ namespace ts {
         shared <NodeArray> parenthesizeElementTypesOfTupleType(shared <NodeArray> types);
 
     bool hasJSDocPostfixQuestion(shared<TypeNode> type) {
-        //todo: make this workable
-        if (isJSDocNullableType(type)) return type.postfix;
-        if (isNamedTupleMember(type)) return hasJSDocPostfixQuestion(type.type);
-        if (isFunctionTypeNode(type) || isConstructorTypeNode(type) || isTypeOperatorNode(type)) return hasJSDocPostfixQuestion(type.type);
-        if (isConditionalTypeNode(type)) return hasJSDocPostfixQuestion(type.falseType);
-        if (isUnionTypeNode(type)) return hasJSDocPostfixQuestion(last(type.types));
-        if (isIntersectionTypeNode(type)) return hasJSDocPostfixQuestion(last(type.types));
-        if (isInferTypeNode(type)) return !!type.typeParameter.constraint && hasJSDocPostfixQuestion(type.typeParameter.constraint);
+        if (isJSDocNullableType(type)) return to<JSDocNullableType>(type)->postfix;
+        if (isNamedTupleMember(type)) return hasJSDocPostfixQuestion(to<NamedTupleMember>(type)->type);
+
+        if (auto n = to<FunctionTypeNode>(type)) {
+            return hasJSDocPostfixQuestion(n->type);
+        } else if (auto n = to<ConstructorTypeNode>(type)) {
+            return hasJSDocPostfixQuestion(n->type);
+        } else if (auto n = to<TypeOperatorNode>(type)) {
+            return hasJSDocPostfixQuestion(n->type);
+        }
+
+        if (isConditionalTypeNode(type)) return hasJSDocPostfixQuestion(to<ConditionalTypeNode>(type)->falseType);
+        if (isUnionTypeNode(type)) return hasJSDocPostfixQuestion(reinterpret_pointer_cast<TypeNode>(last(to<UnionTypeNode>(type)->types)));
+        if (isIntersectionTypeNode(type)) return hasJSDocPostfixQuestion(reinterpret_pointer_cast<TypeNode>(last(to<IntersectionTypeNode>(type)->types)));
+        if (auto infer = to<InferTypeNode>(type)) {
+            return infer->typeParameter->constraint && hasJSDocPostfixQuestion(infer->typeParameter->constraint);
+        }
         return false;
     }
 

@@ -1869,7 +1869,7 @@ namespace ts {
 //        }
 
     // @api
-    shared<TaggedTemplateExpression> Factory::createTaggedTemplateExpression(shared<Expression> tag, sharedOpt<NodeArray> typeArguments, shared<NodeUnion(TemplateLiteral)> templateLiteral) {
+    shared<TaggedTemplateExpression> Factory::createTaggedTemplateExpression(shared<Expression> tag, sharedOpt<NodeArray> typeArguments, shared<NodeUnion(TemplateLiteralTypes)> templateLiteral) {
         auto node = createBaseExpression<TaggedTemplateExpression>(SyntaxKind::TaggedTemplateExpression);
         node->tag = parenthesizer.parenthesizeLeftSideOfAccess(tag);
         node->typeArguments = asNodeArray(typeArguments);

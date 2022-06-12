@@ -4,6 +4,8 @@
 #include <memory>
 #include <iostream>
 #include <variant>
+#include <vector>
+#include <span>
 #include "../core.h"
 #include "../types.h"
 #include "../factory.h"
@@ -419,5 +421,15 @@ TEST(core, passFn) {
     test.doIt();
 
 //
+//    auto a = executeFn<bool>([]{ return test(); });
+}
+
+TEST(core, span) {
+    vector<int> ints{1,2,3,4,5};
+    span<int> slide1{ints.data() + 1, 3};
+
+    EXPECT_EQ(slide1.size(), 3);
+    EXPECT_EQ(slide1[0], 2);
+    EXPECT_EQ(slide1[2], 4);
 //    auto a = executeFn<bool>([]{ return test(); });
 }

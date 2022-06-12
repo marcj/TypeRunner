@@ -1063,7 +1063,6 @@ template <> struct fmt::formatter<ts::types::SyntaxKind> : formatter<std::string
     }
 };
 
-
 namespace ts {
     using namespace std;
 
@@ -1229,6 +1228,10 @@ namespace ts {
             (list, start, end);
         }
     };
+
+    inline sharedOpt<Node> last(shared<NodeArray> &array) {
+        return array->list.back();
+    }
 
     template<class T>
     bool some(sharedOpt<NodeArray> array, function<bool(shared<T>)> callback) {
@@ -1919,8 +1922,8 @@ namespace ts {
 //        BaseNode *parent; //: DeclarationWithTypeParameterChildren | InferTypeNode;
         shared<Identifier> name;
         /** Note: Consider calling `getEffectiveConstraintOfTypeParameter` */
-        Property(constraint, TypeNode);
-        Property(defaultType, TypeNode);
+        OptionalProperty(constraint, TypeNode);
+        OptionalProperty(defaultType, TypeNode);
 
         // For error recovery purposes.
         OptionalProperty(expression, Expression);
@@ -2231,6 +2234,7 @@ namespace ts {
         Property(type, TypeNode);
         bool postfix = false;
     };
+
     struct JSDocOptionalType: BrandKind<SyntaxKind::JSDocOptionalType, TypeNode> {
         Property(type, TypeNode);
     };
@@ -2542,12 +2546,12 @@ namespace ts {
         shared<NodeTypeArray(TemplateSpan)> templateSpans;
     };
 
-#define TemplateLiteral TemplateExpression, NoSubstitutionTemplateLiteral
+#define TemplateLiteralTypes TemplateExpression, NoSubstitutionTemplateLiteral
 
     struct TaggedTemplateExpression: BrandKind<SyntaxKind::TaggedTemplateExpression, MemberExpression> {
         Property(tag, LeftHandSideExpression);
         sharedOpt<NodeTypeArray(TypeNode)> typeArguments;
-        UnionProperty(templateLiteral, TemplateLiteral);
+        UnionProperty(templateLiteral, TemplateLiteralTypes);
         /*@internal*/ OptionalProperty(questionDotToken, QuestionDotToken); // NOTE: Invalid syntax, only used to report a grammar error.
     };
 

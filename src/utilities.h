@@ -309,7 +309,7 @@ namespace ts {
     ScriptKind ensureScriptKind(string fileName, optional<ScriptKind> scriptKind);
 
     /** @internal */
-    bool hasInvalidEscape(shared<NodeUnion(TemplateLiteral)> templateLiteral);
+    bool hasInvalidEscape(shared<NodeUnion(TemplateLiteralTypes)> templateLiteral);
 
     string fileExt(const string &filename);
 
