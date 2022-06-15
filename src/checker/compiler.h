@@ -29,21 +29,24 @@ namespace ts::checker {
         vector<unsigned char> ops; //OPs, and its parameters
         unordered_map<unsigned int, unsigned int> opSourceMap;
         string_view identifier{};
-        unsigned int address{}; //during compilation the index address, after the final address in the binary
+        unsigned int index{};
+        unsigned int nameAddress{};
         unsigned int pos{};
         SymbolType type = SymbolType::Type;
 
-        explicit Subroutine() {}
+        explicit Subroutine() {
+            identifier = "";
+        }
         explicit Subroutine(string_view &identifier): identifier(identifier) {}
     };
 
     struct Frame;
 
     struct Symbol {
-        const string_view name;
-        const SymbolType type;
-        const unsigned int index{}; //symbol index of the current frame
-        const unsigned int pos;
+        string name;
+        SymbolType type = SymbolType::Type;
+        unsigned int index{}; //symbol index of the current frame
+        unsigned int pos{};
         unsigned int declarations = 1;
         sharedOpt<Subroutine> routine = nullptr;
         shared<Frame> frame = nullptr;
@@ -103,12 +106,12 @@ namespace ts::checker {
             auto routine = make_shared<Subroutine>();
             routine->pos = pos;
             routine->type = SymbolType::TypeFunction;
-            routine->address = subroutines.size();
+            routine->index = subroutines.size();
 
             pushFrame(true); //subroutines have implicit stack frames due to call convention
             subroutines.push_back(routine);
             activeSubroutines.push_back(subroutines.back());
-            return routine->address;
+            return routine->index;
         }
 
         /**
@@ -120,7 +123,7 @@ namespace ts::checker {
                 if (s.name == name) {
                     pushFrame(true); //subroutines have implicit stack frames due to call convention
                     activeSubroutines.push_back(s.routine);
-                    return s.routine->address;
+                    return s.routine->index;
                 }
             }
             throw runtime_error(fmt::format("no symbol found for {}", name));
@@ -222,7 +225,7 @@ namespace ts::checker {
          * Symbols will be created first before a body is extracted. This makes sure all
          * symbols are known before their reference is used.
          */
-        Symbol &pushSymbol(string_view name, SymbolType type, unsigned int pos, shared<Frame> frameToUse = nullptr) {
+        Symbol &pushSymbol(string_view name, SymbolType type, unsigned int pos, sharedOpt<Frame> frameToUse = nullptr) {
             if (!frameToUse) frameToUse = frame;
 
             for (auto &&v: frameToUse->symbols) {
@@ -232,13 +235,21 @@ namespace ts::checker {
                 }
             }
 
-            frameToUse->symbols.push_back(Symbol{
-                    .frame = frameToUse,
-                    .name = name,
-                    .type = type,
-                    .pos = pos,
-                    .index = (unsigned int) frameToUse->symbols.size()
-            });
+//            Symbol symbol{
+//                    .name = name,
+//                    .type = type,
+//                    .index = (unsigned int) frameToUse->symbols.size(),
+//                    .pos = pos,
+//                    .routine = nullptr,
+//                    .frame = frameToUse,
+//            };
+            Symbol symbol;
+            symbol.name = string(name);
+            symbol.type = type;
+            symbol.index = (unsigned int) frameToUse->symbols.size();
+            symbol.pos = pos;
+            symbol.frame = frameToUse;
+            frameToUse->symbols.push_back(std::move(symbol));
             return frameToUse->symbols.back();
         }
 
@@ -249,7 +260,8 @@ namespace ts::checker {
             auto routine = make_shared<Subroutine>(name);
             routine->pos = pos;
             routine->type = type;
-            routine->address = subroutines.size();
+            routine->nameAddress = registerStorage(routine->identifier);
+            routine->index = subroutines.size();
             subroutines.push_back(routine);
             symbol.routine = routine;
 
@@ -266,17 +278,12 @@ namespace ts::checker {
             return address;
         }
 
+        /**
+         * Pushes a Uint32 and stores the text into the storage.
+         * @param s
+         */
         void pushStorage(string_view s) {
             pushAddress(registerStorage(s));
-        }
-
-        string_view findStorage(unsigned int index) {
-            unsigned int i = 5;
-            for (auto &&s: storage) {
-                if (i == index) return s;
-                i += 2 + s.size();
-            }
-            return "!unknown";
         }
 
         string build() {
@@ -286,136 +293,100 @@ namespace ts::checker {
             if (storage.size() || subroutines.size()) {
                 address = 5; //we add JUMP + index when building the program to jump over all subroutines&storages
                 bin.push_back(OP::Jump);
-                writeUint32(bin, bin.size(), 0); //set after routine handling
+                writeUint32(bin, bin.size(), 0); //set after storage handling
             }
 
             for (auto &&item: storage) {
-                writeUint16(bin, address, item.size());
-                bin.insert(bin.end(), item.begin(), item.end());
                 address += 2 + item.size();
             }
 
-            //detect final binary address of all subroutines
-            unsigned int routineAddress = address;
-            for (auto &&routine: subroutines) {
-                routine->address = routineAddress;
-                routineAddress += routine->ops.size();
+            //set initial jump position to right after the storage data
+            writeUint32(bin, 1, address);
+
+            address += subroutines.size() * (1 + 4 + 4); //OP::Subroutine + uint32 name address + uin32 routine address
+            address += 1 + 4; //OP::Main + uint32 address
+
+            //push all storage data to the binary
+            for (auto &&item: storage) {
+                writeUint16(bin, bin.size(), item.size());
+                bin.insert(bin.end(), item.begin(), item.end());
             }
 
-            //go through all OPs and adjust CALL parameter to the final binary address
-            setFinalBinaryAddress(ops);
+            //after the storage data follows the subroutine meta-data.
+//            vector<unsigned char> subroutineMetadata;
             for (auto &&routine: subroutines) {
-                setFinalBinaryAddress(routine->ops);
-            }
-
-            for (auto &&routine: subroutines) {
-                bin.insert(bin.end(), routine->ops.begin(), routine->ops.end());
+                bin.push_back(OP::Subroutine);
+                writeUint32(bin, bin.size(), routine->nameAddress);
+                writeUint32(bin, bin.size(), address);
                 address += routine->ops.size();
             }
 
-            writeUint32(bin, 1, address);
+            //after subroutine meta-data follows the actual subroutine code, which we jump over.
+            //this marks the end of the header.
+            bin.push_back(OP::Main);
+            writeUint32(bin, bin.size(), address);
 
+            //we don't need that anymore, as the address is part of the subroutine-metadata
+//            //go through all OPs and adjust CALL parameter to the final binary address
+//            setFinalBinaryAddress(ops);
+//            for (auto &&routine: subroutines) {
+//                setFinalBinaryAddress(routine->ops);
+//            }
+
+            for (auto &&routine: subroutines) {
+                bin.insert(bin.end(), routine->ops.begin(), routine->ops.end());
+            }
+
+            //now the main code is added
             bin.insert(bin.end(), ops.begin(), ops.end());
+
+            debug("bin {}", bin);
 
             return string(bin.begin(), bin.end());
         }
 
-        void setFinalBinaryAddress(vector<unsigned char> &ops) {
-            const auto end = ops.size();
-            for (unsigned int i = 0; i < end; i++) {
-                auto op = (OP) ops[i];
-                switch (op) {
-                    case OP::TypeArgumentDefault:
-                    case OP::Distribute: {
-                        auto index = readUint32(ops, i + 1);
-                        auto &routine = subroutines[index];
-                        writeUint32(ops, i + 1, routine->address);
-                        i += 4;
-                        break;
-                    }
-                    case OP::Call: {
-                        //adjust binary address
-                        auto index = readUint32(ops, i + 1);
-                        auto &routine = subroutines[index];
-                        writeUint32(ops, i + 1, routine->address);
-                        i += 6;
-                        break;
-                    }
-                    case OP::JumpCondition: {
-                        //adjust binary address
-                        auto first = readUint16(ops, i + 1);
-                        auto second = readUint16(ops, i + 3);
-                        writeUint16(ops, i + 1, subroutines[first]->address);
-                        writeUint16(ops, i + 3, subroutines[second]->address);
-                        i += 4;
-                        break;
-                    }
-                    case OP::Loads: //2 bytes each: frame id + symbol index
-                    case OP::NumberLiteral:
-                    case OP::BigIntLiteral:
-                    case OP::StringLiteral: {
-                        i += 4;
-                        break;
-                    }
-                }
-            }
-        }
+//        void setFinalBinaryAddress(vector<unsigned char> &ops) {
+//            const auto end = ops.size();
+//            for (unsigned int i = 0; i < end; i++) {
+//                auto op = (OP) ops[i];
+//                switch (op) {
+//                    case OP::TypeArgumentDefault:
+//                    case OP::Distribute: {
+//                        auto index = readUint32(ops, i + 1);
+//                        auto &routine = subroutines[index];
+//                        writeUint32(ops, i + 1, routine->address);
+//                        i += 4;
+//                        break;
+//                    }
+//                    case OP::Call: {
+//                        //adjust binary address
+//                        auto index = readUint32(ops, i + 1);
+//                        auto &routine = subroutines[index];
+//                        writeUint32(ops, i + 1, routine->address);
+//                        i += 6;
+//                        break;
+//                    }
+//                    case OP::JumpCondition: {
+//                        //adjust binary address
+//                        auto first = readUint16(ops, i + 1);
+//                        auto second = readUint16(ops, i + 3);
+//                        writeUint16(ops, i + 1, subroutines[first]->address);
+//                        writeUint16(ops, i + 3, subroutines[second]->address);
+//                        i += 4;
+//                        break;
+//                    }
+//                    case OP::Loads: //2 bytes each: frame id + symbol index
+//                    case OP::Parameter: //uint32 for storage
+//                    case OP::NumberLiteral:
+//                    case OP::BigIntLiteral:
+//                    case OP::StringLiteral: {
+//                        i += 4;
+//                        break;
+//                    }
+//                }
+//            }
+//        }
 
-        void printOps(vector<unsigned char> ops) {
-            const auto end = ops.size();
-            for (unsigned int i = 0; i < end; i++) {
-                auto op = (OP) ops[i];
-                std::string params = "";
-                switch (op) {
-                    case OP::Call: {
-                        params += fmt::format(" &{}[{}]", readUint32(ops, i + 1), readUint16(ops, i + 5));
-                        i += 6;
-                        break;
-                    }
-                    case OP::JumpCondition: {
-                        params += fmt::format(" &{}:&{}", readUint16(ops, i + 1), readUint16(ops, i + 3));
-                        i += 4;
-                        break;
-                    }
-                    case OP::TypeArgumentDefault:
-                    case OP::Distribute: {
-                        params += fmt::format(" &{}", readUint32(ops, i + 1));
-                        i += 4;
-                        break;
-                    }
-                    case OP::Loads: {
-                        params += fmt::format(" &{}:{}", readUint16(ops, i + 1), readUint16(ops, i + 3));
-                        i += 4;
-                        break;
-                    }
-                    case OP::NumberLiteral:
-                    case OP::BigIntLiteral:
-                    case OP::StringLiteral: {
-                        params += fmt::format(" \"{}\"", findStorage(readUint32(ops, i + 1)));
-                        i += 4;
-                        break;
-                    }
-                }
-
-                if (params.empty()) {
-                    fmt::print("{} ", op);
-                } else {
-                    fmt::print("({}{}) ", op, params);
-                }
-            }
-            fmt::print("\n");
-        }
-
-        void print() {
-            int i = 0;
-            for (auto &&subroutine: subroutines) {
-                fmt::print("Subroutine {} &{}, {} bytes: ", subroutine->identifier, i++, subroutine->ops.size());
-                printOps(subroutine->ops);
-            }
-
-            debug("Main {} bytes: {}", ops.size(), ops);
-            printOps(ops);
-        }
     };
 
     class Compiler {
@@ -531,7 +502,7 @@ namespace ts::checker {
                         if (!symbol.routine) {
                             throw runtime_error("Reference is not a reference to a existing routine.");
                         }
-                        program.pushAddress(symbol.routine->address);
+                        program.pushAddress(symbol.routine->index);
                         if (n->typeArguments) {
                             program.pushUint16(n->typeArguments->length());
                         } else {
@@ -561,7 +532,7 @@ namespace ts::checker {
                                     handle(tp->defaultType, program);
                                     auto routine = program.popSubroutine();
                                     program.pushOp(instructions::TypeArgumentDefault);
-                                    program.pushAddress(routine->address);
+                                    program.pushAddress(routine->index);
                                 }
                                 //todo constraints + default
                             }
@@ -569,6 +540,21 @@ namespace ts::checker {
 
                         handle(n->type, program);
                         program.popSubroutine();
+                    }
+                    break;
+                }
+                case types::SyntaxKind::Parameter: {
+                    const auto n = to<ParameterDeclaration>(node);
+                    if (n->type) {
+                        handle(n->type, program);
+                    } else {
+                        program.pushOp(OP::Unknown);
+                    }
+                    program.pushOp(OP::Parameter);
+                    if (auto id = to<Identifier>(n->name)) {
+                        program.pushStorage(id->escapedText);
+                    } else {
+                        program.pushStorage("");
                     }
                     break;
                 }
@@ -582,7 +568,7 @@ namespace ts::checker {
                             program.pushSubroutine(id->escapedText);
 
                             for (auto &&param: n->parameters->list) {
-                                handle(n, program);
+                                handle(param, program);
                             }
                             if (n->type) {
                                 handle(n->type, program);
@@ -632,7 +618,7 @@ namespace ts::checker {
                         //in the subroutine of the conditional type we place a new type variable, which acts as input.
                         //the `Distribute` OP makes then sure that the current stack entry is used as input
                         program.pushSymbol(distributiveOverIdentifier->escapedText, SymbolType::TypeVariable, distributiveOverIdentifier->pos);
-                        program.pushOp(instructions::Var);
+                        program.pushOp(instructions::TypeArgument);
                     }
 
                     handle(n->checkType, program);
@@ -656,10 +642,10 @@ namespace ts::checker {
                         auto routine = program.popSubroutine();
                         handle(n->checkType, program); //LOADS the input type onto the stack. Distribute pops it then.
                         program.pushOp(OP::Distribute);
-                        program.pushAddress(routine->address);
+                        program.pushAddress(routine->index);
                     }
 
-                    debug("ConditionalType {}", !!distributiveOverIdentifier);
+//                    debug("ConditionalType {}", !!distributiveOverIdentifier);
                     break;
                 }
                 case types::SyntaxKind::ParenthesizedType: {

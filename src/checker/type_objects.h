@@ -137,10 +137,9 @@ namespace ts::vm {
     };
 
     struct TypeLiteral: BrandKind<TypeKind::Literal, Type> {
-    private:
-        string_view literal;
-        string *literalText = nullptr;
     public:
+        string *literalText = nullptr;
+        string_view literal;
         TypeLiteralType type;
         void append(const string_view &text) {
             if (!literalText) literalText = new string(literal);
@@ -152,7 +151,7 @@ namespace ts::vm {
         }
 
         virtual ~TypeLiteral() {
-            if (literalText) delete literalText;
+            delete literalText;
         }
 
         string_view text() {

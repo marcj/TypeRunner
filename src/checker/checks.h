@@ -20,9 +20,9 @@ namespace ts::vm {
             if (left->kind == TypeKind::Literal) return to<TypeLiteral>(left)->type == TypeLiteralType::Number;
         }
 
-        if (left->kind == TypeKind::Literal && left->kind == TypeKind::Literal) {
-            return to<TypeLiteral>(left)->type == to<TypeLiteral>(left)->type &&
-                    to<TypeLiteral>(right)->text() == to<TypeLiteral>(left)->text();
+        if (left->kind == TypeKind::Literal && right->kind == TypeKind::Literal) {
+            return to<TypeLiteral>(left)->type == to<TypeLiteral>(right)->type &&
+                    to<TypeLiteral>(left)->text() == to<TypeLiteral>(right)->text();
         }
 
         if (right->kind == TypeKind::Tuple && left->kind == TypeKind::Tuple) {
@@ -43,7 +43,7 @@ namespace ts::vm {
         if (right->kind == TypeKind::Union) {
             if (left->kind != TypeKind::Union) {
                 for (auto &&l: to<TypeUnion>(right)->types) {
-                    if (isExtendable(l, left)) return true;
+                    if (isExtendable(left, l)) return true;
                 }
                 return false;
             } else {

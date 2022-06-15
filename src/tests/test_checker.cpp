@@ -3,8 +3,26 @@
 #include "../parser2.h"
 #include "../checker/compiler.h"
 #include "../checker/vm.h"
+#include "../checker/debug.h"
 
 using namespace ts;
+
+string compile(string code) {
+    Parser parser;
+    auto result = parser.parseSourceFile("app.ts", code, ScriptTarget::Latest, false, ScriptKind::TS, {});
+    checker::Compiler compiler;
+    auto program = compiler.compileSourceFile(result);
+    auto bin = program.build();
+    checker::printBin(bin);
+    return bin;
+}
+
+vector<string> run(string code) {
+    vm::VM vm;
+    vm.run(compile(code));
+    vm.printErrors();
+    return vm.errors;
+}
 
 TEST(checker, program) {
     checker::Program program;
@@ -20,7 +38,6 @@ TEST(checker, program) {
     program.pushAddress(2);
 
     fmt::print("bytes {}", program.ops);
-    program.print();
 }
 
 TEST(checker, type) {
@@ -31,18 +48,16 @@ TEST(checker, type) {
     const v2: number = 123;
     )";
 
-    auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+    auto bin = compile(code);
 
-    checker::Compiler compiler;
-
-    auto program = compiler.compileSourceFile(result);
-    program.print();
-    auto bin = program.build();
-    debug("Code {} chars, to {} bytes: {}", code.size(), bin.size(), bin);
+    vm::VM vm;
+    vm.run(bin);
+    vm.printErrors();
+    EXPECT_EQ(vm.errors.size(), 0);
 
     bench(10, [&] {
         vm::VM vm;
-        vm.call(bin);
+        vm.run(bin);
     });
 }
 
@@ -53,18 +68,35 @@ TEST(checker, type2) {
     type a = number;
     type b = string | a;
     const v1: b = 'abc';
+    const v2: b = 23;
+    const v3: b = true;
     )";
 
-    auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
-
-    checker::Compiler compiler;
-
-    auto program = compiler.compileSourceFile(result);
-    program.print();
-    auto bin = program.build();
+    auto bin = compile(code);
 
     vm::VM vm;
-    vm.call(bin);
+    vm.run(bin);
+    vm.printErrors();
+    EXPECT_EQ(vm.errors.size(), 1);
+}
+
+TEST(checker, type31) {
+    string code = R"(
+    type a<K, T> = T;
+    const v1: a<true, number> = 34;
+    const v2: a<true, number> = "as";
+    )";
+
+    auto bin = compile(code);
+
+    vm::VM vm;
+    vm.run(bin);
+    vm.printErrors();
+    EXPECT_EQ(vm.errors.size(), 1);
+    bench(10, [&] {
+        vm::VM vm;
+        vm.run(bin);
+    });
 }
 
 TEST(checker, type3) {
@@ -79,21 +111,16 @@ TEST(checker, type3) {
     const v5: a<true, string> = 'nope';
     )";
 
-    auto result = parser.parseSourceFile("app.ts", code, ScriptTarget::Latest, false, ScriptKind::TS, {});
-
-    checker::Compiler compiler;
-    auto program = compiler.compileSourceFile(result);
-    program.print();
-    auto bin = program.build();
+    auto bin = compile(code);
 
     vm::VM vm;
-    vm.call(bin);
+    vm.run(bin);
     vm.printErrors();
     EXPECT_EQ(vm.errors.size(), 1);
 
     bench(10, [&] {
         vm::VM vm;
-        vm.call(bin);
+        vm.run(bin);
     });
 }
 
@@ -118,25 +145,16 @@ TEST(checker, tuple) {
     const var1: StringToNum<'999'> = 1002;
     )";
 
-    auto result = parser.parseSourceFile("app.ts", code, ScriptTarget::Latest, false, ScriptKind::TS, {});
-
-    vector<unsigned char> bin2{0, 0, 0, 0};
-    checker::writeUint16(bin2, 0, 1);
-    debug("bin2 {}", bin2);
-
-    checker::Compiler compiler;
-    auto program = compiler.compileSourceFile(result);
-    program.print();
-    auto bin = program.build();
+    auto bin = compile(code);
 
     vm::VM vm;
-    vm.call(bin);
+    vm.run(bin);
     vm.printErrors();
 //    EXPECT_EQ(vm.errors.size(), 1);
 
     bench(10, [&] {
         vm::VM vm;
-        vm.call(bin);
+        vm.run(bin);
     });
 }
 
@@ -155,7 +173,8 @@ TEST(checker, assign) {
     checker::Compiler compiler;
 
     auto program = compiler.compileSourceFile(result);
-    program.print();
+    auto bin = program.build();
+    checker::printBin(bin);
     debug("done");
 }
 
@@ -200,8 +219,7 @@ TEST(checker, basic) {
     print(i);
     )";
 
-    auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
-    debug("done");
+    compile(code);
 }
 
 TEST(checker, basic2) {

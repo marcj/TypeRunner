@@ -51,7 +51,7 @@ namespace ts::vm {
             return (++s.i == s.iterator.size()) ? (s.i = 0, false) : true;
         }
 
-        vector<shared<Type>> toGroup(shared<Type> type) {
+        vector<shared<Type>> toGroup(shared<Type> &type) {
             if (type->kind == TypeKind::Boolean) {
                 return {make_shared<TypeLiteral>("false", TypeLiteralType::String), make_shared<TypeLiteral>("true", TypeLiteralType::String)};
             } else if (type->kind == TypeKind::Null) {
@@ -82,8 +82,8 @@ namespace ts::vm {
             }
         }
 
-        void add(shared<Type> item) {
-            stack.push_back({iterator: toGroup(item), i: 0, round: 0});
+        void add(shared<Type> &item) {
+            stack.push_back({.iterator=toGroup(item), .i= 0, .round= 0});
         }
 
         vector<vector<shared<Type>>> calculate() {
@@ -130,7 +130,7 @@ namespace ts::vm {
      * e.g. [string, number][0] => string
      * e.g. [string, number][number] => string | number
      */
-    shared<Type> indexAccess(shared<Type> container, shared<Type> index) {
+    shared<Type> indexAccess(shared<Type> &container, shared<Type> &index) {
         if (container->kind == TypeKind::Array) {
 //            if ((index.kind == TypeKind::literal && 'number' == typeof index.literal) || index.kind == TypeKind::number) return container.type;
 //            if (index.kind == TypeKind::literal && index.literal == 'length') return { kind: TypeKind::number };
@@ -257,7 +257,7 @@ namespace ts::vm {
             return sp - initialSp;
         }
 
-        Frame(Frame *previous = nullptr): previous(previous) {
+        explicit Frame(Frame *previous = nullptr): previous(previous) {
             if (previous) {
                 sp = previous->sp;
                 initialSp = previous->sp;
@@ -265,17 +265,35 @@ namespace ts::vm {
         }
     };
 
-    struct Subroutine {
+    struct ModuleSubroutine {
+        string_view name;
+        bool exported = false;
+        unsigned int address;
+    };
+
+    struct Module {
         const string_view &bin;
+        vector<ModuleSubroutine> subroutines;
+        unsigned int mainAddress;
+
+        unsigned int getAddressOfSubroutine(unsigned int index) {
+            return subroutines[index].address;
+        }
+    };
+
+    struct Subroutine {
+        Module &module;
         unsigned int ip = 0; //instruction pointer
         unsigned int end = 0; //last instruction pointer
+        unsigned int index = 0;
+        string_view name;
 
         unsigned int depth = 0;
         bool active = true;
         unsigned int typeArguments = 0;
         sharedOpt<Type> resultType = nullptr;
         sharedOpt<Subroutine> previous = nullptr;
-        Subroutine(const string_view &bin): bin(bin) {}
+        explicit Subroutine(Module &module): module(module) {}
     };
 
     static unsigned char emptyTuple[] = {
@@ -297,6 +315,37 @@ namespace ts::vm {
 
     shared<Type> stringToNum(VM &vm);
 
+    inline Module parseHeader(const string_view &bin) {
+        Module module{.bin = bin};
+
+        for (unsigned int i = 0; i < bin.size(); i++) {
+            const auto op = (OP) bin[i];
+            switch (op) {
+                case OP::Jump: {
+                    i = readUint32(bin, i + 1) - 1; //minus 1 because for's i++
+                    break;
+                }
+                case OP::Subroutine: {
+                    unsigned int nameAddress = readUint32(bin, i + 1);
+                    auto name = nameAddress ? readStorage(bin, nameAddress) : "";
+                    unsigned int address = readUint32(bin, i + 5);
+                    i += 8;
+                    module.subroutines.push_back(ModuleSubroutine{
+                            .name = name,
+                            .address = address,
+                    });
+                    break;
+                }
+                case OP::Main: {
+                    module.mainAddress = readUint32(bin, i + 1);
+                    return module;
+                }
+            }
+        }
+
+        throw runtime_error("No OP::Main found");
+    }
+
     class VM {
     public:
         vector<string> errors;
@@ -311,7 +360,7 @@ namespace ts::vm {
         unordered_map<unsigned int, function<shared<Type>(VM &)>> optimised;
 
         VM() {
-            if (frame) delete frame;
+            delete frame;
 //            stack.reserve(1000);
         }
 
@@ -322,7 +371,22 @@ namespace ts::vm {
             }
         }
 
-        void call(const string_view &bin, unsigned int address = 0, unsigned int arguments = 0) {
+        void run(const string_view &bin) {
+            auto module = parseHeader(bin);
+
+            if (subroutine) throw runtime_error("Subroutine already running");
+
+            auto next = make_shared<Subroutine>(module);
+            next->ip = module.mainAddress;
+            next->end = module.bin.size();
+            next->previous = subroutine;
+            subroutine = next;
+            frame = new Frame(frame);
+
+            process();
+        }
+
+        void call(Module &module, unsigned int index = 0, unsigned int arguments = 0) {
             //todo: check if address was already calculated using unordered_map?
             const auto loopRunning = !!subroutine;
             if (!loopRunning) {
@@ -334,13 +398,11 @@ namespace ts::vm {
 //                push(make_shared<TypeTuple>());
 //                return;
 //            }
-
 //                }
 
-            auto next = make_shared<Subroutine>(bin);
-            next->ip = address;
-            next->end = bin.size();
-//            debug("call {}({})", address, arguments);
+            auto next = make_shared<Subroutine>(module);
+            next->ip = module.getAddressOfSubroutine(index);
+            next->end = module.bin.size();
             next->previous = subroutine;
             next->depth = subroutine ? subroutine->depth + 1 : 0;
 
@@ -356,7 +418,7 @@ namespace ts::vm {
             subroutine = next;
             if (loopRunning) subroutine->ip--; //`subroutine` is set to something new, so for() increments its ip, which we don't want
 
-            if (!loopRunning) this->process();
+            if (!loopRunning) process();
 
 //            print();
 //            return next->resultType;
@@ -459,19 +521,14 @@ namespace ts::vm {
         }
 
         void process() {
-
             while (subroutine) {
                 for (; subroutine->active && subroutine->ip < subroutine->end; subroutine->ip++) {
-                    const auto op = (OP) subroutine->bin[subroutine->ip];
-//                    debug("[{}] OP {} ({} -> {})", subroutine->depth, op, subroutine->ip, (unsigned int)bin[subroutine->ip]);
-
-
-                    if (op == OP::TypeArgument && (subroutine->bin[subroutine->ip + 1]) == OP::TypeArgument) {
-                    }
+                    const auto op = (OP) subroutine->module.bin[subroutine->ip];
+//                    debug("[{}] OP {} ({} -> {})", subroutine->depth, op, subroutine->ip, (unsigned int)op);
 
                     switch (op) {
                         case OP::Jump: {
-                            subroutine->ip = readUint32(subroutine->bin, 1) - 1; //minus 1 because for's i++
+                            subroutine->ip = readUint32(subroutine->module.bin, 1) - 1; //minus 1 because for's i++
                             break;
                         }
                         case OP::Extends: {
@@ -493,7 +550,7 @@ namespace ts::vm {
                             if (!next) {
                                 //done
                                 auto types = popFrame();
-                                if (types.size() == 0) {
+                                if (types.empty()) {
                                     push(make_shared<TypeNever>());
                                 } else if (types.size() == 1) {
                                     push(types[0]);
@@ -508,35 +565,38 @@ namespace ts::vm {
                                 subroutine->ip += 4;
                             } else {
                                 //next
-                                const auto loopProgram = readUint32(subroutine->bin, subroutine->ip + 1);
+                                const auto loopProgram = readUint32(subroutine->module.bin, subroutine->ip + 1);
                                 subroutine->ip--; //we jump back if the loop is not done, so that this section is executed when the following call() is done
                                 push(next);
-                                call(subroutine->bin, loopProgram, 1);
+                                call(subroutine->module, loopProgram, 1);
                             }
                             break;
                         }
                         case OP::JumpCondition: {
                             auto condition = pop();
-                            const auto leftProgram = readUint16(subroutine->bin, subroutine->ip + 1);
-                            const auto rightProgram = readUint16(subroutine->bin, subroutine->ip + 3);
+                            const auto leftProgram = readUint16(subroutine->module.bin, subroutine->ip + 1);
+                            const auto rightProgram = readUint16(subroutine->module.bin, subroutine->ip + 3);
                             subroutine->ip += 4;
 //                            debug("{} ? {} : {}", stringify(condition), leftProgram, rightProgram);
-                            call(subroutine->bin, isConditionTruthy(condition) ? leftProgram : rightProgram);
+                            call(subroutine->module, isConditionTruthy(condition) ? leftProgram : rightProgram);
                             break;
                         }
                         case OP::Return: {
                             auto previous = frame->previous;
+                            //the current frame could not only have the return value, but variables
+                            //which we don't want.
+                            // | [T] [T] [R] |
+                            if (frame->variables) {
+                                stack[frame->sp - 1 - frame->variables] = stack[frame->sp - 1];
+                            }
+                            previous->sp++; //consume the new stack entry from the function call, making it part of the caller frame
                             delete frame;
                             frame = previous;
-                            frame->sp++; //consume the new stack entry from the function call, making it part of the previous frame
                             subroutine->active = false;
                             subroutine->ip++; //we jump directly to another subroutine, so for()'s increment doesn't apply
                             subroutine = subroutine->previous;
                             subroutine->ip--; //for()'s increment applies the wrong subroutine, so we decrease first
-//                            if (!t) {
-//                                throw runtime_error("Stack empty");
-//                            }
-//                            debug("routine result: {}", vm::stringify(last()));
+//                            debug("routine {} result: {}", subroutine->name, vm::stringify(last()));
                             break;
                         }
                         case OP::TypeArgument: {
@@ -546,6 +606,7 @@ namespace ts::vm {
                                 push(unknown);
                             }
                             subroutine->typeArguments++;
+                            frame->variables++;
                             break;
                         }
                         case OP::TypeArgumentDefault: {
@@ -553,9 +614,9 @@ namespace ts::vm {
                             //t is always set because TypeArgument ensures that
                             if (t->kind == TypeKind::Unknown && to<TypeUnknown>(t)->unprovidedArgument) {
                                 frame->sp--; //remove unknown type from stack
-                                const auto address = readUint32(subroutine->bin, subroutine->ip + 1);
+                                const auto address = readUint32(subroutine->module.bin, subroutine->ip + 1);
                                 subroutine->ip += 4; //jump over address
-                                call(subroutine->bin, address, 0); //the result is pushed on the stack
+                                call(subroutine->module, address, 0); //the result is pushed on the stack
                             } else {
                                 subroutine->ip += 4; //jump over address
                             }
@@ -571,11 +632,10 @@ namespace ts::vm {
                             break;
                         }
                         case OP::Loads: {
-                            const auto frameOffset = readUint16(subroutine->bin, subroutine->ip + 1);
-                            const auto varIndex = readUint16(subroutine->bin, subroutine->ip + 3);
+                            const auto frameOffset = readUint16(subroutine->module.bin, subroutine->ip + 1);
+                            const auto varIndex = readUint16(subroutine->module.bin, subroutine->ip + 3);
                             subroutine->ip += 4;
                             if (frameOffset == 0) {
-                                //todo: this does not work with std::stack. what could be an alternative?
                                 push(stack[frame->initialSp + varIndex]);
                             } else if (frameOffset == 1) {
                                 push(stack[frame->previous->initialSp + varIndex]);
@@ -592,17 +652,17 @@ namespace ts::vm {
                             break;
                         }
                         case OP::Call: {
-                            const auto address = readUint32(subroutine->bin, subroutine->ip + 1);
-                            const auto arguments = readUint16(subroutine->bin, subroutine->ip + 5);
+                            const auto address = readUint32(subroutine->module.bin, subroutine->ip + 1);
+                            const auto arguments = readUint16(subroutine->module.bin, subroutine->ip + 5);
                             subroutine->ip += 6;
-                            call(subroutine->bin, address, arguments);
+                            call(subroutine->module, address, arguments);
                             break;
                         }
                         case OP::Assign: {
-                            auto lvalue = pop();
                             auto rvalue = pop();
+                            auto lvalue = pop();
                             if (!isExtendable(lvalue, rvalue)) {
-                                errors.push_back(fmt::format("{}={} not assignable!", stringify(lvalue), stringify(rvalue)));
+                                errors.push_back(fmt::format("{}={} not assignable!", stringify(rvalue), stringify(lvalue)));
                             }
                             break;
                         }
@@ -714,26 +774,26 @@ namespace ts::vm {
                             break;
                         }
                         case OP::NumberLiteral: {
-                            const auto address = readUint32(subroutine->bin, subroutine->ip + 1);
+                            const auto address = readUint32(subroutine->module.bin, subroutine->ip + 1);
                             subroutine->ip += 4;
-                            push(make_shared<TypeLiteral>(readStorage(subroutine->bin, address), TypeLiteralType::Number));
+                            push(make_shared<TypeLiteral>(readStorage(subroutine->module.bin, address), TypeLiteralType::Number));
                             break;
                         }
                         case OP::BigIntLiteral: {
-                            const auto address = readUint32(subroutine->bin, subroutine->ip + 1);
+                            const auto address = readUint32(subroutine->module.bin, subroutine->ip + 1);
                             subroutine->ip += 4;
-                            push(make_shared<TypeLiteral>(readStorage(subroutine->bin, address), TypeLiteralType::Bigint));
+                            push(make_shared<TypeLiteral>(readStorage(subroutine->module.bin, address), TypeLiteralType::Bigint));
                             break;
                         }
                         case OP::StringLiteral: {
-                            const auto address = readUint32(subroutine->bin, subroutine->ip + 1);
+                            const auto address = readUint32(subroutine->module.bin, subroutine->ip + 1);
                             subroutine->ip += 4;
-                            auto text = readStorage(subroutine->bin, address);
+                            auto text = readStorage(subroutine->module.bin, address);
                             push(make_shared<TypeLiteral>(text, TypeLiteralType::String));
                             break;
                         }
                         default: {
-                            throw runtime_error(fmt::format("unhandeled op {}", op));
+                            throw runtime_error(fmt::format("unhandled op {}", op));
                         }
                     }
                 }
@@ -749,7 +809,14 @@ namespace ts::vm {
 
             //short path for `{'asd'}`
             if (types.size() == 1 && types[0]->kind == TypeKind::Literal) {
-                push(types[0]);
+                //we can not just change the TypeLiteral->type, we have to create a new one
+//                to<TypeLiteral>(types[0])->type = TypeLiteralType::String;
+                auto t = to<TypeLiteral>(types[0]);
+                auto res = make_shared<TypeLiteral>(t->literal, TypeLiteralType::String);
+                if (t->literalText) {
+                    res->literalText = new string(*t->literalText);
+                }
+                push(res);
                 return;
             }
 

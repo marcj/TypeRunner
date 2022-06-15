@@ -94,7 +94,9 @@ namespace ts::instructions {
         Frame, //creates a new stack frame
         Return,
 
-        Jump,
+        Subroutine,
+        Jump, //arbitrary jump, used at the beginning to jump over storage-data (storage-data's addresses are constant)
+        Main, //marks end of meta-data section (subroutine metadata + storage data). has one parameter that points to the actual main code.
         Distribute, //calls a subroutine for each union member. one parameter (address to subroutine)
         Call //call a subroutine and push the result on the stack
 
