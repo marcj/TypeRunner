@@ -204,20 +204,13 @@ namespace ts {
     // @api
     shared<LiteralLike> Factory::createLiteralLikeNode(SyntaxKind kind, string text) {
         switch (kind) {
-            case SyntaxKind::NumericLiteral:
-                return createNumericLiteral(text, /*numericLiteralFlags*/ 0);
-            case SyntaxKind::BigIntLiteral:
-                return createBigIntLiteral(text);
-            case SyntaxKind::StringLiteral:
-                return createStringLiteral(text, /*isSingleQuote*/ {});
-            case SyntaxKind::JsxText:
-                return createJsxText(text, /*containsOnlyTriviaWhiteSpaces*/ false);
-            case SyntaxKind::JsxTextAllWhiteSpaces:
-                return createJsxText(text, /*containsOnlyTriviaWhiteSpaces*/ true);
-            case SyntaxKind::RegularExpressionLiteral:
-                return createRegularExpressionLiteral(text);
-            case SyntaxKind::NoSubstitutionTemplateLiteral:
-                return createTemplateLiteralLikeNode(kind, text, /*rawText*/ {}, /*templateFlags*/ 0);
+            case SyntaxKind::NumericLiteral:return createNumericLiteral(text, /*numericLiteralFlags*/ 0);
+            case SyntaxKind::BigIntLiteral:return createBigIntLiteral(text);
+            case SyntaxKind::StringLiteral:return createStringLiteral(text, /*isSingleQuote*/ {});
+            case SyntaxKind::JsxText:return createJsxText(text, /*containsOnlyTriviaWhiteSpaces*/ false);
+            case SyntaxKind::JsxTextAllWhiteSpaces:return createJsxText(text, /*containsOnlyTriviaWhiteSpaces*/ true);
+            case SyntaxKind::RegularExpressionLiteral:return createRegularExpressionLiteral(text);
+            case SyntaxKind::NoSubstitutionTemplateLiteral:return createTemplateLiteralLikeNode(kind, text, /*rawText*/ {}, /*templateFlags*/ 0);
         }
     }
 
@@ -395,7 +388,7 @@ namespace ts {
 //        function createTypeParameterDeclaration(sharedOpt<NodeArray> modifiers, name: string | Identifier, constraint?: TypeNode, defaultType?: TypeNode): TypeParameterDeclaration;
 //        /** @deprecated */
 //        function createTypeParameterDeclaration(name: string | Identifier, constraint?: TypeNode, defaultType?: TypeNode): TypeParameterDeclaration;
-   shared<TypeParameterDeclaration> Factory::createTypeParameterDeclaration(
+    shared<TypeParameterDeclaration> Factory::createTypeParameterDeclaration(
             optional<variant<shared<NodeArray>, shared<Node>, string>> modifiersOrName,
             optional<variant<shared<TypeNode>, shared<Identifier>, string>> nameOrConstraint,
             sharedOpt<TypeNode> constraintOrDefault,
@@ -2055,7 +2048,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<TypeOfExpression> Factory::createTypeOfExpression(shared<Expression> expression) {
+    shared<TypeOfExpression> Factory::createTypeOfExpression(shared<Expression> expression) {
         auto node = createBaseExpression<TypeOfExpression>(SyntaxKind::TypeOfExpression);
         node->expression = parenthesizer.parenthesizeOperandOfPrefixUnary(expression);
         node->transformFlags |= propagateChildFlags(node->expression);
@@ -2070,7 +2063,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<VoidExpression> Factory::createVoidExpression(shared<Expression> expression) {
+    shared<VoidExpression> Factory::createVoidExpression(shared<Expression> expression) {
         auto node = createBaseExpression<VoidExpression>(SyntaxKind::VoidExpression);
         node->expression = parenthesizer.parenthesizeOperandOfPrefixUnary(expression);
         node->transformFlags |= propagateChildFlags(node->expression);
@@ -2085,7 +2078,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<AwaitExpression> Factory::createAwaitExpression(shared<Expression> expression) {
+    shared<AwaitExpression> Factory::createAwaitExpression(shared<Expression> expression) {
         auto node = createBaseExpression<AwaitExpression>(SyntaxKind::AwaitExpression);
         node->expression = parenthesizer.parenthesizeOperandOfPrefixUnary(expression);
         node->transformFlags |=
@@ -2128,7 +2121,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<PostfixUnaryExpression> Factory::createPostfixUnaryExpression(shared<Expression> operand, SyntaxKind operatorKind) {
+    shared<PostfixUnaryExpression> Factory::createPostfixUnaryExpression(shared<Expression> operand, SyntaxKind operatorKind) {
         auto node = createBaseExpression<PostfixUnaryExpression>(SyntaxKind::PostfixUnaryExpression);
         node->operatorKind = operatorKind;
         node->operand = parenthesizer.parenthesizeOperandOfPostfixUnary(operand);
@@ -2149,67 +2142,62 @@ namespace ts {
 //                ? update(createPostfixUnaryExpression(operand, node->operator), node)
 //                : node;
 //        }
-//
-// @api
+
+    // @api
     shared<BinaryExpression> Factory::createBinaryExpression(shared<Expression> left, shared<Node> operatorNode, shared<Expression> right) {
         auto node = createBaseExpression<BinaryExpression>(SyntaxKind::BinaryExpression);
-//            auto operatorToken = asToken(operatorNode);
-//            auto operatorKind = operatorToken.kind;
-//            node->left = parenthesizer.parenthesizeLeftSideOfBinary(operatorKind, left);
-//            node->operatorToken = operatorToken;
-//            node->right = parenthesizer.parenthesizeRightSideOfBinary(operatorKind, node->left, right);
-//            node->transformFlags |=
-//                propagateChildFlags(node->left) |
-//                propagateChildFlags(node->operatorToken) |
-//                propagateChildFlags(node->right);
-//            if (operatorKind == SyntaxKind::QuestionQuestionToken) {
-//                node->transformFlags |= (int)TransformFlags::ContainsES2020;
-//            }
-//            else if (operatorKind == SyntaxKind::EqualsToken) {
-//                if (isObjectLiteralExpression(node->left)) {
-//                    node->transformFlags |=
-//                        (int)TransformFlags::ContainsES2015 |
-//                        (int)TransformFlags::ContainsES2018 |
-//                        (int)TransformFlags::ContainsDestructuringAssignment |
-//                        propagateAssignmentPatternFlags(node->left);
-//                }
-//                else if (isArrayLiteralExpression(node->left)) {
-//                    node->transformFlags |=
-//                        (int)TransformFlags::ContainsES2015 |
-//                        (int)TransformFlags::ContainsDestructuringAssignment |
-//                        propagateAssignmentPatternFlags(node->left);
-//                }
-//            }
-//            else if (operatorKind == SyntaxKind::AsteriskAsteriskToken || operatorKind == SyntaxKind::AsteriskAsteriskEqualsToken) {
-//                node->transformFlags |= (int)TransformFlags::ContainsES2016;
-//            }
-//            else if (isLogicalOrCoalescingAssignmentOperator(operatorKind)) {
-//                node->transformFlags |= (int)TransformFlags::ContainsES2021;
-//            }
+        auto operatorKind = operatorNode->kind;
+        node->left = parenthesizer.parenthesizeLeftSideOfBinary(operatorKind, left);
+        node->operatorToken = operatorNode;
+        node->right = parenthesizer.parenthesizeRightSideOfBinary(operatorKind, node->left, right);
+        node->transformFlags |=
+                propagateChildFlags(node->left) |
+                propagateChildFlags(node->operatorToken) |
+                propagateChildFlags(node->right);
+        if (operatorKind == SyntaxKind::QuestionQuestionToken) {
+            node->transformFlags |= (int) TransformFlags::ContainsES2020;
+        } else if (operatorKind == SyntaxKind::EqualsToken) {
+            if (isObjectLiteralExpression(node->left)) {
+                node->transformFlags |=
+                        (int) TransformFlags::ContainsES2015 |
+                        (int) TransformFlags::ContainsES2018 |
+                        (int) TransformFlags::ContainsDestructuringAssignment |
+                        (int) propagateAssignmentPatternFlags(node->left);
+            } else if (isArrayLiteralExpression(node->left)) {
+                node->transformFlags |=
+                        (int) TransformFlags::ContainsES2015 |
+                        (int) TransformFlags::ContainsDestructuringAssignment |
+                        (int) propagateAssignmentPatternFlags(node->left);
+            }
+        } else if (operatorKind == SyntaxKind::AsteriskAsteriskToken || operatorKind == SyntaxKind::AsteriskAsteriskEqualsToken) {
+            node->transformFlags |= (int) TransformFlags::ContainsES2016;
+        } else if (isLogicalOrCoalescingAssignmentOperator(operatorKind)) {
+            node->transformFlags |= (int) TransformFlags::ContainsES2021;
+        }
         return node;
     }
 
-//        function propagateAssignmentPatternFlags(node: AssignmentPattern): TransformFlags {
-//            if (node->transformFlags & TransformFlags::ContainsObjectRestOrSpread) return TransformFlags::ContainsObjectRestOrSpread;
-//            if (node->transformFlags & TransformFlags::ContainsES2018) {
-//                // check for nested spread assignments, otherwise '{ x: { a, ...b } = foo } = c'
-//                // will not be correctly interpreted by the ES2018 transformer
-//                for (auto element of getElementsOfBindingOrAssignmentPattern(node)) {
-//                    auto target = getTargetOfBindingOrAssignmentElement(element);
-//                    if (target && isAssignmentPattern(target)) {
-//                        if (target.transformFlags & TransformFlags::ContainsObjectRestOrSpread) {
-//                            return TransformFlags::ContainsObjectRestOrSpread;
-//                        }
-//                        if (target.transformFlags & TransformFlags::ContainsES2018) {
-//                            auto flags = propagateAssignmentPatternFlags(target);
-//                            if (flags) return flags;
-//                        }
-//                    }
-//                }
-//            }
-//            return TransformFlags::None;
-//        }
-//
+    TransformFlags Factory::propagateAssignmentPatternFlags(shared<Node> node) {
+        if (node->transformFlags & (int) TransformFlags::ContainsObjectRestOrSpread) return TransformFlags::ContainsObjectRestOrSpread;
+        if (node->transformFlags & (int) TransformFlags::ContainsES2018) {
+            // check for nested spread assignments, otherwise '{ x: { a, ...b } = foo } = c'
+            // will not be correctly interpreted by the ES2018 transformer
+            for (auto &&element: getElementsOfBindingOrAssignmentPattern(node)->list) {
+                auto target = getTargetOfBindingOrAssignmentElement(element);
+                if (target && isAssignmentPattern(target)) {
+                    if (target->transformFlags & (int) TransformFlags::ContainsObjectRestOrSpread) {
+                        return TransformFlags::ContainsObjectRestOrSpread;
+                    }
+                    if (target->transformFlags & (int) TransformFlags::ContainsES2018) {
+                        auto flags = propagateAssignmentPatternFlags(target);
+                        if ((int) flags) return flags;
+                    }
+                }
+            }
+        }
+        return TransformFlags::None;
+    }
+
 //        // @api
 //        function updateBinaryExpression(node: BinaryExpression, left: Expression, operator: BinaryOperatorToken, right: Expression) {
 //            return node->left != left
@@ -2220,7 +2208,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<ConditionalExpression> Factory::createConditionalExpression(shared<Expression> condition, sharedOpt<QuestionToken> questionToken, shared<Expression> whenTrue, sharedOpt<ColonToken> colonToken, shared<Expression> whenFalse) {
+    shared<ConditionalExpression> Factory::createConditionalExpression(shared<Expression> condition, sharedOpt<QuestionToken> questionToken, shared<Expression> whenTrue, sharedOpt<ColonToken> colonToken, shared<Expression> whenFalse) {
         auto node = createBaseExpression<ConditionalExpression>(SyntaxKind::ConditionalExpression);
         node->condition = parenthesizer.parenthesizeConditionOfConditionalExpression(condition);
         node->questionToken = questionToken ? questionToken : createToken<QuestionToken>(SyntaxKind::QuestionToken);
@@ -2341,7 +2329,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<SpreadElement> Factory::createSpreadElement(shared<Expression> expression) {
+    shared<SpreadElement> Factory::createSpreadElement(shared<Expression> expression) {
         auto node = createBaseExpression<SpreadElement>(SyntaxKind::SpreadElement);
         node->expression = parenthesizer.parenthesizeExpressionForDisallowedComma(expression);
         node->transformFlags |=
@@ -2359,7 +2347,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<ClassExpression> Factory::createClassExpression(
+    shared<ClassExpression> Factory::createClassExpression(
             sharedOpt<NodeArray> decorators,
             sharedOpt<NodeArray> modifiers,
             NameType name,
@@ -2426,7 +2414,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<AsExpression> Factory::createAsExpression(shared<Expression> expression, shared<TypeNode> type) {
+    shared<AsExpression> Factory::createAsExpression(shared<Expression> expression, shared<TypeNode> type) {
         auto node = createBaseExpression<AsExpression>(SyntaxKind::AsExpression);
         node->expression = expression;
         node->type = type;
@@ -2456,7 +2444,7 @@ namespace ts {
     }
 
     // @api
-   shared<NonNullChain> Factory::createNonNullChain(shared<Expression> expression) {
+    shared<NonNullChain> Factory::createNonNullChain(shared<Expression> expression) {
         auto node = createBaseExpression<NonNullChain>(SyntaxKind::NonNullExpression);
         node->flags |= (int) NodeFlags::OptionalChain;
         node->expression = parenthesizer.parenthesizeLeftSideOfAccess(expression);
@@ -2485,20 +2473,17 @@ namespace ts {
     }
 
     // @api
-   shared<MetaProperty> Factory::createMetaProperty(SyntaxKind keywordToken, shared<Identifier> name) {
+    shared<MetaProperty> Factory::createMetaProperty(SyntaxKind keywordToken, shared<Identifier> name) {
         auto node = createBaseExpression<MetaProperty>(SyntaxKind::MetaProperty);
         node->keywordToken = keywordToken;
         node->name = name;
         node->transformFlags |= propagateChildFlags(node->name);
         switch (keywordToken) {
-            case SyntaxKind::NewKeyword:
-                node->transformFlags |= (int) TransformFlags::ContainsES2015;
+            case SyntaxKind::NewKeyword:node->transformFlags |= (int) TransformFlags::ContainsES2015;
                 break;
-            case SyntaxKind::ImportKeyword:
-                node->transformFlags |= (int) TransformFlags::ContainsESNext;
+            case SyntaxKind::ImportKeyword:node->transformFlags |= (int) TransformFlags::ContainsESNext;
                 break;
-            default:
-                throw runtime_error(fmt::format("invalid keyword token {}", keywordToken));
+            default:throw runtime_error(fmt::format("invalid keyword token {}", keywordToken));
         }
         return node;
     }
@@ -2535,7 +2520,7 @@ namespace ts {
 //        }
 //
     // @api
-   shared<SemicolonClassElement> Factory::createSemicolonClassElement() {
+    shared<SemicolonClassElement> Factory::createSemicolonClassElement() {
         auto node = createBaseNode<SemicolonClassElement>(SyntaxKind::SemicolonClassElement);
         node->transformFlags |= (int) TransformFlags::ContainsES2015;
         return node;
@@ -2555,10 +2540,11 @@ namespace ts {
     }
 
     // @api
-   shared<VariableDeclarationList> Factory::createVariableDeclarationList(shared<NodeArray> declarations, int flags) {
+    shared<VariableDeclarationList> Factory::createVariableDeclarationList(shared<NodeArray> declarations, int flags) {
         auto node = createBaseNode<VariableDeclarationList>(SyntaxKind::VariableDeclarationList);
         node->flags |= flags & (int) NodeFlags::BlockScoped;
         node->declarations = declarations;
+        for (auto &&d: declarations->list) d->setParent(node);
         node->transformFlags |=
                 propagateChildrenFlags(node->declarations) |
                 (int) TransformFlags::ContainsHoistedDeclarationOrCompletion;
@@ -2578,7 +2564,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<VariableStatement> Factory::createVariableStatement(sharedOpt<NodeArray> modifiers, shared<VariableDeclarationList> declarationList) {
+    shared<VariableStatement> Factory::createVariableStatement(sharedOpt<NodeArray> modifiers, shared<VariableDeclarationList> declarationList) {
         auto node = createBaseDeclaration<VariableStatement>(SyntaxKind::VariableStatement, /*decorators*/ nullptr, modifiers);
         node->declarationList = declarationList;
         node->transformFlags |=
@@ -2615,7 +2601,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<EmptyStatement> Factory::createEmptyStatement() {
+    shared<EmptyStatement> Factory::createEmptyStatement() {
         return createBaseNode<EmptyStatement>(SyntaxKind::EmptyStatement);
     }
 
@@ -2639,7 +2625,7 @@ namespace ts {
     }
 
     // @api
-   shared<ExpressionStatement> Factory::createExpressionStatement(shared<Expression> expression) {
+    shared<ExpressionStatement> Factory::createExpressionStatement(shared<Expression> expression) {
         auto node = createBaseNode<ExpressionStatement>(SyntaxKind::ExpressionStatement);
         node->expression = parenthesizer.parenthesizeExpressionOfExpressionStatement(expression);
         node->transformFlags |= propagateChildFlags(node->expression);
@@ -2879,7 +2865,7 @@ namespace ts {
 //        }
 //
     // @api
-   shared<LabeledStatement> Factory::createLabeledStatement(NameType label, shared<Statement> statement) {
+    shared<LabeledStatement> Factory::createLabeledStatement(NameType label, shared<Statement> statement) {
         auto node = createBaseNode<LabeledStatement>(SyntaxKind::LabeledStatement);
         node->label = to<Identifier>(asName(label));
         node->statement = asEmbeddedStatement(statement);
@@ -2940,7 +2926,7 @@ namespace ts {
 //        }
 //
     // @api
-   shared<VariableDeclaration> Factory::createVariableDeclaration(NameType name, sharedOpt<ExclamationToken> exclamationToken, sharedOpt<TypeNode> type, sharedOpt<Expression> initializer) {
+    shared<VariableDeclaration> Factory::createVariableDeclaration(NameType name, sharedOpt<ExclamationToken> exclamationToken, sharedOpt<TypeNode> type, sharedOpt<Expression> initializer) {
         ZoneScoped;
         auto node = createBaseVariableLikeDeclaration<VariableDeclaration>(
                 SyntaxKind::VariableDeclaration,
@@ -2977,7 +2963,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<FunctionDeclaration> Factory::createFunctionDeclaration(
+    shared<FunctionDeclaration> Factory::createFunctionDeclaration(
             sharedOpt<NodeArray> decorators,
             sharedOpt<NodeArray> modifiers,
             sharedOpt<AsteriskToken> asteriskToken,
@@ -3042,7 +3028,7 @@ namespace ts {
 //        }
 //
     // @api
-   shared<ClassDeclaration> Factory::createClassDeclaration(
+    shared<ClassDeclaration> Factory::createClassDeclaration(
             sharedOpt<NodeArray> decorators,
             sharedOpt<NodeArray> modifiers,
             NameType name,
@@ -3407,7 +3393,7 @@ namespace ts {
 //        }
 //
     // @api
-   shared<AssertClause> Factory::createAssertClause(shared<NodeArray> elements, bool multiLine) {
+    shared<AssertClause> Factory::createAssertClause(shared<NodeArray> elements, bool multiLine) {
         auto node = createBaseNode<AssertClause>(SyntaxKind::AssertClause);
         node->elements = createNodeArray(elements);
         node->multiLine = multiLine;
@@ -3424,7 +3410,7 @@ namespace ts {
 //        }
 //
     // @api
-   shared<AssertEntry> Factory::createAssertEntry(shared<NodeUnion(AssertionKey)> name, shared<Expression> value) {
+    shared<AssertEntry> Factory::createAssertEntry(shared<NodeUnion(AssertionKey)> name, shared<Expression> value) {
         auto node = createBaseNode<AssertEntry>(SyntaxKind::AssertEntry);
         node->name = name;
         node->value = value;
@@ -3441,7 +3427,7 @@ namespace ts {
 //        }
 
     // @api
-   shared<ImportTypeAssertionContainer> Factory::createImportTypeAssertionContainer(shared<AssertClause> clause, bool multiLine) {
+    shared<ImportTypeAssertionContainer> Factory::createImportTypeAssertionContainer(shared<AssertClause> clause, bool multiLine) {
         auto node = createBaseNode<ImportTypeAssertionContainer>(SyntaxKind::ImportTypeAssertionContainer);
         node->assertClause = clause;
         node->multiLine = multiLine;
@@ -4389,20 +4375,17 @@ namespace ts {
 //        }
 
     // @api
-   shared<HeritageClause> Factory::createHeritageClause(SyntaxKind token, shared<NodeArray> types) {
+    shared<HeritageClause> Factory::createHeritageClause(SyntaxKind token, shared<NodeArray> types) {
         auto node = createBaseNode<HeritageClause>(SyntaxKind::HeritageClause);
         node->token = token;
         node->types = createNodeArray(types);
         node->transformFlags |= propagateChildrenFlags(node->types);
         switch (token) {
-            case SyntaxKind::ExtendsKeyword:
-                node->transformFlags |= (int) TransformFlags::ContainsES2015;
+            case SyntaxKind::ExtendsKeyword:node->transformFlags |= (int) TransformFlags::ContainsES2015;
                 break;
-            case SyntaxKind::ImplementsKeyword:
-                node->transformFlags |= (int) TransformFlags::ContainsTypeScript;
+            case SyntaxKind::ImplementsKeyword:node->transformFlags |= (int) TransformFlags::ContainsTypeScript;
                 break;
-            default:
-                throw runtime_error("invalid token");
+            default:throw runtime_error("invalid token");
         }
         return node;
     }
@@ -4447,7 +4430,7 @@ namespace ts {
 //        //
 //
     // @api
-   shared<PropertyAssignment> Factory::createPropertyAssignment(NameType name, shared<Expression> initializer) {
+    shared<PropertyAssignment> Factory::createPropertyAssignment(NameType name, shared<Expression> initializer) {
         auto node = createBaseNamedDeclaration<PropertyAssignment>(
                 SyntaxKind::PropertyAssignment,
                 /*decorators*/ nullptr,
@@ -4479,7 +4462,7 @@ namespace ts {
 //        }
 //
     // @api
-   shared<ShorthandPropertyAssignment> Factory::createShorthandPropertyAssignment(NameType name, sharedOpt<Expression> objectAssignmentInitializer) {
+    shared<ShorthandPropertyAssignment> Factory::createShorthandPropertyAssignment(NameType name, sharedOpt<Expression> objectAssignmentInitializer) {
         auto node = createBaseNamedDeclaration<ShorthandPropertyAssignment>(
                 SyntaxKind::ShorthandPropertyAssignment,
                 /*decorators*/ nullptr,
@@ -4512,7 +4495,7 @@ namespace ts {
 //        }
 //
     // @api
-   shared<SpreadAssignment> Factory::createSpreadAssignment(shared<Expression> expression) {
+    shared<SpreadAssignment> Factory::createSpreadAssignment(shared<Expression> expression) {
         auto node = createBaseNode<SpreadAssignment>(SyntaxKind::SpreadAssignment);
         node->expression = parenthesizer.parenthesizeExpressionForDisallowedComma(expression);
         node->transformFlags |=
@@ -4744,7 +4727,7 @@ namespace ts {
      * @param original The original outer expression.
      */
     // @api
-   shared<PartiallyEmittedExpression> Factory::createPartiallyEmittedExpression(shared<Expression> expression, sharedOpt<Node> original) {
+    shared<PartiallyEmittedExpression> Factory::createPartiallyEmittedExpression(shared<Expression> expression, sharedOpt<Node> original) {
         auto node = createBaseNode<PartiallyEmittedExpression>(SyntaxKind::PartiallyEmittedExpression);
         node->expression = expression;
         node->original = original;
@@ -5011,16 +4994,11 @@ namespace ts {
 
     shared<Expression> Factory::updateOuterExpression(shared<OuterExpression> outerExpression, shared<Expression> expression) {
         switch (outerExpression->kind) {
-            case SyntaxKind::ParenthesizedExpression:
-                return updateParenthesizedExpression(to<ParenthesizedExpression>(outerExpression), expression);
-            case SyntaxKind::TypeAssertionExpression:
-                return updateTypeAssertion(to<TypeAssertion>(outerExpression), to<TypeAssertion>(outerExpression)->type, expression);
-            case SyntaxKind::AsExpression:
-                return updateAsExpression(to<AsExpression>(outerExpression), expression, to<AsExpression>(outerExpression)->type);
-            case SyntaxKind::NonNullExpression:
-                return updateNonNullExpression(to<NonNullExpression>(outerExpression), expression);
-            case SyntaxKind::PartiallyEmittedExpression:
-                return updatePartiallyEmittedExpression(to<PartiallyEmittedExpression>(outerExpression), expression);
+            case SyntaxKind::ParenthesizedExpression:return updateParenthesizedExpression(to<ParenthesizedExpression>(outerExpression), expression);
+            case SyntaxKind::TypeAssertionExpression:return updateTypeAssertion(to<TypeAssertion>(outerExpression), to<TypeAssertion>(outerExpression)->type, expression);
+            case SyntaxKind::AsExpression:return updateAsExpression(to<AsExpression>(outerExpression), expression, to<AsExpression>(outerExpression)->type);
+            case SyntaxKind::NonNullExpression:return updateNonNullExpression(to<NonNullExpression>(outerExpression), expression);
+            case SyntaxKind::PartiallyEmittedExpression:return updatePartiallyEmittedExpression(to<PartiallyEmittedExpression>(outerExpression), expression);
         }
         throw runtime_error("Invalid OuterExpression passed");
     }
@@ -5657,30 +5635,20 @@ namespace ts {
         switch (kind) {
             case SyntaxKind::CallExpression:
             case SyntaxKind::NewExpression:
-            case SyntaxKind::ArrayLiteralExpression:
-                return TransformFlags::ArrayLiteralOrCallOrNewExcludes;
-            case SyntaxKind::ModuleDeclaration:
-                return TransformFlags::ModuleExcludes;
-            case SyntaxKind::Parameter:
-                return TransformFlags::ParameterExcludes;
-            case SyntaxKind::ArrowFunction:
-                return TransformFlags::ArrowFunctionExcludes;
+            case SyntaxKind::ArrayLiteralExpression:return TransformFlags::ArrayLiteralOrCallOrNewExcludes;
+            case SyntaxKind::ModuleDeclaration:return TransformFlags::ModuleExcludes;
+            case SyntaxKind::Parameter:return TransformFlags::ParameterExcludes;
+            case SyntaxKind::ArrowFunction:return TransformFlags::ArrowFunctionExcludes;
             case SyntaxKind::FunctionExpression:
-            case SyntaxKind::FunctionDeclaration:
-                return TransformFlags::FunctionExcludes;
-            case SyntaxKind::VariableDeclarationList:
-                return TransformFlags::VariableDeclarationListExcludes;
+            case SyntaxKind::FunctionDeclaration:return TransformFlags::FunctionExcludes;
+            case SyntaxKind::VariableDeclarationList:return TransformFlags::VariableDeclarationListExcludes;
             case SyntaxKind::ClassDeclaration:
-            case SyntaxKind::ClassExpression:
-                return TransformFlags::ClassExcludes;
-            case SyntaxKind::Constructor:
-                return TransformFlags::ConstructorExcludes;
-            case SyntaxKind::PropertyDeclaration:
-                return TransformFlags::PropertyExcludes;
+            case SyntaxKind::ClassExpression:return TransformFlags::ClassExcludes;
+            case SyntaxKind::Constructor:return TransformFlags::ConstructorExcludes;
+            case SyntaxKind::PropertyDeclaration:return TransformFlags::PropertyExcludes;
             case SyntaxKind::MethodDeclaration:
             case SyntaxKind::GetAccessor:
-            case SyntaxKind::SetAccessor:
-                return TransformFlags::MethodOrAccessorExcludes;
+            case SyntaxKind::SetAccessor:return TransformFlags::MethodOrAccessorExcludes;
             case SyntaxKind::AnyKeyword:
             case SyntaxKind::NumberKeyword:
             case SyntaxKind::BigIntKeyword:
@@ -5697,26 +5665,19 @@ namespace ts {
             case SyntaxKind::ConstructSignature:
             case SyntaxKind::IndexSignature:
             case SyntaxKind::InterfaceDeclaration:
-            case SyntaxKind::TypeAliasDeclaration:
-                return TransformFlags::TypeExcludes;
-            case SyntaxKind::ObjectLiteralExpression:
-                return TransformFlags::ObjectLiteralExcludes;
-            case SyntaxKind::CatchClause:
-                return TransformFlags::CatchClauseExcludes;
+            case SyntaxKind::TypeAliasDeclaration:return TransformFlags::TypeExcludes;
+            case SyntaxKind::ObjectLiteralExpression:return TransformFlags::ObjectLiteralExcludes;
+            case SyntaxKind::CatchClause:return TransformFlags::CatchClauseExcludes;
             case SyntaxKind::ObjectBindingPattern:
-            case SyntaxKind::ArrayBindingPattern:
-                return TransformFlags::BindingPatternExcludes;
+            case SyntaxKind::ArrayBindingPattern:return TransformFlags::BindingPatternExcludes;
             case SyntaxKind::TypeAssertionExpression:
             case SyntaxKind::AsExpression:
             case SyntaxKind::PartiallyEmittedExpression:
             case SyntaxKind::ParenthesizedExpression:
-            case SyntaxKind::SuperKeyword:
-                return TransformFlags::OuterExpressionExcludes;
+            case SyntaxKind::SuperKeyword:return TransformFlags::OuterExpressionExcludes;
             case SyntaxKind::PropertyAccessExpression:
-            case SyntaxKind::ElementAccessExpression:
-                return TransformFlags::PropertyAccessExcludes;
-            default:
-                return TransformFlags::NodeExcludes;
+            case SyntaxKind::ElementAccessExpression:return TransformFlags::PropertyAccessExcludes;
+            default:return TransformFlags::NodeExcludes;
         }
     }
 //

@@ -10,6 +10,14 @@ namespace ts::vm {
      * `left extends right ? true : false`
      */
     bool isExtendable(shared<Type> &left, shared<Type> &right) {
+        if (right->kind == TypeKind::Parameter) {
+            if (left->kind == TypeKind::Undefined && isOptional(right)) return true;
+            right = to<TypeParameter>(right)->type;
+        }
+
+        if (left->kind == TypeKind::Undefined) {
+        }
+
         if (right->kind == TypeKind::String) {
             if (left->kind == TypeKind::String) return true;
             if (left->kind == TypeKind::Literal) return to<TypeLiteral>(left)->type == TypeLiteralType::String;
@@ -22,7 +30,7 @@ namespace ts::vm {
 
         if (left->kind == TypeKind::Literal && right->kind == TypeKind::Literal) {
             return to<TypeLiteral>(left)->type == to<TypeLiteral>(right)->type &&
-                    to<TypeLiteral>(left)->text() == to<TypeLiteral>(right)->text();
+                   to<TypeLiteral>(left)->text() == to<TypeLiteral>(right)->text();
         }
 
         if (right->kind == TypeKind::Tuple && left->kind == TypeKind::Tuple) {

@@ -1,4 +1,5 @@
 #pragma once
+
 #include "../core.h"
 #include <string>
 #include <array>
@@ -8,6 +9,7 @@
 
 #define MAGIC_ENUM_RANGE_MIN 0
 #define MAGIC_ENUM_RANGE_MAX 512
+
 #include "magic_enum.hpp"
 
 namespace ts::vm {
@@ -37,6 +39,7 @@ namespace ts::vm {
         Property,
         Method,
         Function,
+        FunctionRef, //a function with generics which can be instantiated
         Parameter,
 
         Promise,
@@ -164,14 +167,21 @@ namespace ts::vm {
 
     struct TypeParameter: BrandKind<TypeKind::Parameter, Type> {
         string_view name; //number, string, symbol
-        std::unique_ptr<Type> type;
+        shared<Type> type;
+        sharedOpt<Type> initializer = nullptr;
+        bool optional = false;
+        TypeParameter(const string_view &name, const shared<ts::vm::Type> &type): name(name), type(type) {}
     };
 
     struct TypeFunction: BrandKind<TypeKind::Function, Type> {
         string_view name; //number, string, symbol
-//        array<TypeParameter*, 0> parameters;
-        std::unique_ptr<TypeParameter> t;
-        std::array<std::unique_ptr<TypeParameter>, 42> m_dates;
+        vector<shared<TypeParameter>> parameters;
+        shared<Type> returnType;
+    };
+
+    struct TypeFunctionRef: BrandKind<TypeKind::FunctionRef, Type> {
+        unsigned int address;
+        explicit TypeFunctionRef(unsigned int address): address(address) {}
     };
 
     template<class T>
@@ -222,6 +232,27 @@ namespace ts::vm {
                 }
                 return r;
             }
+            case TypeKind::Parameter: {
+                auto n = to<TypeParameter>(type);
+                string r = string(n->name);
+                if (n->optional) r += "?";
+                r += ": " + stringify(n->type);
+                return r;
+            }
+            case TypeKind::FunctionRef: {
+                return "%FunctionRef";
+            }
+            case TypeKind::Function: {
+                auto fn = to<TypeFunction>(type);
+                string r = string(fn->name) + "(";
+                for (auto &p: fn->parameters) {
+                    r += stringify(p);
+                    if (p != fn->parameters.back()) r += ", ";
+                }
+                r += ") => ";
+                r += stringify(fn->returnType);
+                return r;
+            }
             case TypeKind::Tuple: {
                 auto tuple = to<TypeTuple>(type);
                 string r = "[";
@@ -245,7 +276,7 @@ namespace ts::vm {
             }
         }
 
-        return "error";
+        return fmt::format("error-{}", type->kind);
     }
 
     shared<Type> unboxUnion(shared<Type> type) {
@@ -254,6 +285,41 @@ namespace ts::vm {
             if (types.size() == 0) return make_shared<TypeNever>(); //{ kind: ReflectionKind.never };
             if (types.size() == 1) return types[0];
         }
+        return type;
+    }
+
+    bool isOptional(shared<Type> type) {
+        switch (type->kind) {
+            case TypeKind::Union: {
+                auto a = to<TypeUnion>(type);
+                for (auto &&item: a->types) {
+                    if (item->kind == TypeKind::Undefined) return true;
+                }
+                break;
+            }
+            case TypeKind::Parameter: {
+                auto a = to<TypeParameter>(type);
+                if (a->optional) return true;
+                return isOptional(a->type);
+                break;
+            }
+        }
+        return false;
+    }
+
+    shared<Type> widen(shared<Type> type) {
+        switch (type->kind) {
+            case TypeKind::Literal: {
+                auto a = to<TypeLiteral>(type);
+                switch (a->type) {
+                    case TypeLiteralType::String: return make_shared<TypeString>();
+                    case TypeLiteralType::Number: return make_shared<TypeNumber>();
+                    case TypeLiteralType::Bigint: return make_shared<TypeBigint>();
+                    case TypeLiteralType::Boolean: return make_shared<TypeBoolean>();
+                }
+            }
+        }
+
         return type;
     }
 }

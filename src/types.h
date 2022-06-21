@@ -1306,7 +1306,7 @@ namespace ts {
      */
     class Node: public SourceMapRange {
     protected:
-        Node &parent = *this;                                 // Parent BaseNode (initialized by binding)
+        sharedOpt<Node> parent = nullptr;
     public:
         SyntaxKind kind = SyntaxKind::Unknown;
         constexpr static auto KIND = SyntaxKind::Unknown;
@@ -1330,10 +1330,14 @@ namespace ts {
         }
 
         bool hasParent() {
-            return &parent != this;
+            return &parent != nullptr;
         }
 
-        Node &getParent() {
+        void setParent(shared<Node> p) {
+            parent = p;
+        }
+
+        sharedOpt<Node> getParent() {
             if (!hasParent()) throw std::runtime_error("Node has no parent set");
             return parent;
         }
@@ -1356,12 +1360,12 @@ namespace ts {
             return this->kind == T::KIND;
         }
 
-        template<typename T>
-        T &to() {
-            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
-            if (kind != T::KIND) throw std::runtime_error(fmt::format("Can not convert Node, from kind {} to {}", kind, T::KIND));
-            return *reinterpret_cast<T *>(this);
-        }
+//        template<typename T>
+//        T &to() {
+//            if (T::KIND == SyntaxKind::Unknown) throw runtime_error("Passed Node type has unknown kind.");
+//            if (kind != T::KIND) throw std::runtime_error(fmt::format("Can not convert Node, from kind {} to {}", kind, T::KIND));
+//            return *reinterpret_cast<T *>(this);
+//        }
     };
 
     template<class T>
@@ -1844,6 +1848,8 @@ namespace ts {
         OptionalProperty(exclamationToken, ExclamationToken);  // Optional definite assignment assertion
         OptionalProperty(type, TypeNode);                      // Optional type annotation
         OptionalProperty(initializer, Expression);             // Optional initializer
+
+        bool isConst();
     };
 
     struct MemberName: NodeUnion(Identifier, PrivateIdentifier) {};
@@ -1951,7 +1957,7 @@ namespace ts {
         sharedOpt<NodeTypeArray(TypeParameterDeclaration)> typeParameters;
         shared<NodeTypeArray(ParameterDeclaration)> parameters;
         OptionalProperty(type, TypeNode);
-        sharedOpt<NodeTypeArray(TypeNode)> typeArguments;
+        /* @internal */ sharedOpt<NodeTypeArray(TypeNode)> typeArguments;// Used for quick info, replaces typeParameters for instantiated signatures
     };
 
     struct PropertyAssignment: BrandKind<SyntaxKind::PropertyAssignment, ObjectLiteralElement, Node> {

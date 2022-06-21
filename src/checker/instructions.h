@@ -25,11 +25,13 @@ namespace ts::instructions {
         False,
 
         Function,
+        FunctionRef, //one parameter, the index of the subroutine of the function that needs to be instantiated
 
         Method,
         MethodSignature,
 
         Parameter,
+        Initializer,
 
         Property,
         PropertySignature,
@@ -49,6 +51,9 @@ namespace ts::instructions {
         Extends, //expected 2 entries on the stack
         Condition, //expected 3 entries on the stack
         JumpCondition, //expected 1 entry on the stack + two uint16 parameters
+
+        CallExpression, //JS call expression, with 1 parameter (amount of parameters)
+        Instantiate, //instantiates a type on the stack (FunctionRef for example), ExpressionWithTypeArguments
 
         /**
          * Stack parameter. For each JS variable, JS function, as well as type variables (mapped-type variable for example).
@@ -81,6 +86,7 @@ namespace ts::instructions {
         KeyOf,
         Infer,
         TypeOf,
+        Widen, //literal to widened type, true -> boolean, '' => string, 32 => number, etc
 
         /**
          * Reserves a type variable on the stack, which contains a type object. Unknown as default.
@@ -88,8 +94,10 @@ namespace ts::instructions {
          * The address of it is known in the program and referenced directly.
          */
         TypeVar,
-        Loads, //pushes to the stack a referenced type in the stack. has 2 parameters: <frame> <index>, frame is a negative offset to the frame, and index the index of the stack entry withing the referenced frame
+        Loads, //LOAD from stack. pushes to the stack a referenced type in the stack. has 2 parameters: <frame> <index>, frame is a negative offset to the frame, and index the index of the stack entry withing the referenced frame
         Assign,
+        Dup, //Duplicates the current stack end
+        Set, //narrows/Sets a new value for a subroutine (variables)
 
         Frame, //creates a new stack frame
         Return,

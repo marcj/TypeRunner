@@ -19,6 +19,24 @@ namespace ts {
         return result;
     }
 
+    shared<Expression> Parenthesizer::parenthesizeBinaryOperand(SyntaxKind binaryOperator, shared<Expression> operand, bool isLeftSideOfBinary, sharedOpt<Expression> leftOperand) {
+        auto skipped = skipPartiallyEmittedExpressions(operand);
+
+        // If the resulting expression is already parenthesized, we do not need to do any further processing.
+        if (skipped->kind == SyntaxKind::ParenthesizedExpression) {
+            return operand;
+        }
+
+        return binaryOperandNeedsParentheses(binaryOperator, operand, isLeftSideOfBinary, leftOperand)
+               ? factory->createParenthesizedExpression(operand)
+               : operand;
+    }
+
+
+    shared<Expression> Parenthesizer::parenthesizeLeftSideOfBinary(SyntaxKind binaryOperator, shared<Expression> leftSide) {
+        return parenthesizeBinaryOperand(binaryOperator, leftSide, /*isLeftSideOfBinary*/ true);
+    }
+
     shared<Expression> Parenthesizer::parenthesizeExpressionOfComputedPropertyName(shared<Expression> expression) {
         return isCommaSequence(expression) ? factory->createParenthesizedExpression(expression) : expression;
     }
@@ -114,7 +132,7 @@ namespace ts {
         //
         auto emittedExpression = skipPartiallyEmittedExpressions(expression);
         if (isLeftHandSideExpression(emittedExpression)
-            && (emittedExpression->kind != SyntaxKind::NewExpression || emittedExpression->to<NewExpression>().arguments)) {
+            && (emittedExpression->kind != SyntaxKind::NewExpression || to<NewExpression>(emittedExpression)->arguments)) {
             // TODO(rbuckton): Verify whether this assertion holds.
             return reinterpret_pointer_cast<LeftHandSideExpression>(expression);
         }
@@ -134,7 +152,7 @@ namespace ts {
                 return factory->createParenthesizedExpression(expression);
 
             case SyntaxKind::NewExpression:
-                return !leftmostExpr->to<NewExpression>().arguments
+                return !to<NewExpression>(leftmostExpr)->arguments
                        ? factory->createParenthesizedExpression(expression)
                        : reinterpret_pointer_cast<LeftHandSideExpression>(expression); // TODO(rbuckton): Verify this assertion holds
         }

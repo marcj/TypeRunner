@@ -93,10 +93,26 @@ namespace ts::checker {
                     i += 4;
                     break;
                 }
+                case OP::Set:
                 case OP::TypeArgumentDefault:
                 case OP::Distribute: {
                     params += fmt::format(" &{}", readUint32(bin, i + 1));
                     i += 4;
+                    break;
+                }
+                case OP::FunctionRef: {
+                    params += fmt::format(" &{}", readUint32(bin, i + 1));
+                    i += 4;
+                    break;
+                }
+                case OP::Instantiate: {
+                    params += fmt::format(" {}", readUint16(bin, i + 1));
+                    i += 2;
+                    break;
+                }
+                case OP::CallExpression: {
+                    params += fmt::format(" &{}", readUint16(bin, i + 1));
+                    i += 2;
                     break;
                 }
                 case OP::Loads: {

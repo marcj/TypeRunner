@@ -251,13 +251,17 @@ namespace ts {
         std::cout << fmt::format(fmt, args...) << "\n";
     }
 
-    inline void bench(int iterations, const function<void()> &callback) {
+    inline std::chrono::duration<double, std::milli> benchRun(int iterations, const function<void()> &callback) {
         auto start = std::chrono::high_resolution_clock::now();
         for (auto i = 0; i <iterations; i++) {
             callback();
         }
 
-        std::chrono::duration<double, std::milli> took = std::chrono::high_resolution_clock::now() - start;
+        return std::chrono::high_resolution_clock::now() - start;
+    }
+
+    inline void bench(int iterations, const function<void()> &callback) {
+        auto took = benchRun(iterations, callback);
         fmt::print("{} iterations took {}ms, {}ms per iteration", iterations, took.count(), took.count()/iterations);
     }
 }

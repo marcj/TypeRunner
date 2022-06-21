@@ -417,5 +417,134 @@ namespace ts {
         }
         return to;
     }
+
+    enum class Associativity {
+        Left,
+        Right
+    };
+
+    Associativity getOperatorAssociativity(SyntaxKind kind, SyntaxKind operatorKind, bool hasArguments = false);
+
+    Associativity getExpressionAssociativity(shared<Expression> expression);
+
+    shared<NodeArray> getElementsOfBindingOrAssignmentPattern(shared<Node> name);
+
+    bool isLogicalOrCoalescingAssignmentOperator(SyntaxKind token); //: token is LogicalOrCoalescingAssignmentOperator
+
+    /**
+     * Determines whether the BindingOrAssignmentElement is a BindingElement-like declaration
+     */
+    /* @internal */
+    inline bool isDeclarationBindingElement(shared<Node> bindingElement) {//: bindingElement is VariableDeclaration | ParameterDeclaration | BindingElement {
+        switch (bindingElement->kind) {
+            case SyntaxKind::VariableDeclaration:
+            case SyntaxKind::Parameter:
+            case SyntaxKind::BindingElement:
+                return true;
+        }
+
+        return false;
+    }
+
+    inline bool isObjectLiteralElementLike(shared<Node> node) {//: node is ObjectLiteralElementLike {
+        auto kind = node->kind;
+        return kind == SyntaxKind::PropertyAssignment
+            || kind == SyntaxKind::ShorthandPropertyAssignment
+            || kind == SyntaxKind::SpreadAssignment
+            || kind == SyntaxKind::MethodDeclaration
+            || kind == SyntaxKind::GetAccessor
+            || kind == SyntaxKind::SetAccessor;
+    }
+
+    inline bool isAssignmentExpression(shared<Node> node, bool excludeCompoundAssignment = false) {//: node is AssignmentExpression<AssignmentOperatorToken> {
+        return isBinaryExpression(node)
+            && (excludeCompoundAssignment
+                ? to<BinaryExpression>(node)->operatorToken->kind == SyntaxKind::EqualsToken
+                : isAssignmentOperator(to<BinaryExpression>(node)->operatorToken->kind))
+            && isLeftHandSideExpression(to<BinaryExpression>(node)->left);
+    }
+
+    /* @internal */
+    inline bool isAssignmentPattern(shared<Node> node) { //: node is AssignmentPattern {
+        auto kind = node->kind;
+        return kind == SyntaxKind::ArrayLiteralExpression
+            || kind == SyntaxKind::ObjectLiteralExpression;
+    }
+
+
+    /**
+     * Gets the name of an BindingOrAssignmentElement.
+     */
+    inline sharedOpt<Node> getTargetOfBindingOrAssignmentElement(shared<Node> bindingElement) {
+        if (isDeclarationBindingElement(bindingElement)) {
+            // `a` in `let { a } = ...`
+            // `a` in `let { a = 1 } = ...`
+            // `b` in `let { a: b } = ...`
+            // `b` in `let { a: b = 1 } = ...`
+            // `a` in `let { ...a } = ...`
+            // `{b}` in `let { a: {b} } = ...`
+            // `{b}` in `let { a: {b} = 1 } = ...`
+            // `[b]` in `let { a: [b] } = ...`
+            // `[b]` in `let { a: [b] = 1 } = ...`
+            // `a` in `let [a] = ...`
+            // `a` in `let [a = 1] = ...`
+            // `a` in `let [...a] = ...`
+            // `{a}` in `let [{a}] = ...`
+            // `{a}` in `let [{a} = 1] = ...`
+            // `[a]` in `let [[a]] = ...`
+            // `[a]` in `let [[a] = 1] = ...`
+            return getName(bindingElement);
+        }
+
+        if (isObjectLiteralElementLike(bindingElement)) {
+            switch (bindingElement->kind) {
+                case SyntaxKind::PropertyAssignment:
+                    // `b` in `({ a: b } = ...)`
+                    // `b` in `({ a: b = 1 } = ...)`
+                    // `{b}` in `({ a: {b} } = ...)`
+                    // `{b}` in `({ a: {b} = 1 } = ...)`
+                    // `[b]` in `({ a: [b] } = ...)`
+                    // `[b]` in `({ a: [b] = 1 } = ...)`
+                    // `b.c` in `({ a: b.c } = ...)`
+                    // `b.c` in `({ a: b.c = 1 } = ...)`
+                    // `b[0]` in `({ a: b[0] } = ...)`
+                    // `b[0]` in `({ a: b[0] = 1 } = ...)`
+                    return getTargetOfBindingOrAssignmentElement(to<PropertyAssignment>(bindingElement)->initializer);
+
+                case SyntaxKind::ShorthandPropertyAssignment:
+                    // `a` in `({ a } = ...)`
+                    // `a` in `({ a = 1 } = ...)`
+                    return getName(bindingElement);
+
+                case SyntaxKind::SpreadAssignment:
+                    // `a` in `({ ...a } = ...)`
+                    return getTargetOfBindingOrAssignmentElement(to<SpreadAssignment>(bindingElement)->expression);
+            }
+
+            // no target
+            return nullptr;
+        }
+
+        if (isAssignmentExpression(bindingElement, /*excludeCompoundAssignment*/ true)) {
+            // `a` in `[a = 1] = ...`
+            // `{a}` in `[{a} = 1] = ...`
+            // `[a]` in `[[a] = 1] = ...`
+            // `a.b` in `[a.b = 1] = ...`
+            // `a[0]` in `[a[0] = 1] = ...`
+            return getTargetOfBindingOrAssignmentElement(to<AssignmentExpression>(bindingElement)->left);
+        }
+
+        if (isSpreadElement(bindingElement)) {
+            // `a` in `[...a] = ...`
+            return getTargetOfBindingOrAssignmentElement(to<SpreadElement>(bindingElement)->expression);
+        }
+
+        // `a` in `[a] = ...`
+        // `{a}` in `[{a}] = ...`
+        // `[a]` in `[[a]] = ...`
+        // `a.b` in `[a.b] = ...`
+        // `a[0]` in `[a[0]] = ...`
+        return bindingElement;
+    }
 }
 

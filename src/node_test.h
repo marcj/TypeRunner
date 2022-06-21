@@ -114,7 +114,7 @@ namespace ts {
 
     bool isPrivateIdentifier(const shared<Node> &node);
 
-    bool identifierIsThisKeyword(Identifier &id);
+    bool identifierIsThisKeyword(const shared<Identifier> &id);
 
     bool isThisIdentifier(sharedOpt<Node> node);
 

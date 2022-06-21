@@ -167,14 +167,13 @@ namespace ts {
             case SyntaxKind::ReadonlyKeyword:
             case SyntaxKind::StaticKeyword:
             case SyntaxKind::OutKeyword:
-            case SyntaxKind::OverrideKeyword:
-                return true;
+            case SyntaxKind::OverrideKeyword:return true;
         }
         return false;
     }
 
     bool isCommaSequence(shared<Expression> node) {
-        return (node->kind == SyntaxKind::BinaryExpression && node->to<BinaryExpression>().operatorToken->kind == SyntaxKind::CommaToken) || node->kind == SyntaxKind::CommaListExpression;
+        return (node->kind == SyntaxKind::BinaryExpression && to<BinaryExpression>(node)->operatorToken->kind == SyntaxKind::CommaToken) || node->kind == SyntaxKind::CommaListExpression;
     }
 
     bool isLiteralKind(SyntaxKind kind) {
@@ -206,44 +205,32 @@ namespace ts {
 
     int getBinaryOperatorPrecedence(SyntaxKind kind) {
         switch (kind) {
-            case SyntaxKind::QuestionQuestionToken:
-                return (int) OperatorPrecedence::Coalesce;
-            case SyntaxKind::BarBarToken:
-                return (int) OperatorPrecedence::LogicalOR;
-            case SyntaxKind::AmpersandAmpersandToken:
-                return (int) OperatorPrecedence::LogicalAND;
-            case SyntaxKind::BarToken:
-                return (int) OperatorPrecedence::BitwiseOR;
-            case SyntaxKind::CaretToken:
-                return (int) OperatorPrecedence::BitwiseXOR;
-            case SyntaxKind::AmpersandToken:
-                return (int) OperatorPrecedence::BitwiseAND;
+            case SyntaxKind::QuestionQuestionToken:return (int) OperatorPrecedence::Coalesce;
+            case SyntaxKind::BarBarToken:return (int) OperatorPrecedence::LogicalOR;
+            case SyntaxKind::AmpersandAmpersandToken:return (int) OperatorPrecedence::LogicalAND;
+            case SyntaxKind::BarToken:return (int) OperatorPrecedence::BitwiseOR;
+            case SyntaxKind::CaretToken:return (int) OperatorPrecedence::BitwiseXOR;
+            case SyntaxKind::AmpersandToken:return (int) OperatorPrecedence::BitwiseAND;
             case SyntaxKind::EqualsEqualsToken:
             case SyntaxKind::ExclamationEqualsToken:
             case SyntaxKind::EqualsEqualsEqualsToken:
-            case SyntaxKind::ExclamationEqualsEqualsToken:
-                return (int) OperatorPrecedence::Equality;
+            case SyntaxKind::ExclamationEqualsEqualsToken:return (int) OperatorPrecedence::Equality;
             case SyntaxKind::LessThanToken:
             case SyntaxKind::GreaterThanToken:
             case SyntaxKind::LessThanEqualsToken:
             case SyntaxKind::GreaterThanEqualsToken:
             case SyntaxKind::InstanceOfKeyword:
             case SyntaxKind::InKeyword:
-            case SyntaxKind::AsKeyword:
-                return (int) OperatorPrecedence::Relational;
+            case SyntaxKind::AsKeyword:return (int) OperatorPrecedence::Relational;
             case SyntaxKind::LessThanLessThanToken:
             case SyntaxKind::GreaterThanGreaterThanToken:
-            case SyntaxKind::GreaterThanGreaterThanGreaterThanToken:
-                return (int) OperatorPrecedence::Shift;
+            case SyntaxKind::GreaterThanGreaterThanGreaterThanToken:return (int) OperatorPrecedence::Shift;
             case SyntaxKind::PlusToken:
-            case SyntaxKind::MinusToken:
-                return (int) OperatorPrecedence::Additive;
+            case SyntaxKind::MinusToken:return (int) OperatorPrecedence::Additive;
             case SyntaxKind::AsteriskToken:
             case SyntaxKind::SlashToken:
-            case SyntaxKind::PercentToken:
-                return (int) OperatorPrecedence::Multiplicative;
-            case SyntaxKind::AsteriskAsteriskToken:
-                return (int) OperatorPrecedence::Exponentiation;
+            case SyntaxKind::PercentToken:return (int) OperatorPrecedence::Multiplicative;
+            case SyntaxKind::AsteriskAsteriskToken:return (int) OperatorPrecedence::Exponentiation;
         }
         // -1 is lower than all other precedences.  Returning it will cause binary expression parsing to stop.
         return -1;
@@ -335,13 +322,13 @@ namespace ts {
     /** @internal */
     bool hasInvalidEscape(shared<NodeUnion(TemplateLiteralTypes)> templateLiteral) {
         if (isNoSubstitutionTemplateLiteral(templateLiteral)) {
-            return !!templateLiteral->to<NoSubstitutionTemplateLiteral>().templateFlags;
+            return !!to<NoSubstitutionTemplateLiteral>(templateLiteral)->templateFlags;
         }
 
-        return !!templateLiteral->to<TemplateExpression>().head->templateFlags
-               || some<TemplateSpan>(templateLiteral->to<TemplateExpression>().templateSpans, [](shared<TemplateSpan> span) {
-            if (span->literal->kind == SyntaxKind::TemplateTail) return !!span->literal->to<TemplateTail>().templateFlags;
-            if (span->literal->kind == SyntaxKind::TemplateMiddle) return !!span->literal->to<TemplateMiddle>().templateFlags;
+        return !!to<TemplateExpression>(templateLiteral)->head->templateFlags
+               || some<TemplateSpan>(to<TemplateExpression>(templateLiteral)->templateSpans, [](shared<TemplateSpan> span) {
+            if (span->literal->kind == SyntaxKind::TemplateTail) return !!to<TemplateTail>(span->literal)->templateFlags;
+            if (span->literal->kind == SyntaxKind::TemplateMiddle) return !!to<TemplateMiddle>(span->literal)->templateFlags;
             return false;
         });
 
@@ -362,20 +349,14 @@ namespace ts {
         switch (const_hash(ext)) {
             case const_hash(Extension::Js):
             case const_hash(Extension::Cjs):
-            case const_hash(Extension::Mjs):
-                return ScriptKind::JS;
-            case const_hash(Extension::Jsx):
-                return ScriptKind::JSX;
+            case const_hash(Extension::Mjs):return ScriptKind::JS;
+            case const_hash(Extension::Jsx):return ScriptKind::JSX;
             case const_hash(Extension::Ts):
             case const_hash(Extension::Cts):
-            case const_hash(Extension::Mts):
-                return ScriptKind::TS;
-            case const_hash(Extension::Tsx):
-                return ScriptKind::TSX;
-            case const_hash(Extension::Json):
-                return ScriptKind::JSON;
-            default:
-                return ScriptKind::Unknown;
+            case const_hash(Extension::Mts):return ScriptKind::TS;
+            case const_hash(Extension::Tsx):return ScriptKind::TSX;
+            case const_hash(Extension::Json):return ScriptKind::JSON;
+            default:return ScriptKind::Unknown;
         }
     }
 
@@ -388,12 +369,9 @@ namespace ts {
 //                }
                 return (kinds & (int) OuterExpressionKinds::Parentheses) != 0;
             case SyntaxKind::TypeAssertionExpression:
-            case SyntaxKind::AsExpression:
-                return (kinds & (int) OuterExpressionKinds::TypeAssertions) != 0;
-            case SyntaxKind::NonNullExpression:
-                return (kinds & (int) OuterExpressionKinds::NonNullAssertions) != 0;
-            case SyntaxKind::PartiallyEmittedExpression:
-                return (kinds & (int) OuterExpressionKinds::PartiallyEmittedExpressions) != 0;
+            case SyntaxKind::AsExpression:return (kinds & (int) OuterExpressionKinds::TypeAssertions) != 0;
+            case SyntaxKind::NonNullExpression:return (kinds & (int) OuterExpressionKinds::NonNullAssertions) != 0;
+            case SyntaxKind::PartiallyEmittedExpression:return (kinds & (int) OuterExpressionKinds::PartiallyEmittedExpressions) != 0;
         }
         return false;
     }
@@ -401,22 +379,14 @@ namespace ts {
     sharedOpt<Expression> getExpression(sharedOpt<Node> node) {
         if (!node) return nullptr;
         switch (node->kind) {
-            case SyntaxKind::ParenthesizedExpression:
-                return node->to<ParenthesizedExpression>().expression;
-            case SyntaxKind::TypeAssertionExpression:
-                return node->to<TypeAssertion>().expression;
-            case SyntaxKind::AsExpression:
-                return node->to<AsExpression>().expression;
-            case SyntaxKind::ElementAccessExpression:
-                return node->to<ElementAccessExpression>().expression;
-            case SyntaxKind::PropertyAccessExpression:
-                return node->to<PropertyAccessExpression>().expression;
-            case SyntaxKind::NonNullExpression:
-                return node->to<NonNullExpression>().expression;
-            case SyntaxKind::CallExpression:
-                return node->to<CallExpression>().expression;
-            case SyntaxKind::PartiallyEmittedExpression:
-                return node->to<PartiallyEmittedExpression>().expression;
+            case SyntaxKind::ParenthesizedExpression:return to<ParenthesizedExpression>(node)->expression;
+            case SyntaxKind::TypeAssertionExpression:return to<TypeAssertion>(node)->expression;
+            case SyntaxKind::AsExpression:return to<AsExpression>(node)->expression;
+            case SyntaxKind::ElementAccessExpression:return to<ElementAccessExpression>(node)->expression;
+            case SyntaxKind::PropertyAccessExpression:return to<PropertyAccessExpression>(node)->expression;
+            case SyntaxKind::NonNullExpression:return to<NonNullExpression>(node)->expression;
+            case SyntaxKind::CallExpression:return to<CallExpression>(node)->expression;
+            case SyntaxKind::PartiallyEmittedExpression:return to<PartiallyEmittedExpression>(node)->expression;
         }
         throw runtime_error(fmt::format("No expression found in type {}", (int) node->kind));
     }
@@ -466,8 +436,7 @@ namespace ts {
             case SyntaxKind::MetaProperty:
             case SyntaxKind::ImportKeyword: // technically this is only an Expression if it's in a CallExpression
                 return true;
-            default:
-                return false;
+            default:return false;
         }
     }
 
@@ -479,10 +448,8 @@ namespace ts {
             case SyntaxKind::TypeOfExpression:
             case SyntaxKind::VoidExpression:
             case SyntaxKind::AwaitExpression:
-            case SyntaxKind::TypeAssertionExpression:
-                return true;
-            default:
-                return isLeftHandSideExpressionKind(kind);
+            case SyntaxKind::TypeAssertionExpression:return true;
+            default:return isLeftHandSideExpressionKind(kind);
         }
     }
 
@@ -493,22 +460,17 @@ namespace ts {
 
     int getOperatorPrecedence(SyntaxKind nodeKind, SyntaxKind operatorKind, optional<bool> hasArguments) {
         switch (nodeKind) {
-            case SyntaxKind::CommaListExpression:
-                return (int) OperatorPrecedence::Comma;
+            case SyntaxKind::CommaListExpression:return (int) OperatorPrecedence::Comma;
 
-            case SyntaxKind::SpreadElement:
-                return (int) OperatorPrecedence::Spread;
+            case SyntaxKind::SpreadElement:return (int) OperatorPrecedence::Spread;
 
-            case SyntaxKind::YieldExpression:
-                return (int) OperatorPrecedence::Yield;
+            case SyntaxKind::YieldExpression:return (int) OperatorPrecedence::Yield;
 
-            case SyntaxKind::ConditionalExpression:
-                return (int) OperatorPrecedence::Conditional;
+            case SyntaxKind::ConditionalExpression:return (int) OperatorPrecedence::Conditional;
 
             case SyntaxKind::BinaryExpression:
                 switch (operatorKind) {
-                    case SyntaxKind::CommaToken:
-                        return (int) OperatorPrecedence::Comma;
+                    case SyntaxKind::CommaToken:return (int) OperatorPrecedence::Comma;
 
                     case SyntaxKind::EqualsToken:
                     case SyntaxKind::PlusEqualsToken:
@@ -525,11 +487,9 @@ namespace ts {
                     case SyntaxKind::BarEqualsToken:
                     case SyntaxKind::BarBarEqualsToken:
                     case SyntaxKind::AmpersandAmpersandEqualsToken:
-                    case SyntaxKind::QuestionQuestionEqualsToken:
-                        return (int) OperatorPrecedence::Assignment;
+                    case SyntaxKind::QuestionQuestionEqualsToken:return (int) OperatorPrecedence::Assignment;
 
-                    default:
-                        return getBinaryOperatorPrecedence(operatorKind);
+                    default:return getBinaryOperatorPrecedence(operatorKind);
                 }
 
                 // TODO: Should prefix `++` and `--` be moved to the `Update` precedence?
@@ -539,26 +499,20 @@ namespace ts {
             case SyntaxKind::TypeOfExpression:
             case SyntaxKind::VoidExpression:
             case SyntaxKind::DeleteExpression:
-            case SyntaxKind::AwaitExpression:
-                return (int) OperatorPrecedence::Unary;
+            case SyntaxKind::AwaitExpression:return (int) OperatorPrecedence::Unary;
 
-            case SyntaxKind::PostfixUnaryExpression:
-                return (int) OperatorPrecedence::Update;
+            case SyntaxKind::PostfixUnaryExpression:return (int) OperatorPrecedence::Update;
 
-            case SyntaxKind::CallExpression:
-                return (int) OperatorPrecedence::LeftHandSide;
+            case SyntaxKind::CallExpression:return (int) OperatorPrecedence::LeftHandSide;
 
-            case SyntaxKind::NewExpression:
-                return hasArguments && *hasArguments ? (int) OperatorPrecedence::Member : (int) OperatorPrecedence::LeftHandSide;
+            case SyntaxKind::NewExpression:return hasArguments && *hasArguments ? (int) OperatorPrecedence::Member : (int) OperatorPrecedence::LeftHandSide;
 
             case SyntaxKind::TaggedTemplateExpression:
             case SyntaxKind::PropertyAccessExpression:
             case SyntaxKind::ElementAccessExpression:
-            case SyntaxKind::MetaProperty:
-                return (int) OperatorPrecedence::Member;
+            case SyntaxKind::MetaProperty:return (int) OperatorPrecedence::Member;
 
-            case SyntaxKind::AsExpression:
-                return (int) OperatorPrecedence::Relational;
+            case SyntaxKind::AsExpression:return (int) OperatorPrecedence::Relational;
 
             case SyntaxKind::ThisKeyword:
             case SyntaxKind::SuperKeyword:
@@ -582,21 +536,19 @@ namespace ts {
             case SyntaxKind::OmittedExpression:
             case SyntaxKind::JsxElement:
             case SyntaxKind::JsxSelfClosingElement:
-            case SyntaxKind::JsxFragment:
-                return (int) OperatorPrecedence::Primary;
+            case SyntaxKind::JsxFragment:return (int) OperatorPrecedence::Primary;
 
-            default:
-                return (int) OperatorPrecedence::Invalid;
+            default:return (int) OperatorPrecedence::Invalid;
         }
     }
 
     SyntaxKind getOperator(shared<Node> expression) {
         if (expression->kind == SyntaxKind::BinaryExpression) {
-            return expression->to<BinaryExpression>().operatorToken->kind;
+            return to<BinaryExpression>(expression)->operatorToken->kind;
         } else if (expression->kind == SyntaxKind::PrefixUnaryExpression) {
-            return expression->to<PrefixUnaryExpression>().operatorKind;
+            return to<PrefixUnaryExpression>(expression)->operatorKind;
         } else if (expression->kind == SyntaxKind::PostfixUnaryExpression) {
-            return expression->to<PostfixUnaryExpression>().operatorKind;
+            return to<PostfixUnaryExpression>(expression)->operatorKind;
         } else {
             return expression->kind;
         }
@@ -604,12 +556,12 @@ namespace ts {
 
     /* @internal */
     bool isGeneratedIdentifier(shared<Node> node) {
-        return node->kind == SyntaxKind::Identifier && (defaultTo<int>(node->to<Identifier>().autoGenerateFlags, 0) & (int) GeneratedIdentifierFlags::KindMask) > (int) GeneratedIdentifierFlags::None;
+        return node->kind == SyntaxKind::Identifier && (defaultTo<int>(to<Identifier>(node)->autoGenerateFlags, 0) & (int) GeneratedIdentifierFlags::KindMask) > (int) GeneratedIdentifierFlags::None;
     }
 
     int getExpressionPrecedence(shared<Node> expression) {
         auto operatorNode = getOperator(expression);
-        bool hasArguments = expression->is<NewExpression>() ? !!expression->to<NewExpression>().arguments : false;
+        bool hasArguments = expression->is<NewExpression>() ? !!to<NewExpression>(expression)->arguments : false;
         return getOperatorPrecedence(expression->kind, operatorNode, hasArguments);
     }
 
@@ -680,20 +632,16 @@ namespace ts {
     shared<Expression> getLeftmostExpression(shared<Expression> node, bool stopAtCallExpressions) {
         while (true) {
             switch (node->kind) {
-                case SyntaxKind::PostfixUnaryExpression:
-                    node = node->to<PostfixUnaryExpression>().operand;
+                case SyntaxKind::PostfixUnaryExpression:node = to<PostfixUnaryExpression>(node)->operand;
                     continue;
 
-                case SyntaxKind::BinaryExpression:
-                    node = node->to<BinaryExpression>().left;
+                case SyntaxKind::BinaryExpression:node = to<BinaryExpression>(node)->left;
                     continue;
 
-                case SyntaxKind::ConditionalExpression:
-                    node = node->to<ConditionalExpression>().condition;
+                case SyntaxKind::ConditionalExpression:node = to<ConditionalExpression>(node)->condition;
                     continue;
 
-                case SyntaxKind::TaggedTemplateExpression:
-                    node = node->to<TaggedTemplateExpression>().tag;
+                case SyntaxKind::TaggedTemplateExpression:node = to<TaggedTemplateExpression>(node)->tag;
                     continue;
 
                 case SyntaxKind::CallExpression:
@@ -705,8 +653,7 @@ namespace ts {
                 case SyntaxKind::ElementAccessExpression:
                 case SyntaxKind::PropertyAccessExpression:
                 case SyntaxKind::NonNullExpression:
-                case SyntaxKind::PartiallyEmittedExpression:
-                    node = getExpression(node);
+                case SyntaxKind::PartiallyEmittedExpression:node = getExpression(node);
                     continue;
             }
 
@@ -735,6 +682,68 @@ namespace ts {
      */
     Comparison compareValues(optional<double> a, optional<double> b) {
         return compareComparableValues(a, b);
+    }
+
+    Associativity getOperatorAssociativity(SyntaxKind kind, SyntaxKind operatorKind, bool hasArguments) {
+        switch (kind) {
+            case SyntaxKind::NewExpression:return hasArguments ? Associativity::Left : Associativity::Right;
+
+            case SyntaxKind::PrefixUnaryExpression:
+            case SyntaxKind::TypeOfExpression:
+            case SyntaxKind::VoidExpression:
+            case SyntaxKind::DeleteExpression:
+            case SyntaxKind::AwaitExpression:
+            case SyntaxKind::ConditionalExpression:
+            case SyntaxKind::YieldExpression:return Associativity::Right;
+
+            case SyntaxKind::BinaryExpression:
+                switch (operatorKind) {
+                    case SyntaxKind::AsteriskAsteriskToken:
+                    case SyntaxKind::EqualsToken:
+                    case SyntaxKind::PlusEqualsToken:
+                    case SyntaxKind::MinusEqualsToken:
+                    case SyntaxKind::AsteriskAsteriskEqualsToken:
+                    case SyntaxKind::AsteriskEqualsToken:
+                    case SyntaxKind::SlashEqualsToken:
+                    case SyntaxKind::PercentEqualsToken:
+                    case SyntaxKind::LessThanLessThanEqualsToken:
+                    case SyntaxKind::GreaterThanGreaterThanEqualsToken:
+                    case SyntaxKind::GreaterThanGreaterThanGreaterThanEqualsToken:
+                    case SyntaxKind::AmpersandEqualsToken:
+                    case SyntaxKind::CaretEqualsToken:
+                    case SyntaxKind::BarEqualsToken:
+                    case SyntaxKind::BarBarEqualsToken:
+                    case SyntaxKind::AmpersandAmpersandEqualsToken:
+                    case SyntaxKind::QuestionQuestionEqualsToken:return Associativity::Right;
+                }
+        }
+        return Associativity::Left;
+    }
+
+    Associativity getExpressionAssociativity(shared<Expression> expression) {
+        auto operatorKind = getOperator(expression);
+        auto hasArguments = expression->kind == SyntaxKind::NewExpression && to<NewExpression>(expression)->arguments;
+        return getOperatorAssociativity(expression->kind, operatorKind, hasArguments);
+    }
+
+    shared<NodeArray> getElementsOfBindingOrAssignmentPattern(shared<Node> name) {
+        switch (name->kind) {
+            case SyntaxKind::ObjectBindingPattern: return to<ObjectBindingPattern>(name)->elements;
+            case SyntaxKind::ArrayBindingPattern: return to<ArrayBindingPattern>(name)->elements;
+            case SyntaxKind::ArrayLiteralExpression: return to<ArrayLiteralExpression>(name)->elements;
+                // `a` in `{a}`
+                // `a` in `[a]`
+
+            case SyntaxKind::ObjectLiteralExpression: return to<ObjectLiteralExpression>(name)->properties;
+                // `a` in `{a}`
+            default: throw runtime_error("getElementsOfBindingOrAssignmentPattern unsupported kind");
+        }
+    }
+
+    bool isLogicalOrCoalescingAssignmentOperator(SyntaxKind token) {
+        return token == SyntaxKind::BarBarEqualsToken
+            || token == SyntaxKind::AmpersandAmpersandEqualsToken
+            || token == SyntaxKind::QuestionQuestionEqualsToken;
     }
 }
 

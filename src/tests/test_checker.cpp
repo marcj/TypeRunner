@@ -7,21 +7,47 @@
 
 using namespace ts;
 
-string compile(string code) {
+string compile(string code, bool print = true) {
     Parser parser;
     auto result = parser.parseSourceFile("app.ts", code, ScriptTarget::Latest, false, ScriptKind::TS, {});
     checker::Compiler compiler;
     auto program = compiler.compileSourceFile(result);
     auto bin = program.build();
-    checker::printBin(bin);
+    if (print) checker::printBin(bin);
     return bin;
 }
 
-vector<string> run(string code) {
+void test(string code, unsigned int expectedErrors = 0) {
+    auto bin = compile(code);
     vm::VM vm;
-    vm.run(compile(code));
+    vm.run(bin);
     vm.printErrors();
-    return vm.errors;
+    EXPECT_EQ(expectedErrors, vm.errors.size());
+}
+
+void run(string code, unsigned int expectedErrors = 0) {
+    auto bin = compile(code);
+    vm::VM vm;
+    vm.run(bin);
+    vm.printErrors();
+    EXPECT_EQ(expectedErrors, vm.errors.size());
+
+    auto iterations = 10;
+    auto compileTime = benchRun(iterations, [&code] {
+        compile(code, false);
+    });
+
+    auto coldTime = benchRun(iterations, [&code] {
+        vm::VM vm;
+        vm.run(compile(code, false));
+    });
+
+    auto warmTime = benchRun(iterations, [&bin] {
+        vm::VM vm;
+        vm.run(bin);
+    });
+
+    fmt::print("{} iterations took: compile {}, cold {}, warm {}", iterations, compileTime.count() / iterations, coldTime.count() / iterations, warmTime.count() / iterations);
 }
 
 TEST(checker, program) {
@@ -207,19 +233,121 @@ TEST(checker, stackFrame) {
     debug("done");
 }
 
-TEST(checker, basic) {
-    Parser parser;
-
+TEST(checker, functionCall) {
     auto code = R"(
     const i: number = 123;
 
-    function print(v: string) {
+    function doIt(v: number) {
     }
 
-    print(i);
+    doIt(i);
+    doIt('123');
     )";
 
-    compile(code);
+    auto bin = compile(code);
+    vm::VM vm;
+    vm.run(bin);
+    vm.printErrors();
+    EXPECT_EQ(vm.errors.size(), 1);
+
+    bench(10, [&] {
+        vm::VM vm;
+        vm.run(bin);
+    });
+}
+
+TEST(checker, functionGenericCall) {
+    auto code = R"(
+    function doIt<T extends number>(v: T) {
+    }
+    doIt<number>(23);
+    )";
+
+    test(code, 0);
+}
+
+TEST(checker, controlFlow1) {
+    auto code = R"(
+    function boolFunc(t: true) {}
+    let bool = true;
+    boolFunc(bool);
+
+    bool = false;
+    boolFunc(bool);
+
+    bool = Date.now() > 1000 ? true : false;
+    boolFunc(bool);
+    )";
+
+    run(code, 2);
+}
+
+TEST(checker, functionGenericExpressionCall) {
+    auto code = R"(
+    function doIt<T extends number>(v: T) {
+    }
+
+    const a = doIt<number>;
+    a(23);
+    )";
+
+    run(code, 0);
+}
+
+TEST(checker, functionGenericCallBench) {
+    auto code = R"(
+//    const i: number = 123;
+
+    function doIt<T extends number>(v: T) {
+    }
+
+    doIt<number>(23);
+//    doIt<number>('23');
+//    doIt<34>(i);
+//    doIt<string>(i);
+//    doIt(i);
+//    doIt('asd');
+//    doIt();
+    )";
+
+    run(code);
+}
+
+TEST(checker, mapLiteralToClassConditional) {
+    auto code = R"(
+    class A {};
+    class B {};
+    class C {};
+    class D {};
+
+    type Resolve<T> =
+        T extends "a" ? A :
+        T extends "b" ? B :
+        T extends "c" ? C :
+        T extends "d" ? D :
+        never;
+
+    type found = Resolve<"d">;
+    )";
+
+    run(code);
+}
+TEST(checker, mapLiteralToClassMap) {
+    auto code = R"(
+    class A {}
+    class B {}
+    class C {}
+    class D {}
+    type ClassMap = {
+        a: A, b: B, c: C, d: D
+    }
+
+    type Resolve<T extends keyof ClassMap> = ClassMap[T];
+
+    type found = Resolve<"d">;
+    )";
+
+    run(code);
 }
 
 TEST(checker, basic2) {

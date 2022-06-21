@@ -1650,26 +1650,7 @@ namespace ts {
 // @api
         shared<BinaryExpression> createBinaryExpression(shared<Expression> left, shared<Node> operatorNode, shared<Expression> right);
 
-//        function propagateAssignmentPatternFlags(node: AssignmentPattern): TransformFlags {
-//            if (node->transformFlags & TransformFlags::ContainsObjectRestOrSpread) return TransformFlags::ContainsObjectRestOrSpread;
-//            if (node->transformFlags & TransformFlags::ContainsES2018) {
-//                // check for nested spread assignments, otherwise '{ x: { a, ...b } = foo } = c'
-//                // will not be correctly interpreted by the ES2018 transformer
-//                for (auto element of getElementsOfBindingOrAssignmentPattern(node)) {
-//                    auto target = getTargetOfBindingOrAssignmentElement(element);
-//                    if (target && isAssignmentPattern(target)) {
-//                        if (target.transformFlags & TransformFlags::ContainsObjectRestOrSpread) {
-//                            return TransformFlags::ContainsObjectRestOrSpread;
-//                        }
-//                        if (target.transformFlags & TransformFlags::ContainsES2018) {
-//                            auto flags = propagateAssignmentPatternFlags(target);
-//                            if (flags) return flags;
-//                        }
-//                    }
-//                }
-//            }
-//            return TransformFlags::None;
-//        }
+        TransformFlags propagateAssignmentPatternFlags(shared<Node> node);
 //
 //        // @api
 //        function updateBinaryExpression(node: BinaryExpression, left: Expression, operator: BinaryOperatorToken, right: Expression) {
