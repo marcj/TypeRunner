@@ -13,6 +13,7 @@ namespace ts::checker {
     using std::string;
     using std::function;
     using instructions::OP;
+    using instructions::ErrorCode;
 
     enum class SymbolType {
         Variable, //const x = true;
@@ -159,20 +160,20 @@ namespace ts::checker {
             return subroutine;
         }
 
-        Symbol &findSymbol(const string_view &identifier) {
+        Symbol *findSymbol(const string_view &identifier) {
             Frame *current = frame.get();
 
             while (true) {
                 for (auto &&s: current->symbols) {
                     if (s.name == identifier) {
-                        return s;
+                        return &s;
                     }
                 }
                 if (!current->previous) break;
                 current = current->previous.get();
             };
 
-            throw runtime_error(fmt::format("No symbol for {} found", identifier));
+            return nullptr;
         }
 
         /**
@@ -202,6 +203,11 @@ namespace ts::checker {
         void pushUint16(unsigned int v) {
             auto &ops = getOPs();
             writeUint16(ops, ops.size(), v);
+        }
+
+        void pushError(ErrorCode code, const shared<Node> &node) {
+            pushOp(OP::Error, node);
+            pushUint16((unsigned int)code);
         }
 
         void pushSymbolAddress(Symbol &symbol) {
@@ -237,8 +243,8 @@ namespace ts::checker {
 
         void pushOp(OP op, const shared<Node> &node) {
             auto &ops = getOPs();
-            ops.push_back(op);
             pushSourceMap(node);
+            ops.push_back(op);
         }
 
         //needed for variables
@@ -343,10 +349,6 @@ namespace ts::checker {
 
             //set initial jump position to right after the storage data
             writeUint32(bin, 1, address);
-
-            address += subroutines.size() * (1 + 4 + 4); //OP::Subroutine + uint32 name address + uin32 routine address
-            address += 1 + 4; //OP::Main + uint32 address
-
             //push all storage data to the binary
             for (auto &&item: storage) {
                 writeUint16(bin, bin.size(), item.size());
@@ -363,16 +365,19 @@ namespace ts::checker {
             //write sourcemap
             bin.push_back(OP::SourceMap);
             writeUint32(bin, bin.size(), sourceMapSize);
-            address += 1 + 4 + sourceMapSize;
+            address += 1 + 4 + sourceMapSize; //OP::SourceMap + uint32 size
 
             unsigned int bytecodePosOffset = address;
+            bytecodePosOffset += subroutines.size() * (1 + 4 + 4); //OP::Subroutine + uint32 name address + uint32 routine address
+            bytecodePosOffset += 1 + 4; //OP::Main + uint32 address
+
             for (auto &&routine: subroutines) {
                 for (auto &&map: routine->sourceMap.map) {
                     writeUint32(bin, bin.size(), bytecodePosOffset + map.bytecodePos);
                     writeUint32(bin, bin.size(), map.sourcePos);
                     writeUint32(bin, bin.size(), map.sourceEnd);
-                    bytecodePosOffset += routine->ops.size();
                 }
+                bytecodePosOffset += routine->ops.size();
             }
 
             for (auto &&map: sourceMap.map) {
@@ -380,6 +385,9 @@ namespace ts::checker {
                 writeUint32(bin, bin.size(), map.sourcePos);
                 writeUint32(bin, bin.size(), map.sourceEnd);
             }
+
+            address += 1 + 4; //OP::Main + uint32 address
+            address += subroutines.size() * (1 + 4 + 4); //OP::Subroutine + uint32 name address + uint32 routine address
 
             //after the storage data follows the subroutine meta-data.
             for (auto &&routine: subroutines) {
@@ -504,25 +512,30 @@ namespace ts::checker {
 //                    program.pushOp(OP::Number);
                     const auto n = to<TypeReferenceNode>(node);
                     const auto name = to<Identifier>(n->typeName)->escapedText;
-                    auto &symbol = program.findSymbol(name);
-                    if (symbol.type == SymbolType::TypeVariable) {
-                        program.pushOp(OP::Loads, n->typeName);
-                        program.pushSymbolAddress(symbol);
+                    auto symbol = program.findSymbol(name);
+                    if (!symbol) {
+                        program.pushOp(OP::Never);
+                        program.pushError(ErrorCode::CannotFind, n->typeName);
                     } else {
-                        if (n->typeArguments) {
-                            for (auto &&p: n->typeArguments->list) {
-                                handle(p, program);
-                            }
-                        }
-                        program.pushOp(OP::Call, n->typeName);
-                        if (!symbol.routine) {
-                            throw runtime_error("Reference is not a reference to a existing routine.");
-                        }
-                        program.pushAddress(symbol.routine->index);
-                        if (n->typeArguments) {
-                            program.pushUint16(n->typeArguments->length());
+                        if (symbol->type == SymbolType::TypeVariable) {
+                            program.pushOp(OP::Loads, n->typeName);
+                            program.pushSymbolAddress(*symbol);
                         } else {
-                            program.pushUint16(0);
+                            if (n->typeArguments) {
+                                for (auto &&p: n->typeArguments->list) {
+                                    handle(p, program);
+                                }
+                            }
+                            program.pushOp(OP::Call, n->typeName);
+                            if (!symbol->routine) {
+                                throw runtime_error("Reference is not a reference to a existing routine.");
+                            }
+                            program.pushAddress(symbol->routine->index);
+                            if (n->typeArguments) {
+                                program.pushUint16(n->typeArguments->length());
+                            } else {
+                                program.pushUint16(0);
+                            }
                         }
                     }
                     break;
@@ -571,7 +584,7 @@ namespace ts::checker {
                 case types::SyntaxKind::TypeParameter: {
                     const auto n = to<TypeParameterDeclaration>(node);
                     auto &symbol = program.pushSymbol(n->name->escapedText, SymbolType::TypeVariable, n);
-                    program.pushOp(instructions::TypeArgument, node);
+                    program.pushOp(instructions::TypeArgument, n->name);
                     if (n->defaultType) {
                         program.pushSubroutineNameLess(n->defaultType);
                         handle(n->defaultType, program);
@@ -661,24 +674,29 @@ namespace ts::checker {
                 case types::SyntaxKind::Identifier: {
                     const auto n = to<Identifier>(node);
                     auto symbol = program.findSymbol(n->escapedText);
-                    if (symbol.type == SymbolType::TypeVariable) {
-                        program.pushOp(OP::Loads, node);
-                        program.pushSymbolAddress(symbol);
+                    if (!symbol) {
+                        program.pushOp(OP::Never);
+                        program.pushError(ErrorCode::CannotFind, n);
                     } else {
-                        if (n->typeArguments) {
-                            for (auto &&p: n->typeArguments->list) {
-                                handle(p, program);
-                            }
-                        }
-                        program.pushOp(OP::Call, node);
-                        if (!symbol.routine) {
-                            throw runtime_error("Reference is not a reference to a existing routine.");
-                        }
-                        program.pushAddress(symbol.routine->index);
-                        if (n->typeArguments) {
-                            program.pushUint16(n->typeArguments->length());
+                        if (symbol->type == SymbolType::TypeVariable) {
+                            program.pushOp(OP::Loads, node);
+                            program.pushSymbolAddress(*symbol);
                         } else {
-                            program.pushUint16(0);
+                            if (n->typeArguments) {
+                                for (auto &&p: n->typeArguments->list) {
+                                    handle(p, program);
+                                }
+                            }
+                            program.pushOp(OP::Call, node);
+                            if (!symbol->routine) {
+                                throw runtime_error("Reference is not a reference to a existing routine.");
+                            }
+                            program.pushAddress(symbol->routine->index);
+                            if (n->typeArguments) {
+                                program.pushUint16(n->typeArguments->length());
+                            } else {
+                                program.pushUint16(0);
+                            }
                         }
                     }
                     break;
@@ -930,13 +948,17 @@ namespace ts::checker {
 
                             if (n->left->kind == types::SyntaxKind::Identifier) {
                                 const auto name = to<Identifier>(n->left)->escapedText;
-                                //todo: handle when symbol is not defined/known (there are other places that need to be adjusted, too)
-                                auto &symbol = program.findSymbol(name);
-                                if (!symbol.routine) throw runtime_error("Symbol has no routine");
+                                auto symbol = program.findSymbol(name);
+                                if (!symbol) {
+                                    program.pushOp(OP::Never);
+                                    program.pushError(ErrorCode::CannotFind, n->left);
+                                } else {
+                                    if (!symbol->routine) throw runtime_error("Symbol has no routine");
 
-                                handle(n->right, program);
-                                program.pushOp(OP::Set, n->operatorToken);
-                                program.pushAddress(symbol.routine->index);
+                                    handle(n->right, program);
+                                    program.pushOp(OP::Set, n->operatorToken);
+                                    program.pushAddress(symbol->routine->index);
+                                }
                             } else {
                                 throw runtime_error("BinaryExpression left only Identifier implemented");
                             }
@@ -962,7 +984,7 @@ namespace ts::checker {
                         } else {
                             if (n->type) {
                                 const auto subroutineIndex = program.pushSubroutine(id->escapedText);
-                                program.pushSourceMap(id);
+//                                program.pushSourceMap(id);
                                 handle(n->type, program);
                                 program.popSubroutine();
                                 if (n->initializer) {

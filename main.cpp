@@ -32,6 +32,26 @@ bool exists(const string &file)
     return infile.good();
 }
 
+void run(const string &bytecode, const string &code, const string &fileName) {
+    vm::VM vm;
+    vm.run(bytecode, code, fileName);
+    vm.printErrors();
+}
+
+void compileAndRun(const string &code, const string &file, const string &fileName) {
+    auto bytecode = file + ".tsbytecode";
+    auto buffer = readFile(file);
+    checker::Compiler compiler;
+    Parser parser;
+    auto result = parser.parseSourceFile(file, buffer, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+    auto program = compiler.compileSourceFile(result);
+    auto bin = program.build();
+    writeFile(bytecode, bin);
+    vm::VM vm;
+    vm.run(bin, code, fileName);
+    vm.printErrors();
+}
+
 int main(int argc, char *argv[]) {
     std::string file = "/Users/marc/bude/typescript-cpp/tests/basicError1.ts";
     auto cwd = std::filesystem::current_path();
@@ -41,25 +61,13 @@ int main(int argc, char *argv[]) {
     }
 
     auto code = readFile(file);
+    auto bytecode = file + ".tsb";
     auto relative = std::filesystem::relative(file, cwd);
 
-    auto bytecode = file + ".tsbytecode";
     if (exists(bytecode)) {
-        auto buffer = readFile(bytecode);
-        vm::VM vm;
-        vm.run(buffer, code, relative.string());
-        vm.printErrors();
+        run(readFile(bytecode), code, relative.string());
     } else {
-        auto buffer = readFile(file);
-        checker::Compiler compiler;
-        Parser parser;
-        auto result = parser.parseSourceFile(file, buffer, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
-        auto program = compiler.compileSourceFile(result);
-        auto bin = program.build();
-        writeFile(bytecode, bin);
-        vm::VM vm;
-        vm.run(bin, code, relative.string());
-        vm.printErrors();
+        compileAndRun(code, file, relative.string());
     }
     return 0;
 }

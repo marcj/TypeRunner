@@ -1,6 +1,6 @@
 #pragma once
 
-#include "./type_objects.h"
+#include "./types.h"
 #include "../core.h"
 #include "./instructions.h"
 #include "./checks.h"
@@ -22,6 +22,7 @@ namespace ts::vm {
     using std::vector;
     using std::runtime_error;
     using instructions::OP;
+    using instructions::ErrorCode;
 
     inline string_view readStorage(const string_view &bin, const uint32_t offset) {
         const auto size = readUint16(bin, offset);
@@ -269,7 +270,7 @@ namespace ts::vm {
      * For each active subroutine this object is created.
      */
     struct ProgressingSubroutine {
-        Module *module;
+        shared<Module> module;
         ModuleSubroutine *subroutine;
 
         unsigned int ip = 0; //instruction pointer
@@ -282,7 +283,7 @@ namespace ts::vm {
 
         sharedOpt<ProgressingSubroutine> previous = nullptr;
 
-        explicit ProgressingSubroutine(Module *module, ModuleSubroutine *subroutine): module(module), subroutine(subroutine) {}
+        explicit ProgressingSubroutine(shared<Module> module, ModuleSubroutine *subroutine): module(module), subroutine(subroutine) {}
 
         uint32_t parseUint32() {
             auto val = readUint32(module->bin, ip + 1);
@@ -316,9 +317,8 @@ namespace ts::vm {
 
     shared<Type> stringToNum(VM &vm);
 
-    inline Module *parseHeader(const string_view &bin) {
-        Module *module = new Module(bin);
-
+    inline void parseHeader(shared<Module> &module) {
+        auto &bin = module->bin;
         for (unsigned int i = 0; i < bin.size(); i++) {
             const auto op = (OP) bin[i];
             switch (op) {
@@ -344,7 +344,7 @@ namespace ts::vm {
                 case OP::Main: {
                     module->mainAddress = readUint32(bin, i + 1);
                     module->subroutines.push_back(ModuleSubroutine("name", module->mainAddress));
-                    return module;
+                    return;
                 }
             }
         }
@@ -365,7 +365,7 @@ namespace ts::vm {
         //diagnostics/debugger can use this information to map the type to the sourcecode.
         unsigned int ip;
 
-        vector<Module *> modules;
+        vector<shared<Module>> modules;
 
         unordered_map<unsigned int, function<shared<Type>(VM &)>> optimised;
 
@@ -375,7 +375,6 @@ namespace ts::vm {
 
         ~VM() {
             delete frame;
-            for (auto &&module: modules) delete module;
         }
 
         void printErrors() {
@@ -392,13 +391,8 @@ namespace ts::vm {
             return errors;
         }
 
-        void run(const string_view &bin, const string_view &code, string fileName = "") {
-            for (auto &&module: modules) delete module;
-            modules.clear();
-
-            auto module = parseHeader(bin);
-            module->code = code;
-            module->fileName = fileName;
+        void run(shared<Module> module) {
+            parseHeader(module);
             modules.push_back(module);
 
             if (subroutine) throw runtime_error("Subroutine already running");
@@ -413,7 +407,7 @@ namespace ts::vm {
             process();
         }
 
-        void call(Module *module, unsigned int index = 0, unsigned int arguments = 0) {
+        void call(shared<Module> &module, unsigned int index = 0, unsigned int arguments = 0) {
             //todo: check if address was already calculated using unordered_map?
             const auto loopRunning = !!subroutine;
 
@@ -1004,6 +998,19 @@ namespace ts::vm {
                             const auto address = subroutine->parseUint32();
                             auto text = readStorage(subroutine->module->bin, address);
                             push(make_shared<TypeLiteral>(text, TypeLiteralType::String));
+                            break;
+                        }
+                        case OP::Error: {
+                            const auto code = (instructions::ErrorCode)subroutine->parseUint16();
+                            switch (code) {
+                                case ErrorCode::CannotFind: {
+                                    report(DiagnosticMessage(fmt::format("Cannot find name '{}'", subroutine->module->findIdentifier(ip)), ip));
+                                    break;
+                                }
+                                default: {
+                                    report(DiagnosticMessage(fmt::format("{}", code), ip));
+                                }
+                            }
                             break;
                         }
                         default: {

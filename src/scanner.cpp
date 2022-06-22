@@ -19,23 +19,6 @@ namespace ts {
         return false;
     }
 
-    bool isWhiteSpaceSingleLine(const CharCode &ch) {
-        // Note: nextLine is in the Zs space, and should be considered to be a whitespace.
-        // It is explicitly not a line-break as it isn't in the exact set specified by EcmaScript.
-        return ch.code == CharacterCodes::space ||
-               ch.code == CharacterCodes::tab ||
-               ch.code == CharacterCodes::verticalTab ||
-               ch.code == CharacterCodes::formFeed ||
-               ch.code == CharacterCodes::nonBreakingSpace ||
-               ch.code == CharacterCodes::nextLine ||
-               ch.code == CharacterCodes::ogham ||
-               (ch.code >= CharacterCodes::enQuad && ch.code <= CharacterCodes::zeroWidthSpace) ||
-               ch.code == CharacterCodes::narrowNoBreakSpace ||
-               ch.code == CharacterCodes::mathematicalSpace ||
-               ch.code == CharacterCodes::ideographicSpace ||
-               ch.code == CharacterCodes::byteOrderMark;
-    }
-
     string Scanner::scanString(bool jsxAttributeString) {
         ZoneScoped;
         auto quote = charCodeAt(text, pos);
@@ -561,10 +544,6 @@ namespace ts {
         return pos;
     }
 
-    bool isWhiteSpaceLike(const CharCode &ch) {
-        return isWhiteSpaceSingleLine(ch) || isLineBreak(ch);
-    }
-
     /* @internal */
     int ts::skipTrivia(string &text, int pos, optional<bool> stopAfterLineBreak, optional<bool> stopAtComments, optional<bool> inJSDoc) {
         ZoneScoped;
@@ -892,24 +871,6 @@ namespace ts {
         tokenValue = substring(text, startPos, pos);
 
         return firstNonWhitespace == -1 ? SyntaxKind::JsxTextAllWhiteSpaces : SyntaxKind::JsxText;
-    }
-
-    bool isLineBreak(const CharCode &ch) {
-        // ES5 7.3:
-        // The ECMAScript line terminator characters are listed in Table 3.
-        //     Table 3: Line Terminator Characters
-        //     Code Unit Value     Name                    Formal Name
-        //     \u000A              Line Feed               <LF>
-        //     \u000D              Carriage Return         <CR>
-        //     \u2028              Line separator          <LS>
-        //     \u2029              Paragraph separator     <PS>
-        // Only the characters in Table 3 are treated as line terminators. Other new line or line
-        // breaking characters are treated as white space but not as line terminators.
-
-        return ch.code == CharacterCodes::lineFeed ||
-               ch.code == CharacterCodes::carriageReturn ||
-               ch.code == CharacterCodes::lineSeparator ||
-               ch.code == CharacterCodes::paragraphSeparator;
     }
 
     vector<CommentDirective> Scanner::appendIfCommentDirective(

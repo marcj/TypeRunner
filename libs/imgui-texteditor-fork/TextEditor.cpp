@@ -52,6 +52,7 @@ TextEditor::TextEditor()
 	SetPalette(GetDarkPalette());
 	SetLanguageDefinition(LanguageDefinition::HLSL());
 	mLines.push_back(Line());
+    inlineErrorHover = [](auto ...) {};
 }
 
 TextEditor::~TextEditor()
@@ -882,6 +883,7 @@ void TextEditor::Render()
 	auto scrollY = ImGui::GetScrollY();
 
 	auto lineNo = (int)floor(scrollY / mCharAdvance.y);
+	auto lineStart = (int)floor(scrollY / mCharAdvance.y);
 	auto globalLineMax = (int)mLines.size();
 	auto lineMax = std::max(0, std::min((int)mLines.size() - 1, lineNo + (int)floor((scrollY + contentSize.y) / mCharAdvance.y)));
 
@@ -1009,7 +1011,6 @@ void TextEditor::Render()
 				}
 			}
 
-
 			// Render colorized text
 			auto prevColor = line.empty() ? mPalette[(int)PaletteIndex::Default] : GetGlyphColor(line[0]);
 			ImVec2 bufferOffset;
@@ -1081,9 +1082,31 @@ void TextEditor::Render()
 			++lineNo;
 		}
 
-		// Draw a tooltip on known identifiers/preprocessor symbols
+        // Render inline errors
+        if (true) {
+            for (auto &&inlineError: inlineErrors) {
+                ImVec2 lineStartScreenPos = ImVec2(cursorScreenPos.x, cursorScreenPos.y + inlineError.line * mCharAdvance.y);
+                auto start = ImVec2(lineStartScreenPos.x + mTextStart + scrollX + (mCharAdvance.x * inlineError.charPos), lineStartScreenPos.y + mCharAdvance.y);
+                auto end = ImVec2(lineStartScreenPos.x + mTextStart + scrollX + (mCharAdvance.x * inlineError.charEnd), lineStartScreenPos.y + mCharAdvance.y);
+                drawList->AddLine(start, end, mPalette[(int) PaletteIndex::ErrorMarker], 2);
+            }
+        }
+
+        // Draw a tooltip on known identifiers/preprocessor symbols
 		if (ImGui::IsMousePosValid())
 		{
+            auto mousePos = ImGui::GetMousePos();
+            for (auto &&inlineError: inlineErrors) {
+                if (inlineError.line < lineStart || inlineError.line > lineMax) continue;
+
+                ImVec2 lineStartScreenPos = ImVec2(cursorScreenPos.x, cursorScreenPos.y + inlineError.line * mCharAdvance.y);
+                auto start = ImVec2(lineStartScreenPos.x + mTextStart + scrollX + (mCharAdvance.x * inlineError.charPos), lineStartScreenPos.y);
+                auto end = ImVec2(lineStartScreenPos.x + mTextStart + scrollX + (mCharAdvance.x * inlineError.charEnd), lineStartScreenPos.y + mCharAdvance.y);
+                if (ImGui::IsMouseHoveringRect(start, end)) {
+                    inlineErrorHover(start, end, inlineError);
+                }
+            }
+
 			auto id = GetWordAt(ScreenPosToCoordinates(ImGui::GetMousePos()));
 			if (!id.empty())
 			{
@@ -2008,7 +2031,7 @@ const TextEditor::Palette & TextEditor::GetDarkPalette()
 {
 	const static Palette p = { {
 			0xff7f7f7f,	// Default
-			0xffd69c56,	// Keyword	
+			0xffd69c56,	// Keyword
 			0xff00ff00,	// Number
 			0xff7070e0,	// String
 			0xff70a0e0, // Char literal
@@ -2036,7 +2059,7 @@ const TextEditor::Palette & TextEditor::GetLightPalette()
 {
 	const static Palette p = { {
 			0xff7f7f7f,	// None
-			0xffff0c06,	// Keyword	
+			0xffff0c06,	// Keyword
 			0xff008000,	// Number
 			0xff2020a0,	// String
 			0xff304070, // Char literal
@@ -2064,7 +2087,7 @@ const TextEditor::Palette & TextEditor::GetRetroBluePalette()
 {
 	const static Palette p = { {
 			0xff00ffff,	// None
-			0xffffff00,	// Keyword	
+			0xffffff00,	// Keyword
 			0xff00ff00,	// Number
 			0xff808000,	// String
 			0xff808000, // Char literal

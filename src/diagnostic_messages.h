@@ -13,8 +13,7 @@ namespace ts {
         return std::make_shared<DiagnosticMessage>(code, category, key, message, reportsUnnecessary, elidedInCompatabilityPyramid, reportsDeprecated);
     }
 
-    class Diagnostics {
-    public:
+    namespace Diagnostics {
         static shared<DiagnosticMessage> Unterminated_string_literal(){ return diag(1002, DiagnosticCategory::Error, "Unterminated_string_literal_1002", "Unterminated string literal."); };
         static shared<DiagnosticMessage> Identifier_expected(){ return diag(1003, DiagnosticCategory::Error, "Identifier_expected_1003", "Identifier expected."); };
         static shared<DiagnosticMessage> _0_expected(){ return diag(1005, DiagnosticCategory::Error, "_0_expected_1005", "'{0}' expected."); };

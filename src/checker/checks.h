@@ -1,6 +1,6 @@
 #pragma once
 
-#include "./type_objects.h"
+#include "./types.h"
 #include "../core.h"
 
 namespace ts::vm {
@@ -17,10 +17,14 @@ namespace ts::vm {
     sharedOpt<Type> findMember(const vector<shared<Type>> &members, const string_view &name) {
         for (auto &&member: members) {
             switch (member->kind) {
-                case TypeKind::MethodSignature: if (to<TypeMethodSignature>(member)->name == name) return member; break;
-                case TypeKind::Method: if (to<TypeMethod>(member)->name == name) return member; break;
-                case TypeKind::PropertySignature: if (to<TypePropertySignature>(member)->name == name) return member; break;
-                case TypeKind::Property: if (to<TypeProperty>(member)->name == name) return member; break;
+                case TypeKind::MethodSignature: if (to<TypeMethodSignature>(member)->name == name) return member;
+                    break;
+                case TypeKind::Method: if (to<TypeMethod>(member)->name == name) return member;
+                    break;
+                case TypeKind::PropertySignature: if (to<TypePropertySignature>(member)->name == name) return member;
+                    break;
+                case TypeKind::Property: if (to<TypeProperty>(member)->name == name) return member;
+                    break;
             }
         }
         return nullptr;
@@ -32,8 +36,8 @@ namespace ts::vm {
     }
 
     struct StackEntry {
-        shared <Type> left;
-        shared <Type> right;
+        shared<Type> left;
+        shared<Type> right;
     };
 
     struct ExtendableStack {
@@ -184,7 +188,34 @@ namespace ts::vm {
                 return stack.failed();
             }
             case TypeKind::Literal: {
-               return to<TypeLiteral>(left)->type == to<TypeLiteral>(right)->type && to<TypeLiteral>(left)->text() == to<TypeLiteral>(right)->text() ? stack.valid() : stack.failed();
+                if (left->kind == TypeKind::Literal) {
+                    return to<TypeLiteral>(left)->type == to<TypeLiteral>(right)->type && to<TypeLiteral>(left)->text() == to<TypeLiteral>(right)->text() ? stack.valid() : stack.failed();
+                }
+                return stack.failed();
+            }
+            case TypeKind::Union: {
+                if (left->kind != TypeKind::Union) {
+                    for (auto &&l: to<TypeUnion>(right)->types) {
+                        if (isExtendable(left, l, stack)) return stack.valid();
+                    }
+                    return false;
+                } else {
+                    //e.g.: string|number = string|boolean
+                    auto rightTypes = to<TypeUnion>(right)->types;
+                    auto leftTypes = to<TypeUnion>(left)->types;
+
+                    for (auto &&r: leftTypes) {
+                        bool valid = false;
+                        for (auto &&l: rightTypes) {
+                            if (isExtendable(l, r, stack)) {
+                                valid = true;
+                                break;
+                            };
+                        }
+                        if (!valid) return stack.failed();
+                    }
+                    return stack.valid();
+                }
             }
         }
 
@@ -240,5 +271,4 @@ namespace ts::vm {
         ExtendableStack stack;
         return isExtendable(left, right, stack);
     }
-
 }

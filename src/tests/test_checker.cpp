@@ -19,24 +19,27 @@ string compile(string code, bool print = true) {
 
 void test(string code, unsigned int expectedErrors = 0) {
     auto bin = compile(code);
+    auto module = make_shared<vm::Module>(bin, "app.ts", code);
     vm::VM vm;
-    vm.run(bin, code);
+    vm.run(module);
     vm.printErrors();
     EXPECT_EQ(expectedErrors, vm.getErrors());
 }
 
 void testBench(string code, unsigned int expectedErrors = 0) {
     auto bin = compile(code);
+    auto module = make_shared<vm::Module>(bin, "app.ts", code);
     vm::VM vm;
-    vm.run(bin, code);
+    vm.run(module);
     vm.printErrors();
     EXPECT_EQ(expectedErrors, vm.getErrors());
 
     auto iterations = 10;
 
-    auto warmTime = benchRun(iterations, [&bin, &code] {
+    auto warmTime = benchRun(iterations, [&module] {
+        module->clear();
         vm::VM vm;
-        vm.run(bin, code);
+        vm.run(module);
     });
 
     auto compileTime = benchRun(iterations, [&code] {
@@ -45,7 +48,8 @@ void testBench(string code, unsigned int expectedErrors = 0) {
 
     auto coldTime = benchRun(iterations, [&code] {
         vm::VM vm;
-        vm.run(compile(code, false), code);
+        auto module = make_shared<vm::Module>(compile(code, false), "app.ts", code);
+        vm.run(module);
     });
 
     fmt::print("{} iterations: compile {}/op, cold {}/op, warm {}/op", iterations, compileTime.count() / iterations, coldTime.count() / iterations, warmTime.count() / iterations);
@@ -75,21 +79,20 @@ TEST(checker, type) {
     const v2: number = 123;
     )";
 
-    test(code, 0);
+    testBench(code, 0);
 }
 
 TEST(checker, typeError) {
     Parser parser;
 
     string code = R"(
-    const v1: string = "asd";
-    const v2: number = "23";
+type a<T> = T; const v2: a<number>  = "23";
     )";
 
     testBench(code, 1);
 }
 
-TEST(checker, type2) {
+TEST(checker, typeUnion) {
     Parser parser;
 
     string code = R"(
@@ -103,7 +106,7 @@ TEST(checker, type2) {
     test(code, 1);
 }
 
-TEST(checker, type31) {
+TEST(checker, typeGeneric) {
     string code = R"(
     type a<K, T> = T;
     const v1: a<true, number> = 34;
@@ -113,7 +116,7 @@ TEST(checker, type31) {
     test(code, 1);
 }
 
-TEST(checker, type3) {
+TEST(checker, typeGenericUnion) {
     Parser parser;
 
     string code = R"(

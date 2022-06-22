@@ -102,6 +102,7 @@ namespace ts::instructions {
         Assign,
         Dup, //Duplicates the current stack end
         Set, //narrows/Sets a new value for a subroutine (variables)
+        Error,
 
         Frame, //creates a new stack frame
         Return,
@@ -114,6 +115,10 @@ namespace ts::instructions {
         Distribute, //calls a subroutine for each union member. one parameter (address to subroutine)
         Call //call a subroutine and push the result on the stack
     };
+
+    enum class ErrorCode {
+        CannotFind, //e.g. Cannot find name 'abc'
+    };
 }
 
 template<>
@@ -121,5 +126,13 @@ struct fmt::formatter<ts::instructions::OP>: formatter<std::string_view> {
     template<typename FormatContext>
     auto format(ts::instructions::OP p, FormatContext &ctx) {
         return formatter<string_view>::format(magic_enum::enum_name<ts::instructions::OP>(p), ctx);
+    }
+};
+
+template<>
+struct fmt::formatter<ts::instructions::ErrorCode>: formatter<std::string_view> {
+    template<typename FormatContext>
+    auto format(ts::instructions::ErrorCode p, FormatContext &ctx) {
+        return formatter<string_view>::format(magic_enum::enum_name<ts::instructions::ErrorCode>(p), ctx);
     }
 };

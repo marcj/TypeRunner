@@ -4,3 +4,6 @@
 [submodule "libs/fmt"]
 	path = libs/fmt
 	url = git@github.com:fmtlib/fmt.git
+[submodule "libs/imgui"]
+	path = libs/imgui
+	url = git@github.com:ocornut/imgui.git

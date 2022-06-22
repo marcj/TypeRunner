@@ -15,23 +15,40 @@ namespace ts::checker {
     }
 
     struct PrintSubroutine {
-        string_view name;
+        string name;
         unsigned int address;
+        vector<string> operations;
     };
 
-    inline void printBin(string_view bin) {
+    struct DebugSourceMapEntry {
+        OP op;
+        unsigned int bytecodePos;
+        unsigned int sourcePos;
+        unsigned int sourceEnd;
+    };
+
+    struct DebugBinResult {
+        vector<string> operations;
+        vector<string> storages;
+        vector<PrintSubroutine> subroutines;
+        vector<DebugSourceMapEntry> sourceMap;
+        PrintSubroutine *activeSubroutine = nullptr;
+    };
+
+    inline DebugBinResult parseBin(string_view bin, bool print = false) {
         const auto end = bin.size();
         unsigned int storageEnd = 0;
         bool newSubRoutine = false;
-        vector<PrintSubroutine> subroutines;
-        fmt::print("Bin {} bytes: ", bin.size());
+        DebugBinResult result;
+        if (print) fmt::print("Bin {} bytes: ", bin.size());
 
         for (unsigned int i = 0; i < end; i++) {
             if (storageEnd) {
                 while (i < storageEnd) {
                     auto size = readUint16(bin, i);
                     auto data = bin.substr(i + 2, size);
-                    fmt::print("(Storage ({})\"{}\") ", size, data);
+                    if (print) fmt::print("(Storage ({})\"{}\") ", size, data);
+                    result.storages.push_back(string(data));
                     i += 2 + size;
                 }
                 debug("");
@@ -41,20 +58,22 @@ namespace ts::checker {
             if (newSubRoutine) {
                 auto found = false;
                 unsigned int j = 0;
-                for (auto &&r: subroutines) {
+                for (auto &&r: result.subroutines) {
                     if (r.address == i) {
-                        fmt::print("\n&{} {}(): ", j, r.name);
+                        if (print) fmt::print("\n&{} {}(): ", j, r.name);
+                        result.activeSubroutine = &r;
                         found = true;
                         break;
                     }
                     j++;
                 }
                 if (!found) {
-                    fmt::print("\nunknown!(): ");
+                    if (print) fmt::print("\nunknown!(): ");
                 }
                 newSubRoutine = false;
             }
             std::string params = "";
+            auto startI = i;
             auto op = (OP) bin[i];
 
             switch (op) {
@@ -69,18 +88,25 @@ namespace ts::checker {
                     i += 4 + size;
                     params += fmt::format(" {}->{} ({})", start, i, size / (4 * 3)); //each entry has 3x 4bytes (uint32)
 
-//                    for (unsigned int j = start + 4; j < i; j += 4 * 3) {
-//                        debug("Map {}({}) to {}:{}", readUint32(bin, j), (OP)(bin[readUint32(bin, j)]), readUint32(bin, j + 4), readUint32(bin, j + 8));
-//                    }
+                    for (unsigned int j = start + 4; j < i; j += 4 * 3) {
+                        DebugSourceMapEntry sourceMapEntry{
+                                                                   .op = (OP)(bin[readUint32(bin, j)]),
+                                                                   .bytecodePos = readUint32(bin, j),
+                                                                   .sourcePos = readUint32(bin, j + 4),
+                                                                   .sourceEnd =  readUint32(bin, j + 8),
+                                                           };
+                        result.sourceMap.push_back(sourceMapEntry);
+                        if (print) debug("Map [{}]{} to {}:{}", sourceMapEntry.bytecodePos, sourceMapEntry.op, sourceMapEntry.sourcePos, sourceMapEntry.sourceEnd);
+                    }
                     break;
                 }
                 case OP::Subroutine: {
                     auto nameAddress = readUint32(bin, i + 1);
                     auto address = readUint32(bin, i + 5);
-                    string_view name = nameAddress ? readStorage(bin, nameAddress) : "";
+                    string name = nameAddress ? string(readStorage(bin, nameAddress)) : "";
                     params += fmt::format(" {}[{}]", name, address);
                     i += 8;
-                    subroutines.push_back({.name = name, .address = address});
+                    result.subroutines.push_back({.name = name, .address = address});
                     break;
                 }
                 case OP::Main:
@@ -91,7 +117,7 @@ namespace ts::checker {
                     if (op == OP::Jump) {
                         storageEnd = address;
                     } else {
-                        subroutines.push_back({.name = "main", .address = address});
+                        result.subroutines.push_back({.name = "main", .address = address});
                         newSubRoutine = true;
                     }
                     break;
@@ -122,6 +148,11 @@ namespace ts::checker {
                     i += 2;
                     break;
                 }
+                case OP::Error: {
+                    params += fmt::format(" {}", (ErrorCode)readUint16(bin, i + 1));
+                    i += 2;
+                    break;
+                }
                 case OP::CallExpression: {
                     params += fmt::format(" &{}", readUint16(bin, i + 1));
                     i += 2;
@@ -143,12 +174,24 @@ namespace ts::checker {
                 }
             }
 
+            string text;
             if (params.empty()) {
-                fmt::print("{} ", op);
+                text = fmt::format("[{}]{} ", startI, op);
             } else {
-                fmt::print("({}{}) ", op, params);
+                text = fmt::format("([{}]{}{}) ", startI, op, params);
             }
+            if (result.activeSubroutine) {
+                result.activeSubroutine->operations.push_back(text);
+            } else {
+                result.operations.push_back(text);
+            }
+            if (print) std::cout << text;
         }
-        fmt::print("\n");
+        if (print) fmt::print("\n");
+        return result;
+    }
+
+    inline void printBin(string_view bin) {
+        parseBin(bin, true);
     }
 }

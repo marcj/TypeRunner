@@ -148,6 +148,13 @@ public:
 	typedef std::vector<Glyph> Line;
 	typedef std::vector<Line> Lines;
 
+    struct InlineError {
+        int line;
+        int charPos;
+        int charEnd;
+        void *data = nullptr;
+    };
+
 	struct LanguageDefinition
 	{
 		typedef std::pair<std::string, PaletteIndex> TokenRegexString;
@@ -266,6 +273,8 @@ public:
 	static const Palette& GetLightPalette();
 	static const Palette& GetRetroBluePalette();
 
+    std::vector<InlineError> inlineErrors;
+    std::function<void(ImVec2&, ImVec2&, InlineError&)> inlineErrorHover;
 private:
 	typedef std::vector<std::pair<std::regex, PaletteIndex>> RegexList;
 

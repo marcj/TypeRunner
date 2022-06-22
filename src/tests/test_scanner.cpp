@@ -3,10 +3,7 @@
 #include <iostream>
 #include "../scanner.h"
 
-#include "magic_enum.hpp"
-
 using namespace ts;
-using namespace magic_enum;
 
 TEST(scanner, basisc) {
 
