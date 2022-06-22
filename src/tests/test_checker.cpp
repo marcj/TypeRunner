@@ -20,34 +20,35 @@ string compile(string code, bool print = true) {
 void test(string code, unsigned int expectedErrors = 0) {
     auto bin = compile(code);
     vm::VM vm;
-    vm.run(bin);
+    vm.run(bin, code);
     vm.printErrors();
-    EXPECT_EQ(expectedErrors, vm.errors.size());
+    EXPECT_EQ(expectedErrors, vm.getErrors());
 }
 
-void run(string code, unsigned int expectedErrors = 0) {
+void testBench(string code, unsigned int expectedErrors = 0) {
     auto bin = compile(code);
     vm::VM vm;
-    vm.run(bin);
+    vm.run(bin, code);
     vm.printErrors();
-    EXPECT_EQ(expectedErrors, vm.errors.size());
+    EXPECT_EQ(expectedErrors, vm.getErrors());
 
     auto iterations = 10;
+
+    auto warmTime = benchRun(iterations, [&bin, &code] {
+        vm::VM vm;
+        vm.run(bin, code);
+    });
+
     auto compileTime = benchRun(iterations, [&code] {
         compile(code, false);
     });
 
     auto coldTime = benchRun(iterations, [&code] {
         vm::VM vm;
-        vm.run(compile(code, false));
+        vm.run(compile(code, false), code);
     });
 
-    auto warmTime = benchRun(iterations, [&bin] {
-        vm::VM vm;
-        vm.run(bin);
-    });
-
-    fmt::print("{} iterations took: compile {}, cold {}, warm {}", iterations, compileTime.count() / iterations, coldTime.count() / iterations, warmTime.count() / iterations);
+    fmt::print("{} iterations: compile {}/op, cold {}/op, warm {}/op", iterations, compileTime.count() / iterations, coldTime.count() / iterations, warmTime.count() / iterations);
 }
 
 TEST(checker, program) {
@@ -74,17 +75,18 @@ TEST(checker, type) {
     const v2: number = 123;
     )";
 
-    auto bin = compile(code);
+    test(code, 0);
+}
 
-    vm::VM vm;
-    vm.run(bin);
-    vm.printErrors();
-    EXPECT_EQ(vm.errors.size(), 0);
+TEST(checker, typeError) {
+    Parser parser;
 
-    bench(10, [&] {
-        vm::VM vm;
-        vm.run(bin);
-    });
+    string code = R"(
+    const v1: string = "asd";
+    const v2: number = "23";
+    )";
+
+    testBench(code, 1);
 }
 
 TEST(checker, type2) {
@@ -98,12 +100,7 @@ TEST(checker, type2) {
     const v3: b = true;
     )";
 
-    auto bin = compile(code);
-
-    vm::VM vm;
-    vm.run(bin);
-    vm.printErrors();
-    EXPECT_EQ(vm.errors.size(), 1);
+    test(code, 1);
 }
 
 TEST(checker, type31) {
@@ -113,16 +110,7 @@ TEST(checker, type31) {
     const v2: a<true, number> = "as";
     )";
 
-    auto bin = compile(code);
-
-    vm::VM vm;
-    vm.run(bin);
-    vm.printErrors();
-    EXPECT_EQ(vm.errors.size(), 1);
-    bench(10, [&] {
-        vm::VM vm;
-        vm.run(bin);
-    });
+    test(code, 1);
 }
 
 TEST(checker, type3) {
@@ -137,51 +125,18 @@ TEST(checker, type3) {
     const v5: a<true, string> = 'nope';
     )";
 
-    auto bin = compile(code);
-
-    vm::VM vm;
-    vm.run(bin);
-    vm.printErrors();
-    EXPECT_EQ(vm.errors.size(), 1);
-
-    bench(10, [&] {
-        vm::VM vm;
-        vm.run(bin);
-    });
+    test(code);
 }
 
 TEST(checker, tuple) {
     Parser parser;
 
     string code = R"(
-//    type a<T> = [1, ...T];
-//    const v1: a<[string, number]> = [1, 'abc'];
-
-//    type a = [string, number];
-//    const var1: a['length'] = 3;
-//
-//    type a = [string, boolean];
-//    type b = [...a, number];
-//    const var1: b = ['asd', 123];
-
-//    type a<T = string> = T;
-//    const var1: a<number> = 'asd';
-
     type StringToNum<T extends string, A extends 0[] = []> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>;
     const var1: StringToNum<'999'> = 1002;
     )";
 
-    auto bin = compile(code);
-
-    vm::VM vm;
-    vm.run(bin);
-    vm.printErrors();
-//    EXPECT_EQ(vm.errors.size(), 1);
-
-    bench(10, [&] {
-        vm::VM vm;
-        vm.run(bin);
-    });
+    testBench(code, 1);
 }
 
 TEST(checker, assign) {
@@ -210,8 +165,6 @@ TEST(checker, stackFrame) {
     auto code = R"(
     type a = string;
 
-    //each stack frame gets a number. The ref `a` references this stack number + symbol index.
-    //when resolving in VM it searches frames upwards until correct frame was found.
     type Generic<T> = a | T;
 
     function another() {
@@ -244,16 +197,7 @@ TEST(checker, functionCall) {
     doIt('123');
     )";
 
-    auto bin = compile(code);
-    vm::VM vm;
-    vm.run(bin);
-    vm.printErrors();
-    EXPECT_EQ(vm.errors.size(), 1);
-
-    bench(10, [&] {
-        vm::VM vm;
-        vm.run(bin);
-    });
+    test(code);
 }
 
 TEST(checker, functionGenericCall) {
@@ -279,7 +223,7 @@ TEST(checker, controlFlow1) {
     boolFunc(bool);
     )";
 
-    run(code, 2);
+    testBench(code, 2);
 }
 
 TEST(checker, functionGenericExpressionCall) {
@@ -291,10 +235,11 @@ TEST(checker, functionGenericExpressionCall) {
     a(23);
     )";
 
-    run(code, 0);
+    testBench(code, 0);
 }
 
 TEST(checker, functionGenericCallBench) {
+    //todo: implement inferring types from passed function arguments
     auto code = R"(
 //    const i: number = 123;
 
@@ -310,7 +255,18 @@ TEST(checker, functionGenericCallBench) {
 //    doIt();
     )";
 
-    run(code);
+    testBench(code);
+}
+
+TEST(checker, objectLiteral1) {
+    auto code = R"(
+type Person = {name: string, age: number}
+
+const a: Person = {name: 'Peter', age: 52};
+const b: Person = {name: 'Peter', age: '52'};
+    )";
+
+    testBench(code);
 }
 
 TEST(checker, mapLiteralToClassConditional) {
@@ -330,7 +286,7 @@ TEST(checker, mapLiteralToClassConditional) {
     type found = Resolve<"d">;
     )";
 
-    run(code);
+    testBench(code);
 }
 TEST(checker, mapLiteralToClassMap) {
     auto code = R"(
@@ -347,7 +303,7 @@ TEST(checker, mapLiteralToClassMap) {
     type found = Resolve<"d">;
     )";
 
-    run(code);
+    testBench(code);
 }
 
 TEST(checker, basic2) {

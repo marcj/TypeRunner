@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 
 #include "./src/core.h"
 #include "./src/parser2.h"
@@ -32,19 +33,21 @@ bool exists(const string &file)
 }
 
 int main(int argc, char *argv[]) {
-//    std::string cwd = "";
-//    if (argc > 0) cwd = argv[0];
-    std::string file = "/Users/marc/bude/typescript-cpp/tests/generic2.ts";
-    if (argc > 1) file = argv[1];
+    std::string file = "/Users/marc/bude/typescript-cpp/tests/basicError1.ts";
+    auto cwd = std::filesystem::current_path();
 
-//    cwd.append("/");
-//    file = cwd + file;
+    if (argc > 1) {
+        file = cwd.string() + "/" + argv[1];
+    }
+
+    auto code = readFile(file);
+    auto relative = std::filesystem::relative(file, cwd);
 
     auto bytecode = file + ".tsbytecode";
     if (exists(bytecode)) {
         auto buffer = readFile(bytecode);
         vm::VM vm;
-        vm.call(buffer);
+        vm.run(buffer, code, relative.string());
         vm.printErrors();
     } else {
         auto buffer = readFile(file);
@@ -52,11 +55,10 @@ int main(int argc, char *argv[]) {
         Parser parser;
         auto result = parser.parseSourceFile(file, buffer, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
         auto program = compiler.compileSourceFile(result);
-//        program.print();
         auto bin = program.build();
         writeFile(bytecode, bin);
         vm::VM vm;
-        vm.call(bin);
+        vm.run(bin, code, relative.string());
         vm.printErrors();
     }
     return 0;

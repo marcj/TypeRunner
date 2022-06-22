@@ -23,6 +23,8 @@ namespace ts {
      */
     bool isLocalName(const shared<Node> &node);
 
+    bool hasModifier(const shared<Node> &node, SyntaxKind kind);
+
     ModifierFlags modifierToFlag(SyntaxKind token);
 
     int modifiersToFlags(sharedOpt<NodeArray> modifiers);

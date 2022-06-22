@@ -24,6 +24,7 @@ namespace ts::checker {
         unsigned int storageEnd = 0;
         bool newSubRoutine = false;
         vector<PrintSubroutine> subroutines;
+        fmt::print("Bin {} bytes: ", bin.size());
 
         for (unsigned int i = 0; i < end; i++) {
             if (storageEnd) {
@@ -60,6 +61,17 @@ namespace ts::checker {
                 case OP::Call: {
                     params += fmt::format(" &{}[{}]", readUint32(bin, i + 1), readUint16(bin, i + 5));
                     i += 6;
+                    break;
+                }
+                case OP::SourceMap: {
+                    auto size = readUint32(bin, i + 1);
+                    auto start = i + 1;
+                    i += 4 + size;
+                    params += fmt::format(" {}->{} ({})", start, i, size / (4 * 3)); //each entry has 3x 4bytes (uint32)
+
+//                    for (unsigned int j = start + 4; j < i; j += 4 * 3) {
+//                        debug("Map {}({}) to {}:{}", readUint32(bin, j), (OP)(bin[readUint32(bin, j)]), readUint32(bin, j + 4), readUint32(bin, j + 8));
+//                    }
                     break;
                 }
                 case OP::Subroutine: {
@@ -124,7 +136,8 @@ namespace ts::checker {
                 case OP::NumberLiteral:
                 case OP::BigIntLiteral:
                 case OP::StringLiteral: {
-                    params += fmt::format(" \"{}\"", readStorage(bin, readUint32(bin, i + 1)));
+                    auto address = readUint32(bin, i + 1);
+                    params += fmt::format(" \"{}\"", readStorage(bin, address));
                     i += 4;
                     break;
                 }

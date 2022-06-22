@@ -24,6 +24,12 @@ namespace ts {
         return (getEmitFlags(node) & (int) EmitFlags::LocalName) != 0;
     }
 
+    bool hasModifier(const shared<Node> &node, SyntaxKind kind) {
+        if (!node->modifiers) return false;
+        for (auto &&v: node->modifiers->list) if (v->kind == kind) return true;
+        return false;
+    }
+
     ModifierFlags modifierToFlag(SyntaxKind token) {
         switch (token) {
             case SyntaxKind::StaticKeyword:

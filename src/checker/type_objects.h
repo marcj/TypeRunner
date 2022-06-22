@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core.h"
+#include "./utils.h"
 #include <string>
 #include <array>
 #include <utility>
@@ -18,6 +19,7 @@ namespace ts::vm {
     using std::to_string;
     using std::make_shared;
     using std::reference_wrapper;
+    using namespace ts::checker;
 
     enum class TypeKind: unsigned char {
         Never,
@@ -73,9 +75,97 @@ namespace ts::vm {
         string_view typeName;
         TypeKind kind = TypeKind::Never;
 
+        //this is the OP position (instruction pointer) of the bytecode. sourcemap is necessary to map it to source positions.
+        unsigned int ip{};
+
         virtual ~Type() {
         }
-//        array<reference_wrapper<Type>, 0> typeArguments;
+    };
+
+    struct ModuleSubroutine {
+        string_view name;
+        unsigned int address;
+        bool exported = false;
+        sharedOpt<Type> result = nullptr;
+        sharedOpt<Type> narrowed = nullptr; //when control flow analysis sets a new value
+        ModuleSubroutine(string_view name, unsigned int address): name(name), address(address) {}
+    };
+
+    struct Module;
+
+    struct DiagnosticMessage {
+        const string message;
+        unsigned int ip; //ip of the node/OP
+        Module *module = nullptr;
+        DiagnosticMessage() {}
+        explicit DiagnosticMessage(const string &message, unsigned int &ip): message(message), ip(ip) {}
+    };
+
+    struct FoundSourceMap {
+        unsigned int pos;
+        unsigned int end;
+    };
+
+    struct Module {
+        const string_view &bin;
+        string fileName = "index.ts";
+
+        vector<ModuleSubroutine> subroutines;
+        unsigned int mainAddress;
+        unsigned int sourceMapAddress;
+        unsigned int sourceMapAddressEnd;
+
+        vector<DiagnosticMessage> errors;
+        string_view code = ""; //for diagnostic messages only
+
+        Module(const string_view &bin): bin(bin) {
+        }
+
+        ModuleSubroutine *getSubroutine(unsigned int index) {
+            return &subroutines[index];
+        }
+
+        ModuleSubroutine *getMain() {
+            return &subroutines.back();
+        }
+
+        FoundSourceMap findMap(unsigned int ip) {
+            unsigned int found = 0;
+            for (unsigned int i = sourceMapAddress; i < sourceMapAddressEnd; i += 3 * 4) {
+                auto mapIp = readUint32(bin, i);
+                found = i;
+                if (mapIp > ip) break;
+            }
+
+            if (found) {
+                return {readUint32(bin, found + 4), readUint32(bin, found + 8)};
+            }
+            return {0, 0};
+        }
+
+        void printErrors() {
+            for (auto &&e: errors) {
+                if (e.ip) {
+                    auto map = findMap(e.ip);
+
+                    //todo, map pos/end via sourcemap to source positions
+                    std::size_t lineStart = code.rfind('\n', map.pos);
+                    if (lineStart != std::string::npos) {
+                        std::size_t lineEnd = code.find('\n', map.end);
+                        if (lineEnd == std::string::npos) lineEnd = code.size();
+                        std::cout << cyan << fileName << ":" << yellow << map.pos << ":" << map.end << reset << " - " << red << "error" << reset << " TS0000: " << e.message << "\n\n";
+                        std::cout << code.substr(lineStart + 1, lineEnd - lineStart - 1) << "\n";
+                        auto space = map.pos - lineStart;
+                        std::cout << std::string(space, ' ') << red << "^" << reset << "\n\n";
+                    } else {
+                        std::cout << "  " << e.message << "\n";
+                    }
+                } else {
+                    std::cout << "  " << e.message << "\n";
+                }
+            }
+            std::cout << "Found " << errors.size() << " errors in " << fileName << "\n";
+        }
     };
 
     template<TypeKind T, class ... Base>
@@ -184,6 +274,47 @@ namespace ts::vm {
         explicit TypeFunctionRef(unsigned int address): address(address) {}
     };
 
+    struct TypeProperty: BrandKind<TypeKind::Property, Type> {
+        string_view name; //todo change to something that is number | string | symbol, same for MethodSignature
+        bool optional = false;
+        bool readonly = false;
+        shared<Type> type;
+        TypeProperty(const shared<Type> &type): type(type) {}
+    };
+
+    struct TypePropertySignature: BrandKind<TypeKind::PropertySignature, Type> {
+        string_view name; //todo change to something that is number | string | symbol, same for MethodSignature
+        bool optional = false;
+        bool readonly = false;
+        shared<Type> type;
+        TypePropertySignature(const shared<Type> &type): type(type) {}
+    };
+
+    struct TypeMethodSignature: BrandKind<TypeKind::MethodSignature, Type> {
+        string_view name;
+        bool optional = false;
+        vector<shared<Type>> parameters;
+        shared<Type> returnType;
+    };
+
+    struct TypeMethod: BrandKind<TypeKind::MethodSignature, Type> {
+        string_view name;
+        bool optional = false;
+        vector<shared<Type>> parameters;
+        shared<Type> returnType;
+    };
+
+    struct TypeIndexSignature: BrandKind<TypeKind::IndexSignature, Type> {
+        shared<Type> index;
+        shared<Type> type;
+    };
+
+    struct TypeObjectLiteral: BrandKind<TypeKind::ObjectLiteral, Type> {
+        vector<shared<Type>> types; //TypeIndexSignature | TypePropertySignature | TypeMethodSignature
+        explicit TypeObjectLiteral() {}
+        explicit TypeObjectLiteral(vector<shared<Type>> types): types(types) {}
+    };
+
     template<class T>
     sharedOpt<T> to(const sharedOpt<Type> &p) {
         if (!p) return nullptr;
@@ -238,6 +369,21 @@ namespace ts::vm {
                 if (n->optional) r += "?";
                 r += ": " + stringify(n->type);
                 return r;
+            }
+            case TypeKind::PropertySignature: {
+                auto n = to<TypePropertySignature>(type);
+                string r = (n->readonly ? "readonly " : "") + string(n->name);
+                if (n->optional) r += "?";
+                return r + ": " + stringify(n->type);
+            }
+            case TypeKind::ObjectLiteral: {
+                auto n = to<TypeObjectLiteral>(type);
+                string r = string(n->typeName) + "{";
+                for (auto &&member: n->types) {
+                    r += stringify(member);
+                    if (member != n->types.back()) r += ", ";
+                }
+                return r + "}";
             }
             case TypeKind::FunctionRef: {
                 return "%FunctionRef";
@@ -295,13 +441,22 @@ namespace ts::vm {
                 for (auto &&item: a->types) {
                     if (item->kind == TypeKind::Undefined) return true;
                 }
-                break;
+                return false;
             }
             case TypeKind::Parameter: {
                 auto a = to<TypeParameter>(type);
                 if (a->optional) return true;
                 return isOptional(a->type);
-                break;
+            }
+            case TypeKind::Property: {
+                auto a = to<TypeProperty>(type);
+                if (a->optional) return true;
+                return isOptional(a->type);
+            }
+            case TypeKind::PropertySignature: {
+                auto a = to<TypePropertySignature>(type);
+                if (a->optional) return true;
+                return isOptional(a->type);
             }
         }
         return false;

@@ -23,20 +23,38 @@ namespace ts::checker {
         TypeVariable //template variable, e.g. T in function <T>foo(bar: T);
     };
 
+    struct SourceMapEntry {
+        unsigned int bytecodePos;
+        unsigned int sourcePos;
+        unsigned int sourceEnd;
+    };
+
+    struct SourceMap {
+        vector<SourceMapEntry> map;
+
+        void push(unsigned int bytecodePos, unsigned int sourcePos, unsigned int sourceEnd) {
+            map.push_back({bytecodePos, sourcePos, sourceEnd});
+        }
+    };
+
     //A subroutine is a sub program that can be executed by knowing its address.
     //They are used for example for type alias, mapped type, conditional type (for false and true side)
     struct Subroutine {
         vector<unsigned char> ops; //OPs, and its parameters
-        unordered_map<unsigned int, unsigned int> opSourceMap;
+        SourceMap sourceMap;
         string_view identifier{};
         unsigned int index{};
         unsigned int nameAddress{};
-        unsigned int pos{};
         SymbolType type = SymbolType::Type;
+
+        void pushSourceMap(unsigned int sourcePos, unsigned int sourceEnd) {
+            sourceMap.push(ops.size(), sourcePos, sourceEnd);
+        }
 
         explicit Subroutine() {
             identifier = "";
         }
+
         explicit Subroutine(string_view &identifier): identifier(identifier) {}
     };
 
@@ -47,6 +65,7 @@ namespace ts::checker {
         SymbolType type = SymbolType::Type;
         unsigned int index{}; //symbol index of the current frame
         unsigned int pos{};
+        unsigned int end{};
         unsigned int declarations = 1;
         sharedOpt<Subroutine> routine = nullptr;
         shared<Frame> frame = nullptr;
@@ -78,7 +97,7 @@ namespace ts::checker {
     class Program {
     public:
         vector<unsigned char> ops; //OPs of "main"
-        unordered_map<unsigned int, unsigned int> opSourceMap;
+        SourceMap sourceMap; //SourceMap of "main"
 
         vector<string_view> storage; //all kind of literals, as strings
         unordered_map<string_view, reference_wrapper<StorageItem>> storageMap; //used to deduplicated storage entries
@@ -102,9 +121,8 @@ namespace ts::checker {
          * Creates a new nameless subroutine, used for example in mapped-type, conditional type
          * @return
          */
-        unsigned int pushSubroutineNameLess(unsigned int pos) {
+        unsigned int pushSubroutineNameLess(const shared<Node> &node) {
             auto routine = make_shared<Subroutine>();
-            routine->pos = pos;
             routine->type = SymbolType::TypeFunction;
             routine->index = subroutines.size();
 
@@ -176,6 +194,11 @@ namespace ts::checker {
             writeUint32(ops, ops.size(), address);
         }
 
+        void pushUint32(unsigned int v) {
+            auto &ops = getOPs();
+            writeUint32(ops, ops.size(), v);
+        }
+
         void pushUint16(unsigned int v) {
             auto &ops = getOPs();
             writeUint16(ops, ops.size(), v);
@@ -199,10 +222,23 @@ namespace ts::checker {
             return ops;
         }
 
-        void pushOp(OP op, std::vector<unsigned int> params = {}) {
+        void pushSourceMap(const shared<Node> &node) {
+            if (activeSubroutines.size()) {
+                activeSubroutines.back()->pushSourceMap(node->pos, node->end);
+            } else {
+                sourceMap.push(ops.size(), node->pos, node->end);
+            }
+        }
+
+        void pushOp(OP op) {
             auto &ops = getOPs();
             ops.push_back(op);
-            ops.insert(ops.end(), params.begin(), params.end());
+        }
+
+        void pushOp(OP op, const shared<Node> &node) {
+            auto &ops = getOPs();
+            ops.push_back(op);
+            pushSourceMap(node);
         }
 
         //needed for variables
@@ -225,7 +261,7 @@ namespace ts::checker {
          * Symbols will be created first before a body is extracted. This makes sure all
          * symbols are known before their reference is used.
          */
-        Symbol &pushSymbol(string_view name, SymbolType type, unsigned int pos, sharedOpt<Frame> frameToUse = nullptr) {
+        Symbol &pushSymbol(string_view name, SymbolType type, const shared<Node> &node, sharedOpt<Frame> frameToUse = nullptr) {
             if (!frameToUse) frameToUse = frame;
 
             for (auto &&v: frameToUse->symbols) {
@@ -247,18 +283,18 @@ namespace ts::checker {
             symbol.name = string(name);
             symbol.type = type;
             symbol.index = (unsigned int) frameToUse->symbols.size();
-            symbol.pos = pos;
+            symbol.pos = node->pos;
+            symbol.end = node->end;
             symbol.frame = frameToUse;
             frameToUse->symbols.push_back(std::move(symbol));
             return frameToUse->symbols.back();
         }
 
-        Symbol &pushSymbolForRoutine(string_view name, SymbolType type, unsigned int pos, shared<Frame> frameToUse = nullptr) {
-            auto &symbol = pushSymbol(name, type, pos, frameToUse);
+        Symbol &pushSymbolForRoutine(string_view name, SymbolType type, const shared<Node> &node, shared<Frame> frameToUse = nullptr) {
+            auto &symbol = pushSymbol(name, type, node, frameToUse);
             if (symbol.routine) return symbol;
 
             auto routine = make_shared<Subroutine>(name);
-            routine->pos = pos;
             routine->type = type;
             routine->nameAddress = registerStorage(routine->identifier);
             routine->index = subroutines.size();
@@ -286,6 +322,11 @@ namespace ts::checker {
             pushAddress(registerStorage(s));
         }
 
+        void pushStringLiteral(string_view s, const shared<Node> &node) {
+            pushOp(OP::StringLiteral, node);
+            pushStorage(s);
+        }
+
         string build() {
             vector<unsigned char> bin;
             unsigned int address = 0;
@@ -310,6 +351,34 @@ namespace ts::checker {
             for (auto &&item: storage) {
                 writeUint16(bin, bin.size(), item.size());
                 bin.insert(bin.end(), item.begin(), item.end());
+            }
+
+            //collect sourcemap data
+            unsigned int sourceMapSize = 0;
+            for (auto &&routine: subroutines) {
+                sourceMapSize += routine->sourceMap.map.size() * (4 * 3);
+            }
+            sourceMapSize += sourceMap.map.size() * (4 * 3);
+
+            //write sourcemap
+            bin.push_back(OP::SourceMap);
+            writeUint32(bin, bin.size(), sourceMapSize);
+            address += 1 + 4 + sourceMapSize;
+
+            unsigned int bytecodePosOffset = address;
+            for (auto &&routine: subroutines) {
+                for (auto &&map: routine->sourceMap.map) {
+                    writeUint32(bin, bin.size(), bytecodePosOffset + map.bytecodePos);
+                    writeUint32(bin, bin.size(), map.sourcePos);
+                    writeUint32(bin, bin.size(), map.sourceEnd);
+                    bytecodePosOffset += routine->ops.size();
+                }
+            }
+
+            for (auto &&map: sourceMap.map) {
+                writeUint32(bin, bin.size(), bytecodePosOffset + map.bytecodePos);
+                writeUint32(bin, bin.size(), map.sourcePos);
+                writeUint32(bin, bin.size(), map.sourceEnd);
             }
 
             //after the storage data follows the subroutine meta-data.
@@ -354,31 +423,31 @@ namespace ts::checker {
                     }
                     break;
                 }
-                case types::SyntaxKind::BooleanKeyword: program.pushOp(OP::Boolean);
+                case types::SyntaxKind::BooleanKeyword: program.pushOp(OP::Boolean, node);
                     break;
-                case types::SyntaxKind::StringKeyword: program.pushOp(OP::String);
+                case types::SyntaxKind::StringKeyword: program.pushOp(OP::String, node);
                     break;
-                case types::SyntaxKind::NumberKeyword: program.pushOp(OP::Number);
+                case types::SyntaxKind::NumberKeyword: program.pushOp(OP::Number, node);
                     break;
-                case types::SyntaxKind::BigIntLiteral: program.pushOp(OP::BigIntLiteral);
+                case types::SyntaxKind::BigIntLiteral: program.pushOp(OP::BigIntLiteral, node);
                     program.pushStorage(to<BigIntLiteral>(node)->text);
                     break;
-                case types::SyntaxKind::NumericLiteral: program.pushOp(OP::NumberLiteral);
+                case types::SyntaxKind::NumericLiteral: program.pushOp(OP::NumberLiteral, node);
                     program.pushStorage(to<NumericLiteral>(node)->text);
                     break;
-                case types::SyntaxKind::StringLiteral: program.pushOp(OP::StringLiteral);
+                case types::SyntaxKind::StringLiteral: program.pushOp(OP::StringLiteral, node);
                     program.pushStorage(to<StringLiteral>(node)->text);
                     break;
-                case types::SyntaxKind::TrueKeyword: program.pushOp(OP::True);
+                case types::SyntaxKind::TrueKeyword: program.pushOp(OP::True, node);
                     break;
-                case types::SyntaxKind::FalseKeyword: program.pushOp(OP::False);
+                case types::SyntaxKind::FalseKeyword: program.pushOp(OP::False, node);
                     break;
                 case types::SyntaxKind::IndexedAccessType: {
                     const auto n = to<IndexedAccessTypeNode>(node);
 
                     handle(n->objectType, program);
                     handle(n->indexType, program);
-                    program.pushOp(OP::IndexAccess);
+                    program.pushOp(OP::IndexAccess, node);
                     break;
                 }
                 case types::SyntaxKind::LiteralType: {
@@ -391,7 +460,7 @@ namespace ts::checker {
 
                     program.pushFrame();
                     if (t->head->rawText && *t->head->rawText != "") {
-                        program.pushOp(OP::StringLiteral);
+                        program.pushOp(OP::StringLiteral, t->head);
                         program.pushStorage(*t->head->rawText);
                     }
 
@@ -401,18 +470,18 @@ namespace ts::checker {
 
                         if (auto a = to<TemplateMiddle>(span->literal)) {
                             if (a->rawText && *a->rawText != "") {
-                                program.pushOp(OP::StringLiteral);
+                                program.pushOp(OP::StringLiteral, sub);
                                 program.pushStorage(a->rawText ? *a->rawText : "");
                             }
                         } else if (auto a = to<TemplateTail>(span->literal)) {
                             if (a->rawText && *a->rawText != "") {
-                                program.pushOp(OP::StringLiteral);
+                                program.pushOp(OP::StringLiteral, a);
                                 program.pushStorage(a->rawText ? *a->rawText : "");
                             }
                         }
                     }
 
-                    program.pushOp(OP::TemplateLiteral);
+                    program.pushOp(OP::TemplateLiteral, node);
                     program.popFrameImplicit();
 
                     break;
@@ -425,7 +494,7 @@ namespace ts::checker {
                         handle(s, program);
                     }
 
-                    program.pushOp(OP::Union);
+                    program.pushOp(OP::Union, node);
                     program.popFrameImplicit();
                     break;
                 }
@@ -437,7 +506,7 @@ namespace ts::checker {
                     const auto name = to<Identifier>(n->typeName)->escapedText;
                     auto &symbol = program.findSymbol(name);
                     if (symbol.type == SymbolType::TypeVariable) {
-                        program.pushOp(OP::Loads);
+                        program.pushOp(OP::Loads, n->typeName);
                         program.pushSymbolAddress(symbol);
                     } else {
                         if (n->typeArguments) {
@@ -445,7 +514,7 @@ namespace ts::checker {
                                 handle(p, program);
                             }
                         }
-                        program.pushOp(OP::Call);
+                        program.pushOp(OP::Call, n->typeName);
                         if (!symbol.routine) {
                             throw runtime_error("Reference is not a reference to a existing routine.");
                         }
@@ -461,7 +530,7 @@ namespace ts::checker {
                 case types::SyntaxKind::TypeAliasDeclaration: {
                     const auto n = to<TypeAliasDeclaration>(node);
 
-                    auto &symbol = program.pushSymbolForRoutine(n->name->escapedText, SymbolType::Type, n->pos); //move this to earlier symbol-scan round
+                    auto &symbol = program.pushSymbolForRoutine(n->name->escapedText, SymbolType::Type, n); //move this to earlier symbol-scan round
                     if (symbol.declarations > 1) {
                         //todo: for functions/variable embed an error that symbol was declared twice in the same scope
                     } else {
@@ -484,29 +553,27 @@ namespace ts::checker {
                     if (n->type) {
                         handle(n->type, program);
                     } else {
-                        program.pushOp(OP::Unknown);
+                        program.pushOp(OP::Unknown, node);
                     }
-                    program.pushOp(OP::Parameter);
+                    program.pushOp(OP::Parameter, node);
                     if (auto id = to<Identifier>(n->name)) {
                         program.pushStorage(id->escapedText);
                     } else {
                         program.pushStorage("");
                     }
-                    if (n->questionToken) {
-                        program.pushOp(OP::Optional);
-                    }
+                    if (n->questionToken) program.pushOp(OP::Optional, n->questionToken);
                     if (n->initializer) {
                         handle(n->initializer, program);
-                        program.pushOp(OP::Initializer);
+                        program.pushOp(OP::Initializer, n->initializer);
                     }
                     break;
                 }
                 case types::SyntaxKind::TypeParameter: {
                     const auto n = to<TypeParameterDeclaration>(node);
-                    auto &symbol = program.pushSymbol(n->name->escapedText, SymbolType::TypeVariable, n->pos);
-                    program.pushOp(instructions::TypeArgument);
+                    auto &symbol = program.pushSymbol(n->name->escapedText, SymbolType::TypeVariable, n);
+                    program.pushOp(instructions::TypeArgument, node);
                     if (n->defaultType) {
-                        program.pushSubroutineNameLess(n->defaultType->pos);
+                        program.pushSubroutineNameLess(n->defaultType);
                         handle(n->defaultType, program);
                         auto routine = program.popSubroutine();
                         program.pushOp(instructions::TypeArgumentDefault);
@@ -518,7 +585,7 @@ namespace ts::checker {
                 case types::SyntaxKind::FunctionDeclaration: {
                     const auto n = to<FunctionDeclaration>(node);
                     if (const auto id = to<Identifier>(n->name)) {
-                        auto &symbol = program.pushSymbolForRoutine(id->escapedText, SymbolType::Function, id->pos); //move this to earlier symbol-scan round
+                        auto &symbol = program.pushSymbolForRoutine(id->escapedText, SymbolType::Function, id); //move this to earlier symbol-scan round
                         if (symbol.declarations > 1) {
                             //todo: embed error since function is declared twice
                         } else {
@@ -527,7 +594,7 @@ namespace ts::checker {
                                 //when there are type parameters, FunctionDeclaration returns a FunctionRef
                                 //which indicates the VM that the function needs to be instantiated first.
 
-                                auto subroutineIndex = program.pushSubroutineNameLess(n->pos);
+                                auto subroutineIndex = program.pushSubroutineNameLess(n);
 
                                 for (auto &&param: n->typeParameters->list) {
                                     handle(param, program);
@@ -544,6 +611,7 @@ namespace ts::checker {
                                 for (auto &&param: n->typeParameters->list) {
                                 }
 
+                                //todo
                                 //after types are inferred, apply default if still empty
 
                                 //after types are set, apply constraint check
@@ -560,10 +628,10 @@ namespace ts::checker {
                                     } else {
                                     }
                                 }
-                                program.pushOp(OP::Function);
+                                program.pushOp(OP::Function, node);
                                 program.popSubroutine();
 
-                                program.pushOp(OP::FunctionRef);
+                                program.pushOp(OP::FunctionRef, node);
                                 program.pushAddress(subroutineIndex);
                                 program.popSubroutine();
                             } else {
@@ -580,7 +648,7 @@ namespace ts::checker {
                                     } else {
                                     }
                                 }
-                                program.pushOp(OP::Function);
+                                program.pushOp(OP::Function, node);
                                 program.popSubroutine();
                             }
                         }
@@ -594,7 +662,7 @@ namespace ts::checker {
                     const auto n = to<Identifier>(node);
                     auto symbol = program.findSymbol(n->escapedText);
                     if (symbol.type == SymbolType::TypeVariable) {
-                        program.pushOp(OP::Loads);
+                        program.pushOp(OP::Loads, node);
                         program.pushSymbolAddress(symbol);
                     } else {
                         if (n->typeArguments) {
@@ -602,7 +670,7 @@ namespace ts::checker {
                                 handle(p, program);
                             }
                         }
-                        program.pushOp(OP::Call);
+                        program.pushOp(OP::Call, node);
                         if (!symbol.routine) {
                             throw runtime_error("Reference is not a reference to a existing routine.");
                         }
@@ -613,6 +681,78 @@ namespace ts::checker {
                             program.pushUint16(0);
                         }
                     }
+                    break;
+                }
+                case types::SyntaxKind::PropertyAssignment: {
+                    const auto n = to<PropertyAssignment>(node);
+                    if (n->initializer) {
+                        handle(n->initializer, program);
+                    } else {
+                        program.pushOp(OP::Any, n);
+                    }
+                    if (n->name->kind == SyntaxKind::Identifier) {
+                        program.pushStringLiteral(to<Identifier>(n->name)->escapedText, n->name);
+                    } else {
+                        //computed type name like `[a]: string`
+                        handle(n->name, program);
+                    }
+                    program.pushOp(OP::PropertySignature, n->name);
+                    if (n->questionToken) program.pushOp(OP::Optional);
+                    if (hasModifier(n, SyntaxKind::ReadonlyKeyword)) program.pushOp(OP::Readonly);
+                    break;
+                }
+                case types::SyntaxKind::PropertySignature: {
+                    const auto n = to<PropertySignature>(node);
+                    if (n->type) {
+                        handle(n->type, program);
+                    } else {
+                        program.pushOp(OP::Any);
+                    }
+                    if (n->name->kind == SyntaxKind::Identifier) {
+                        program.pushStringLiteral(to<Identifier>(n->name)->escapedText, n->name);
+                    } else {
+                        //computed type name like `[a]: string`
+                        handle(n->name, program);
+                    }
+                    program.pushOp(OP::PropertySignature, node);
+                    if (n->questionToken) program.pushOp(OP::Optional);
+                    if (hasModifier(n, SyntaxKind::ReadonlyKeyword)) program.pushOp(OP::Readonly);
+                    break;
+                }
+                case types::SyntaxKind::InterfaceDeclaration: {
+                    const auto n = to<InterfaceDeclaration>(node);
+                    program.pushFrame();
+
+                    //first all extend expressions
+                    if (n->heritageClauses) {
+                        for (auto &&node: n->heritageClauses->list) {
+                            auto heritage = to<HeritageClause>(node);
+                            if (heritage->token == SyntaxKind::ExtendsKeyword) {
+                                for (auto &&extendType: heritage->types->list) {
+                                    handle(extendType, program);
+                                }
+                            }
+                        }
+                    }
+
+                    for (auto &&member: n->members->list) {
+                        handle(member, program);
+                    }
+
+                    program.pushOp(OP::ObjectLiteral, n->name);
+                    program.popFrameImplicit();
+                    break;
+                }
+                case types::SyntaxKind::TypeLiteral: {
+                    const auto n = to<TypeLiteralNode>(node);
+                    program.pushFrame();
+
+                    for (auto &&member: n->members->list) {
+                        handle(member, program);
+                    }
+
+                    program.pushOp(OP::ObjectLiteral, node);
+                    program.popFrameImplicit();
                     break;
                 }
                 case types::SyntaxKind::ParenthesizedExpression: {
@@ -630,9 +770,17 @@ namespace ts::checker {
                     handle(n->expression, program);
 
                     if (n->typeArguments) {
-                        program.pushOp(OP::Instantiate);
+                        program.pushOp(OP::Instantiate, node);
                         program.pushUint16(typeArgumentsCount);
                     }
+                    break;
+                }
+                case types::SyntaxKind::ObjectLiteralExpression: {
+                    const auto n = to<ObjectLiteralExpression>(node);
+                    program.pushFrame();
+                    for (auto &&sub: n->properties->list) handle(sub, program);
+                    program.pushOp(OP::ObjectLiteral, node);
+                    program.popFrameImplicit();
                     break;
                 }
                 case types::SyntaxKind::CallExpression: {
@@ -645,14 +793,14 @@ namespace ts::checker {
                     handle(n->expression, program);
 
                     if (n->typeArguments) {
-                        program.pushOp(OP::Instantiate);
+                        program.pushOp(OP::Instantiate, node);
                         program.pushUint16(typeArgumentsCount);
                     }
 
                     auto argumentsCount = n->arguments->length();
                     for (auto &&sub: n->arguments->list) handle(sub, program);
 
-                    program.pushOp(OP::CallExpression);
+                    program.pushOp(OP::CallExpression, node);
                     program.pushUint16(argumentsCount);
 
                     break;
@@ -669,7 +817,7 @@ namespace ts::checker {
                     program.pushFrame();
                     handle(n->whenFalse, program);
                     handle(n->whenTrue, program);
-                    program.pushOp(OP::Union);
+                    program.pushOp(OP::Union, node);
                     program.popFrameImplicit();
                     break;
                 }
@@ -692,11 +840,11 @@ namespace ts::checker {
 //                        //so call convention can take over.
 //                        program.pushVariable(getIdentifierName(distributiveOverIdentifier));
 //                        program.pushCoRoutine();
-                        program.pushSubroutineNameLess(node->pos);
+                        program.pushSubroutineNameLess(node);
 
                         //in the subroutine of the conditional type we place a new type variable, which acts as input.
                         //the `Distribute` OP makes then sure that the current stack entry is used as input
-                        program.pushSymbol(distributiveOverIdentifier->escapedText, SymbolType::TypeVariable, distributiveOverIdentifier->pos);
+                        program.pushSymbol(distributiveOverIdentifier->escapedText, SymbolType::TypeVariable, distributiveOverIdentifier);
                         program.pushOp(instructions::TypeArgument);
                     }
 
@@ -704,11 +852,11 @@ namespace ts::checker {
                     handle(n->extendsType, program);
                     program.pushOp(instructions::Extends);
 
-                    auto trueProgram = program.pushSubroutineNameLess(n->trueType->pos);
+                    auto trueProgram = program.pushSubroutineNameLess(n->trueType);
                     handle(n->trueType, program);
                     program.popSubroutine();
 
-                    auto falseProgram = program.pushSubroutineNameLess(n->falseType->pos);
+                    auto falseProgram = program.pushSubroutineNameLess(n->falseType);
                     handle(n->falseType, program);
                     program.popSubroutine();
 
@@ -733,7 +881,7 @@ namespace ts::checker {
                 }
                 case types::SyntaxKind::RestType: {
                     handle(to<RestTypeNode>(node)->type, program);
-                    program.pushOp(OP::Rest);
+                    program.pushOp(OP::Rest, node);
                     break;
                 }
 //                case types::SyntaxKind::OptionalType: {
@@ -745,9 +893,9 @@ namespace ts::checker {
                     program.pushFrame();
                     for (auto &&v: to<ArrayLiteralExpression>(node)->elements->list) {
                         handle(v, program);
-                        program.pushOp(OP::TupleMember);
+                        program.pushOp(OP::TupleMember, v);
                     }
-                    program.pushOp(OP::Tuple);
+                    program.pushOp(OP::Tuple, node);
                     program.popFrameImplicit();
                     //todo: handle `as const`, widen if not const
                     break;
@@ -759,18 +907,18 @@ namespace ts::checker {
                         if (auto tm = to<NamedTupleMember>(e)) {
                             handle(tm->type, program);
                             if (tm->dotDotDotToken) program.pushOp(OP::Rest);
-                            program.pushOp(OP::TupleMember);
+                            program.pushOp(OP::TupleMember, tm);
                             if (tm->questionToken) program.pushOp(OP::Optional);
                         } else if (auto ot = to<OptionalTypeNode>(e)) {
                             handle(ot->type, program);
-                            program.pushOp(OP::TupleMember);
+                            program.pushOp(OP::TupleMember, ot);
                             program.pushOp(OP::Optional);
                         } else {
                             handle(e, program);
-                            program.pushOp(OP::TupleMember);
+                            program.pushOp(OP::TupleMember, e);
                         }
                     }
-                    program.pushOp(OP::Tuple);
+                    program.pushOp(OP::Tuple, node);
                     program.popFrameImplicit();
                     break;
                 }
@@ -787,7 +935,7 @@ namespace ts::checker {
                                 if (!symbol.routine) throw runtime_error("Symbol has no routine");
 
                                 handle(n->right, program);
-                                program.pushOp(OP::Set);
+                                program.pushOp(OP::Set, n->operatorToken);
                                 program.pushAddress(symbol.routine->index);
                             } else {
                                 throw runtime_error("BinaryExpression left only Identifier implemented");
@@ -808,12 +956,13 @@ namespace ts::checker {
                 case types::SyntaxKind::VariableDeclaration: {
                     const auto n = to<VariableDeclaration>(node);
                     if (const auto id = to<Identifier>(n->name)) {
-                        auto &symbol = program.pushSymbolForRoutine(id->escapedText, SymbolType::Variable, id->pos); //move this to earlier symbol-scan round
+                        auto &symbol = program.pushSymbolForRoutine(id->escapedText, SymbolType::Variable, id); //move this to earlier symbol-scan round
                         if (symbol.declarations > 1) {
                             //todo: embed error since variable is declared twice
                         } else {
                             if (n->type) {
                                 const auto subroutineIndex = program.pushSubroutine(id->escapedText);
+                                program.pushSourceMap(id);
                                 handle(n->type, program);
                                 program.popSubroutine();
                                 if (n->initializer) {
@@ -821,7 +970,7 @@ namespace ts::checker {
                                     program.pushOp(OP::Call);
                                     program.pushAddress(subroutineIndex);
                                     program.pushUint16(0);
-                                    program.pushOp(OP::Assign);
+                                    program.pushOp(OP::Assign, n->name);
                                 }
                             } else {
                                 auto subroutineIndex = program.pushSubroutine(id->escapedText);
@@ -845,7 +994,6 @@ namespace ts::checker {
                                     program.pushOp(OP::Any);
                                     program.popSubroutine();
                                 }
-
                             }
                         }
                     } else {

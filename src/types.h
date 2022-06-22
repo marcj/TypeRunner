@@ -1330,7 +1330,7 @@ namespace ts {
         }
 
         bool hasParent() {
-            return &parent != nullptr;
+            return parent != nullptr;
         }
 
         void setParent(shared<Node> p) {

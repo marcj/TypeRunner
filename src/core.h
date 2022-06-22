@@ -220,7 +220,7 @@ namespace ts {
     }
 
     template<typename K, typename T>
-    inline optional<T> get(unordered_map<K, T> &m, K key) {
+    inline optional<T> get(const unordered_map<K, T> &m, K key) {
         auto v = m.find(key);
         if (v == m.end()) return std::nullopt;
         return v->second;
@@ -264,4 +264,11 @@ namespace ts {
         auto took = benchRun(iterations, callback);
         fmt::print("{} iterations took {}ms, {}ms per iteration", iterations, took.count(), took.count()/iterations);
     }
+
+    const std::string red("\033[0;31m");
+    const std::string green("\033[1;32m");
+    const std::string yellow("\033[1;33m");
+    const std::string cyan("\033[0;36m");
+    const std::string magenta("\033[0;35m");
+    const std::string reset("\033[0m");
 }

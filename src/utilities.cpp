@@ -167,7 +167,8 @@ namespace ts {
             case SyntaxKind::ReadonlyKeyword:
             case SyntaxKind::StaticKeyword:
             case SyntaxKind::OutKeyword:
-            case SyntaxKind::OverrideKeyword:return true;
+            case SyntaxKind::OverrideKeyword:
+                return true;
         }
         return false;
     }
