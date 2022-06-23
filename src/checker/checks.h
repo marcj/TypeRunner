@@ -64,7 +64,8 @@ namespace ts::vm {
         }
 
         DiagnosticMessage errorMessage() {
-            auto [left, right] = stack.back();
+//            auto [left, right] = stack.back();
+            auto [left, right] = stack.front();
             auto message = fmt::format("Type '{}' is not assignable to type '{}'", stringify(left), stringify(right));
 
             return DiagnosticMessage(message, left->ip);
@@ -185,6 +186,11 @@ namespace ts::vm {
             case TypeKind::Number: {
                 if (left->kind == TypeKind::Number) return stack.valid();
                 if (left->kind == TypeKind::Literal) return to<TypeLiteral>(left)->type == TypeLiteralType::Number ? stack.valid() : stack.failed();
+                return stack.failed();
+            }
+            case TypeKind::Boolean: {
+                if (left->kind == TypeKind::Boolean) return stack.valid();
+                if (left->kind == TypeKind::Literal) return to<TypeLiteral>(left)->type == TypeLiteralType::Boolean ? stack.valid() : stack.failed();
                 return stack.failed();
             }
             case TypeKind::Literal: {

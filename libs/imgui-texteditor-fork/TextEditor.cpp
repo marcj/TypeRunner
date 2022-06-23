@@ -1085,10 +1085,20 @@ void TextEditor::Render()
         // Render inline errors
         if (true) {
             for (auto &&inlineError: inlineErrors) {
+                if (inlineError.line < lineStart || inlineError.line > lineMax) continue;
+
                 ImVec2 lineStartScreenPos = ImVec2(cursorScreenPos.x, cursorScreenPos.y + inlineError.line * mCharAdvance.y);
                 auto start = ImVec2(lineStartScreenPos.x + mTextStart + scrollX + (mCharAdvance.x * inlineError.charPos), lineStartScreenPos.y + mCharAdvance.y);
                 auto end = ImVec2(lineStartScreenPos.x + mTextStart + scrollX + (mCharAdvance.x * inlineError.charEnd), lineStartScreenPos.y + mCharAdvance.y);
                 drawList->AddLine(start, end, mPalette[(int) PaletteIndex::ErrorMarker], 2);
+            }
+
+            for (auto &&highlight: highlights) {
+                if (highlight.line < lineStart || highlight.line > lineMax) continue;
+                ImVec2 lineStartScreenPos = ImVec2(cursorScreenPos.x, cursorScreenPos.y + highlight.line * mCharAdvance.y);
+                auto start = ImVec2(lineStartScreenPos.x + mTextStart + scrollX + (mCharAdvance.x * highlight.charPos), lineStartScreenPos.y);
+                auto end = ImVec2(lineStartScreenPos.x + mTextStart + scrollX + (mCharAdvance.x * highlight.charEnd), lineStartScreenPos.y + mCharAdvance.y);
+                drawList->AddRectFilled(start, end, mPalette[(int)PaletteIndex::Selection]);
             }
         }
 

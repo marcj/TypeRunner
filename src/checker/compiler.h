@@ -206,8 +206,10 @@ namespace ts::checker {
         }
 
         void pushError(ErrorCode code, const shared<Node> &node) {
-            pushOp(OP::Error, node);
-            pushUint16((unsigned int)code);
+            //errors need to be part of main
+            sourceMap.push(0, node->pos, node->end);
+            ops.push_back(OP::Error);
+            writeUint16(ops, ops.size(), (unsigned int)code);
         }
 
         void pushSymbolAddress(Symbol &symbol) {
@@ -241,9 +243,9 @@ namespace ts::checker {
             ops.push_back(op);
         }
 
-        void pushOp(OP op, const shared<Node> &node) {
+        void pushOp(OP op, const sharedOpt<Node> &node) {
             auto &ops = getOPs();
-            pushSourceMap(node);
+            if (node) pushSourceMap(node);
             ops.push_back(op);
         }
 
@@ -431,6 +433,8 @@ namespace ts::checker {
                     }
                     break;
                 }
+                case types::SyntaxKind::NeverKeyword: program.pushOp(OP::Never, node);
+                    break;
                 case types::SyntaxKind::BooleanKeyword: program.pushOp(OP::Boolean, node);
                     break;
                 case types::SyntaxKind::StringKeyword: program.pushOp(OP::String, node);
@@ -514,7 +518,7 @@ namespace ts::checker {
                     const auto name = to<Identifier>(n->typeName)->escapedText;
                     auto symbol = program.findSymbol(name);
                     if (!symbol) {
-                        program.pushOp(OP::Never);
+                        program.pushOp(OP::Never, n->typeName);
                         program.pushError(ErrorCode::CannotFind, n->typeName);
                     } else {
                         if (symbol->type == SymbolType::TypeVariable) {
@@ -675,7 +679,7 @@ namespace ts::checker {
                     const auto n = to<Identifier>(node);
                     auto symbol = program.findSymbol(n->escapedText);
                     if (!symbol) {
-                        program.pushOp(OP::Never);
+                        program.pushOp(OP::Never, n);
                         program.pushError(ErrorCode::CannotFind, n);
                     } else {
                         if (symbol->type == SymbolType::TypeVariable) {
@@ -863,12 +867,12 @@ namespace ts::checker {
                         //in the subroutine of the conditional type we place a new type variable, which acts as input.
                         //the `Distribute` OP makes then sure that the current stack entry is used as input
                         program.pushSymbol(distributiveOverIdentifier->escapedText, SymbolType::TypeVariable, distributiveOverIdentifier);
-                        program.pushOp(instructions::TypeArgument);
+                        program.pushOp(instructions::TypeArgument, distributiveOverIdentifier);
                     }
 
                     handle(n->checkType, program);
                     handle(n->extendsType, program);
-                    program.pushOp(instructions::Extends);
+                    program.pushOp(instructions::Extends, n);
 
                     auto trueProgram = program.pushSubroutineNameLess(n->trueType);
                     handle(n->trueType, program);
@@ -950,7 +954,7 @@ namespace ts::checker {
                                 const auto name = to<Identifier>(n->left)->escapedText;
                                 auto symbol = program.findSymbol(name);
                                 if (!symbol) {
-                                    program.pushOp(OP::Never);
+                                    program.pushOp(OP::Never, n->left);
                                     program.pushError(ErrorCode::CannotFind, n->left);
                                 } else {
                                     if (!symbol->routine) throw runtime_error("Symbol has no routine");

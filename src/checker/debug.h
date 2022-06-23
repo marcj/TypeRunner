@@ -14,10 +14,15 @@ namespace ts::checker {
         return ops.substr(address + 2, size);
     }
 
+    struct PrintSubroutineOp {
+        string text;
+        unsigned int address;
+    };
+
     struct PrintSubroutine {
         string name;
         unsigned int address;
-        vector<string> operations;
+        vector<PrintSubroutineOp> operations;
     };
 
     struct DebugSourceMapEntry {
@@ -176,16 +181,18 @@ namespace ts::checker {
 
             string text;
             if (params.empty()) {
-                text = fmt::format("[{}]{} ", startI, op);
+                text = fmt::format("{}", op);
             } else {
-                text = fmt::format("([{}]{}{}) ", startI, op, params);
+                text = fmt::format("{}{}", op, params);
             }
             if (result.activeSubroutine) {
-                result.activeSubroutine->operations.push_back(text);
+                result.activeSubroutine->operations.push_back({.text = text, .address = startI});
             } else {
                 result.operations.push_back(text);
             }
-            if (print) std::cout << text;
+            if (print) {
+                std::cout << "[" << startI << "] (" << text << ") ";
+            }
         }
         if (print) fmt::print("\n");
         return result;

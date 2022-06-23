@@ -155,6 +155,12 @@ public:
         void *data = nullptr;
     };
 
+    struct Highlight {
+        int line;
+        int charPos;
+        int charEnd;
+    };
+
 	struct LanguageDefinition
 	{
 		typedef std::pair<std::string, PaletteIndex> TokenRegexString;
@@ -274,6 +280,7 @@ public:
 	static const Palette& GetRetroBluePalette();
 
     std::vector<InlineError> inlineErrors;
+    std::vector<Highlight> highlights;
     std::function<void(ImVec2&, ImVec2&, InlineError&)> inlineErrorHover;
 private:
 	typedef std::vector<std::pair<std::regex, PaletteIndex>> RegexList;

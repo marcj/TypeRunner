@@ -108,6 +108,10 @@ namespace ts::vm {
     struct FoundSourceMap {
         unsigned int pos;
         unsigned int end;
+
+        bool found() {
+            return pos != 0 && end != 0;
+        }
     };
 
     struct FoundSourceLineCharacter {
@@ -144,6 +148,7 @@ namespace ts::vm {
 
         void clear() {
             errors.clear();
+            subroutines.clear();
         }
 
         ModuleSubroutine *getSubroutine(unsigned int index) {
@@ -156,7 +161,7 @@ namespace ts::vm {
 
         string findIdentifier(unsigned int ip) {
             auto map = findNormalizedMap(ip);
-            if (map.end == 0) return "";
+            if (!map.found()) return "";
             return code.substr(map.pos, map.end - map.pos);
         }
 
@@ -164,8 +169,12 @@ namespace ts::vm {
             unsigned int found = 0;
             for (unsigned int i = sourceMapAddress; i < sourceMapAddressEnd; i += 3 * 4) {
                 auto mapIp = readUint32(bin, i);
-                if (mapIp > ip) break;
-                found = i;
+                if (mapIp == ip) {
+                    found = i;
+                    break;
+                }
+//                if (mapIp > ip) break;
+//                found = i;
             }
 
             if (found) {
@@ -176,7 +185,7 @@ namespace ts::vm {
 
         FoundSourceMap findNormalizedMap(unsigned int ip) {
             auto map = findMap(ip);
-            omitWhitespace(code, map);
+            if (map.found()) omitWhitespace(code, map);
             return map;
         }
 
@@ -205,18 +214,20 @@ namespace ts::vm {
                 if (e.ip) {
                     auto map = findNormalizedMap(e.ip);
 
-                    std::size_t lineStart = code.rfind('\n', map.pos);
-                    lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
+                    if (map.found()) {
+                        std::size_t lineStart = code.rfind('\n', map.pos);
+                        lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
 
-                    std::size_t lineEnd = code.find('\n', map.end);
-                    if (lineEnd == std::string::npos) lineEnd = code.size();
-                    std::cout << cyan << fileName << ":" << yellow << map.pos << ":" << map.end << reset << " - " << red << "error" << reset << " TS0000: " << e.message << "\n\n";
-                    std::cout << code.substr(lineStart, lineEnd - lineStart - 1) << "\n";
-                    auto space = map.pos - lineStart;
-                    std::cout << std::string(space, ' ') << red << "^" << reset << "\n\n";
-                } else {
-                    std::cout << "  " << e.message << "\n";
+                        std::size_t lineEnd = code.find('\n', map.end);
+                        if (lineEnd == std::string::npos) lineEnd = code.size();
+                        std::cout << cyan << fileName << ":" << yellow << map.pos << ":" << map.end << reset << " - " << red << "error" << reset << " TS0000: " << e.message << "\n\n";
+                        std::cout << code.substr(lineStart, lineEnd - lineStart - 1) << "\n";
+                        auto space = map.pos - lineStart;
+                        std::cout << std::string(space, ' ') << red << "^" << reset << "\n\n";
+                        continue;
+                    }
                 }
+                std::cout << "  " << e.message << "\n";
             }
             std::cout << "Found " << errors.size() << " errors in " << fileName << "\n";
         }
