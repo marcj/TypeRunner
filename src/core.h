@@ -30,18 +30,6 @@ namespace ts {
     using std::map;
     using std::cout;
 
-    inline constexpr unsigned const_hash(const char *input) {
-        return *input ? static_cast<unsigned int>(*input) + 33 * const_hash(input + 1) : 5381;
-    }
-
-    inline constexpr unsigned const_hash(const string &input) {
-        return const_hash(input.c_str());
-    }
-
-    inline consteval unsigned operator ""_hash(const char *s, size_t) {
-        return const_hash(s);
-    }
-
     //compatible with JavaScript's String.substr
     string substr(const string &str, int start, optional<int> len = {});
 
@@ -260,9 +248,13 @@ namespace ts {
         return std::chrono::high_resolution_clock::now() - start;
     }
 
-    inline void bench(int iterations, const function<void()> &callback) {
+    inline void bench(string title, int iterations, const function<void()> &callback) {
         auto took = benchRun(iterations, callback);
-        fmt::print("{} iterations took {}ms, {}ms per iteration", iterations, took.count(), took.count()/iterations);
+        fmt::print("{} {} iterations took {:.12f}ms, {:.12f}ms per iteration\n", title, iterations, took.count(), took.count()/iterations);
+    }
+
+    inline void bench(int iterations, const function<void()> &callback) {
+        bench("", iterations, callback);
     }
 
     const std::string red("\033[0;31m");

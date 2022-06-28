@@ -3,10 +3,12 @@
 #include "Tracy.hpp"
 #include "types.h"
 #include "utilities.h"
-#include "core.h"
+#include "hash.h"
 #include <fmt/core.h>
 
 namespace ts {
+    using namespace ts::hash;
+
     LanguageVariant getLanguageVariant(ScriptKind scriptKind) {
         // .tsx and .jsx files are treated as jsx language variant.
         return scriptKind == ScriptKind::TSX || scriptKind == ScriptKind::JSX || scriptKind == ScriptKind::JS || scriptKind == ScriptKind::JSON ? LanguageVariant::JSX : LanguageVariant::Standard;
@@ -347,7 +349,7 @@ namespace ts {
     ScriptKind getScriptKindFromFileName(const string &fileName) {
         auto ext = fileExt(fileName);
 
-        switch (const_hash(ext)) {
+        switch (runtime_hash(ext)) {
             case const_hash(Extension::Js):
             case const_hash(Extension::Cjs):
             case const_hash(Extension::Mjs):return ScriptKind::JS;

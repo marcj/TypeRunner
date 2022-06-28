@@ -11,6 +11,11 @@ using namespace ts;
 using namespace std;
 
 namespace ts {
+    using ts::utf::charCodeAt;
+    using ts::utf::CharacterCodes;
+    using ts::utf::fromCharCode;
+    using namespace ts::hash;
+
     bool isShebangTrivia(const string &text, int pos) {
         // Shebangs check must only be done at the start of the file
         //    Debug.assert(pos == 0);
@@ -988,7 +993,7 @@ namespace ts {
         if (len >= 2 && len <= 12) {
             auto ch = charCodeAt(tokenValue, 0);
             if (ch.code >= CharacterCodes::a && ch.code <= CharacterCodes::z) {
-                switch (const_hash(tokenValue)) {
+                switch (runtime_hash(tokenValue)) {
                     case "abstract"_hash:
                         return SyntaxKind::AbstractKeyword;
                     case "any"_hash:

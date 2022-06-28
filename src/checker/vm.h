@@ -24,11 +24,6 @@ namespace ts::vm {
     using instructions::OP;
     using instructions::ErrorCode;
 
-    inline string_view readStorage(const string_view &bin, const uint32_t offset) {
-        const auto size = readUint16(bin, offset);
-        return string_view(reinterpret_cast<const char *>(bin.data() + offset + 2), size);
-    }
-
     inline bool isConditionTruthy(shared<Type> node) {
         if (auto n = to<TypeLiteral>(node)) return n->text() == "true";
         return false;
@@ -282,22 +277,27 @@ namespace ts::vm {
         unsigned int sp = 0; //stack pointer
         unsigned int initialSp = 0; //initial stack pointer
         unsigned int variables = 0; //the amount of registered variable slots on the stack. will be subtracted when doing popFrame()
-        vector<unsigned int> variableIPs; //only used when stepper is active
+//        vector<unsigned int> variableIPs; //only used when stepper is active
         sharedOpt<LoopHelper> loop = nullptr;
-        Frame *previous = nullptr;
-        ModuleSubroutine *subroutine;
+//        ModuleSubroutine *subroutine;
 
         unsigned int size() {
             return sp - initialSp;
         }
 
-        explicit Frame(Frame *previous = nullptr): previous(previous) {
-            if (previous) {
-                sp = previous->sp;
-                initialSp = previous->sp;
-                subroutine = previous->subroutine;
-            }
+        void fromFrame(Frame &previous) {
+            sp = previous.sp;
+            initialSp = previous.sp;
+//            subroutine = previous.subroutine;
         }
+//
+//        explicit Frame(Frame *previous = nullptr): previous(previous) {
+//            if (previous) {
+//                sp = previous->sp;
+//                initialSp = previous->sp;
+//                subroutine = previous->subroutine;
+//            }
+//        }
     };
 
     static unsigned char emptyTuple[] = {
@@ -319,40 +319,50 @@ namespace ts::vm {
 
     shared<Type> stringToNum(VM &vm);
 
-    inline void parseHeader(shared<Module> &module) {
-        auto &bin = module->bin;
-        for (unsigned int i = 0; i < bin.size(); i++) {
-            const auto op = (OP) bin[i];
-            switch (op) {
-                case OP::Jump: {
-                    i = readUint32(bin, i + 1) - 1; //minus 1 because for's i++
-                    break;
-                }
-                case OP::SourceMap: {
-                    unsigned int size = readUint32(bin, i + 1);
-                    module->sourceMapAddress = i + 1 + 4;
-                    i += 4 + size;
-                    module->sourceMapAddressEnd = i;
-                    break;
-                }
-                case OP::Subroutine: {
-                    unsigned int nameAddress = readUint32(bin, i + 1);
-                    auto name = nameAddress ? readStorage(bin, nameAddress) : "";
-                    unsigned int address = readUint32(bin, i + 5);
-                    i += 8;
-                    module->subroutines.push_back(ModuleSubroutine(name, address));
-                    break;
-                }
-                case OP::Main: {
-                    module->mainAddress = readUint32(bin, i + 1);
-                    module->subroutines.push_back(ModuleSubroutine("main", module->mainAddress));
-                    return;
-                }
-            }
+    class MemoryPool {
+    public:
+        vector<TypeLiteral> typeLiterals;
+        shared<TypeLiteral> defaultTypeLiteral = make_shared<TypeLiteral>();
+        shared<TypeTupleMember> defaultTypeTupleMember = make_shared<TypeTupleMember>();
+        shared<TypeObjectLiteral> defaultTypeObjectLiteral = make_shared<TypeObjectLiteral>();
+        shared<TypePropertySignature> defaultPropertySignature = make_shared<TypePropertySignature>();
+        shared<TypeUnknown> defaultUnknown = make_shared<TypeUnknown>();
+
+        vector<TypeUnknown> unknowns;
+
+        MemoryPool() {
+            unknowns.reserve(1000);
+//            typeLiterals.reserve(1000);
         }
 
-        throw runtime_error("No OP::Main found");
-    }
+        void makeUnknown() {
+            unknowns.emplace_back();
+//            return defaultUnknown;
+//            return make_shared<TypeUnknown>();
+        }
+
+        shared<TypePropertySignature> makePropertySignature(const shared<Type> &type) {
+            defaultPropertySignature->type = type;
+            return defaultPropertySignature;
+        }
+
+        shared<TypeTupleMember> makeTupleMember(const shared<Type> &type) {
+            defaultTypeTupleMember->type = type;
+            return defaultTypeTupleMember;
+        }
+
+        shared<TypeObjectLiteral> makeObjectLiteral() {
+            return defaultTypeObjectLiteral;
+        }
+
+        shared<TypeLiteral> makeTypeLiteral(const string_view &literal, TypeLiteralType type) {
+//            return make_shared<vm::TypeLiteral>(literal, type);
+            return defaultTypeLiteral;
+//            auto t = make_shared<TypeLiteral>(std::move(typeLiterals.emplace_back(literal, type)));
+//            typeLiterals.pop_back();
+//            return t;
+        }
+    };
 
     class VM {
     public:
@@ -360,8 +370,8 @@ namespace ts::vm {
          * Linked list of subroutines to execute. For each external call this subroutine will be changed.
          */
         sharedOpt<ProgressingSubroutine> subroutine = nullptr;
-        Frame *frame = nullptr;
-
+        MemoryPool pool;
+        vector<Frame> frames;
         vector<shared<Type>> stack;
         //when a OP is processes, its instruction pointer is stores here, and used in push() to set the ip to the new type generated by this OP.
         //diagnostics/debugger can use this information to map the type to the sourcecode.
@@ -378,7 +388,6 @@ namespace ts::vm {
         }
 
         ~VM() {
-            delete frame;
         }
 
         void printErrors() {
@@ -406,11 +415,12 @@ namespace ts::vm {
             next->end = module->bin.size();
             next->previous = subroutine;
             subroutine = next;
-            frame = new Frame(frame);
-            frame->subroutine = subroutine->subroutine;
+            frames.emplace_back();
+            if (frames.size() > 1) frames.back().fromFrame(frames[frames.size() - 2]);
         }
 
         void run(shared<Module> module) {
+            profiler.clear();
             prepare(module);
             process();
         }
@@ -435,13 +445,14 @@ namespace ts::vm {
             next->previous = subroutine;
             next->depth = subroutine ? subroutine->depth + 1 : 0;
 
-            frame = new Frame(frame);
-            frame->subroutine = next->subroutine;
+            frames.emplace_back();
+            if (frames.size() > 1) frames.back().fromFrame(frames[frames.size() - 2]);
+//            frames.back().subroutine = next->subroutine;
 
             if (arguments) {
                 //we move x arguments from the old stack to the new one
-                frame->previous->sp -= arguments;
-                frame->initialSp -= arguments;
+                frames[frames.size() - 2].sp -= arguments;
+                frames.back().initialSp -= arguments;
             }
 
             if (loopRunning) subroutine->ip++; //`subroutine` is set to something new in next line, so for() increments its ip, not ours
@@ -455,59 +466,58 @@ namespace ts::vm {
          * Read frame types without popping frame.
          */
         span<shared<Type>> readFrame() {
-            auto start = frame->initialSp + frame->variables;
-            return {stack.data() + start, frame->sp - start};
+            auto start = frames.back().initialSp + frames.back().variables;
+            return {stack.data() + start, frames.back().sp - start};
         }
 
         span<shared<Type>> popFrame() {
 //            auto frameSize = frame->initialSp - frame->sp;
 //            while (frameSize--) stack.pop();
-            auto start = frame->initialSp + frame->variables;
-            span<shared<Type>> sub{stack.data() + start, frame->sp - start};
+            auto start = frames.back().initialSp + frames.back().variables;
+            span<shared<Type>> sub{stack.data() + start, frames.back().sp - start};
 //            std::span<shared<Type>> sub{stack.begin() + frame->initialSp, frameSize};
-            auto previous = frame->previous;
-            delete frame;
-            frame = previous;
+            frames.pop_back();
             return sub;
         }
 
         unsigned int frameSize() {
-            return frame->initialSp - frame->sp;
+            return frames.back().initialSp - frames.back().sp;
         }
 
         void pushFrame() {
-            frame = new Frame(frame);
-            frame->subroutine = subroutine->subroutine;
+            frames.emplace_back();
+            if (frames.size() > 1) frames.back().fromFrame(frames[frames.size() - 2]);
+//            frames.back().subroutine = subroutine->subroutine;
         }
 
         shared<Type> &last() {
-            if (frame->sp == 0) throw runtime_error("stack is empty. Can not return last");
-            return stack[frame->sp - 1];
+            if (frames.back().sp == 0) throw runtime_error("stack is empty. Can not return last");
+            return stack[frames.back().sp - 1];
         }
 
-        shared<Type> &pop() {
-            if (frame->sp == 0) throw runtime_error("stack is empty. Can not pop");
-            frame->sp--;
-            if (frame->sp < frame->initialSp) {
+        shared<Type> pop() {
+            if (frames.back().sp == 0) throw runtime_error("stack is empty. Can not pop");
+            frames.back().sp--;
+            if (frames.back().sp < frames.back().initialSp) {
                 throw runtime_error("Popped through frame");
             }
-            return stack[frame->sp];
+            return std::move(stack[frames.back().sp]);
         }
 
         sharedOpt<Type> frameEntryAt(unsigned int position) {
-            auto i = frame->initialSp + position;
-            if (i > frame->sp) return nullptr;
+            auto i = frames.back().initialSp + position;
+            if (i > frames.back().sp) return nullptr;
             return stack[i];
         }
 
         void push(const shared<Type> &type) {
-            type->ip = ip;
-            if (frame->sp >= stack.size()) {
-                stack.push_back(type);
-            } else {
-                stack[frame->sp] = type;
-            }
-            frame->sp++;
+//            type->ip = ip;
+//            if (frames.back().sp >= stack.size()) {
+//                stack.push_back(type);
+//            } else {
+//                stack[frames.back().sp] = type;
+//            }
+//            frames.back().sp++;
         }
 
         void print() {
@@ -521,22 +531,22 @@ namespace ts::vm {
                 current = current->previous;
             }
 
-            auto currentFrame = frame;
-            auto frameId = 0;
-            while (currentFrame) {
-                debug("  # Frame {}: {} ({}->{}) stack frame entries ({})",
-                      frameId, currentFrame->sp - currentFrame->initialSp, currentFrame->initialSp, currentFrame->sp,
-                      currentFrame->loop ? "loop" : "");
-                if (currentFrame->sp && currentFrame->initialSp != currentFrame->sp) {
-//                    auto sub = slice(stack, currentFrame->initialSp, currentFrame->sp);
-//                    auto j = currentFrame->initialSp;
-//                    for (auto &&i: sub) {
-//                        debug("  - {}: {}", j++, i ? stringify(i) : "empty");
-//                    }
-                }
-                currentFrame = currentFrame->previous;
-                frameId++;
-            }
+//            auto currentFrame = frame;
+//            auto frameId = 0;
+//            while (currentFrame) {
+//                debug("  # Frame {}: {} ({}->{}) stack frame entries ({})",
+//                      frameId, currentFrame->sp - currentFrame->initialSp, currentFrame->initialSp, currentFrame->sp,
+//                      currentFrame->loop ? "loop" : "");
+//                if (currentFrame->sp && currentFrame->initialSp != currentFrame->sp) {
+////                    auto sub = slice(stack, currentFrame->initialSp, currentFrame->sp);
+////                    auto j = currentFrame->initialSp;
+////                    for (auto &&i: sub) {
+////                        debug("  - {}: {}", j++, i ? stringify(i) : "empty");
+////                    }
+//                }
+//                currentFrame = currentFrame->previous;
+//                frameId++;
+//            }
         }
 
         void report(DiagnosticMessage message) {
@@ -548,458 +558,479 @@ namespace ts::vm {
             report(DiagnosticMessage(message, node->ip));
         }
 
+        void extends() {
+            auto right = pop();
+        }
+
         void process() {
             while (subroutine) {
+                auto &bin = subroutine->module->bin;
                 for (; subroutine->active && subroutine->ip < subroutine->end; subroutine->ip++) {
                     ip = subroutine->ip;
-                    const auto op = (OP) subroutine->module->bin[subroutine->ip];
+                    const auto op = (OP) bin[subroutine->ip];
 //                    debug("[{}] OP {} ({} -> {})", subroutine->depth, op, subroutine->ip, (unsigned int) op);
 
                     switch (op) {
-                        case OP::Jump: {
-                            subroutine->ip = readUint32(subroutine->module->bin, 1) - 1; //minus 1 because for's i++
+                        case OP::Halt: {
+                            return;
+                        }
+                        case OP::Noop: {
                             break;
                         }
-                        case OP::Extends: {
-                            auto right = pop();
-                            auto left = pop();
-//                            debug("{} extends {} => {}", stringify(left), stringify(right), isAssignable(right, left));
-                            const auto valid = isExtendable(left, right);
-                            push(make_shared<TypeLiteral>(valid ? "true" : "false", TypeLiteralType::Boolean));
-                            break;
-                        }
-                        case OP::Distribute: {
-                            if (!frame->loop) {
-                                auto type = pop();
-                                pushFrame();
-                                frame->loop = make_shared<LoopHelper>(type);
-                            }
-
-                            auto next = frame->loop->next();
-                            if (!next) {
-                                //done
-                                auto types = popFrame();
-                                if (types.empty()) {
-                                    push(make_shared<TypeNever>());
-                                } else if (types.size() == 1) {
-                                    push(types[0]);
-                                } else {
-                                    auto result = make_shared<TypeUnion>();
-                                    for (auto &&v: types) {
-                                        if (v->kind != TypeKind::Never) result->types.push_back(v);
-                                    }
-                                    push(result);
-                                }
-                                //jump over parameter
-                                subroutine->ip += 4;
-                            } else {
-                                //next
-                                const auto loopProgram = readUint32(subroutine->module->bin, subroutine->ip + 1);
-                                subroutine->ip--; //we jump back if the loop is not done, so that this section is executed when the following call() is done
-                                push(next);
-                                call(subroutine->module, loopProgram, 1);
-                            }
-                            break;
-                        }
-                        case OP::JumpCondition: {
-                            auto condition = pop();
-                            const auto leftProgram = subroutine->parseUint16();
-                            const auto rightProgram = subroutine->parseUint16();
-//                            debug("{} ? {} : {}", stringify(condition), leftProgram, rightProgram);
-                            call(subroutine->module, isConditionTruthy(condition) ? leftProgram : rightProgram);
-                            break;
-                        }
-                        case OP::Return: {
-                            auto previous = frame->previous;
-                            //the current frame could not only have the return value, but variables and other stuff,
-                            //which we don't want. So if size is bigger than 1, we move last stack entry to first
-                            // | [T] [T] [R] |
-                            if (frame->size() > 1) {
-                                stack[frame->initialSp] = stack[frame->sp - 1];
-                            }
-                            previous->sp++; //consume the new stack entry from the function call, making it part of the caller frame
-                            delete frame;
-                            frame = previous;
-                            subroutine->active = false;
-                            subroutine->ip++; //we jump directly to another subroutine, so for()'s increment doesn't apply
-                            subroutine = subroutine->previous;
-                            subroutine->ip--; //for()'s increment applies the wrong subroutine, so we decrease first
-                            if (subroutine->typeArguments == 0) {
-                                subroutine->subroutine->result = last();
-                            }
-//                            debug("routine {} result: {}", subroutine->name, vm::stringify(last()));
-                            break;
-                        }
-                        case OP::TypeArgument: {
-                            if (frame->size() <= subroutine->typeArguments) {
-                                auto unknown = make_shared<TypeUnknown>();
-                                unknown->unprovidedArgument = true;
-                                push(unknown);
-                            }
-                            subroutine->typeArguments++;
-                            frame->variables++;
-                            break;
-                        }
-                        case OP::TypeArgumentDefault: {
-                            auto t = frameEntryAt(subroutine->typeArguments - 1);
-                            //t is always set because TypeArgument ensures that
-                            if (t->kind == TypeKind::Unknown && to<TypeUnknown>(t)->unprovidedArgument) {
-                                frame->sp--; //remove unknown type from stack
-                                const auto address = subroutine->parseUint32();
-                                call(subroutine->module, address, 0); //the result is pushed on the stack
-                            } else {
-                                subroutine->ip += 4; //jump over address
-                            }
-                            break;
-                        }
-                        case OP::TemplateLiteral: {
-                            handleTemplateLiteral();
-                            break;
-                        }
-                        case OP::Var: {
-                            frame->variables++;
-                            push(make_shared<TypeUnknown>());
-                            break;
-                        }
-                        case OP::Loads: {
-                            const auto frameOffset = subroutine->parseUint16();
-                            const auto varIndex = subroutine->parseUint16();
-                            if (frameOffset == 0) {
-                                push(stack[frame->initialSp + varIndex]);
-                            } else if (frameOffset == 1) {
-                                push(stack[frame->previous->initialSp + varIndex]);
-                            } else if (frameOffset == 2) {
-                                push(stack[frame->previous->previous->initialSp + varIndex]);
-                            } else {
-                                throw runtime_error("frame offset not implement");
-                            }
-//                            debug("load var {}/{}", frameOffset, varIndex);
-                            break;
-                        }
-                        case OP::Frame: {
-                            pushFrame();
-                            break;
-                        }
-                        case OP::FunctionRef: {
-                            const auto address = subroutine->parseUint32();
-                            push(make_shared<TypeFunctionRef>(address));
-                            break;
-                        }
-                        case OP::Dup: {
-                            push(last());
-                            break;
-                        }
-                        case OP::Widen: {
-                            push(widen(pop()));
-                            break;
-                        }
-                        case OP::Set: {
-                            const auto address = subroutine->parseUint32();
-                            subroutine->module->getSubroutine(address)->narrowed = pop();
-                            break;
-                        }
-                        case OP::Instantiate: {
-                            const auto arguments = subroutine->parseUint16();
-                            auto ref = pop(); //FunctionRef/Class
-
-                            switch (ref->kind) {
-                                case TypeKind::FunctionRef: {
-                                    auto a = to<TypeFunctionRef>(ref);
-                                    call(subroutine->module, a->address, arguments);
-                                    break;
-                                }
-                                default: {
-                                    throw runtime_error(fmt::format("Can not instantiate {}", ref->kind));
-                                }
-                            }
-                            break;
-                        }
-                        case OP::PropertySignature: {
-                            auto name = pop();
-                            auto type = pop();
-                            auto prop = make_shared<TypePropertySignature>(type);
-                            auto valid = true;
-                            switch (name->kind) {
-                                case TypeKind::Literal: {
-                                    prop->name = to<TypeLiteral>(name)->text(); //do we need a copy?
-                                    break;
-                                }
-                                default: {
-                                    valid = false;
-                                    report("A computed property name in an interface must refer to an expression whose type is a literal type or a 'unique symbol' type", type);
-                                }
-                            }
-                            if (valid) {
-                                push(prop);
-                            }
-                            break;
-                        }
-                        case OP::ObjectLiteral: {
-                            auto types = popFrame();
-                            auto objectLiteral = make_shared<TypeObjectLiteral>();
-                            pushObjectLiteralTypes(objectLiteral, types);
-                            push(objectLiteral);
-                            break;
-                        }
-                        case OP::CallExpression: {
-                            const auto parameterAmount = subroutine->parseUint16();
-
-                            span<shared<Type>> parameters{stack.data() + frame->sp - parameterAmount, parameterAmount};
-                            frame->sp -= parameterAmount;
-
-                            auto typeToCall = pop();
-                            switch (typeToCall->kind) {
-                                case TypeKind::Function: {
-                                    auto fn = to<TypeFunction>(typeToCall);
-                                    //it's important to handle parameters/typeArguments first before changing the stack with push()
-                                    //since we have a span.
-                                    auto end = fn->parameters.size();
-                                    for (unsigned int i = 0; i < end; i++) {
-                                        auto parameter = fn->parameters[i];
-                                        auto optional = isOptional(parameter);
-                                        if (i > parameters.size() - 1) {
-                                            //parameter not provided
-                                            if (!optional && !parameter->initializer) {
-                                                report(fmt::format("An argument for '{}' was not provided.", parameter->name), parameter);
-                                            }
-                                            break;
-                                        }
-                                        auto lvalue = parameters[i];
-                                        auto rvalue = reinterpret_pointer_cast<Type>(parameter);
-                                        ExtendableStack stack;
-                                        if (!isExtendable(lvalue, rvalue, stack)) {
-                                            //rerun again with
-                                            report(stack.errorMessage());
-                                        }
-                                    }
-
-                                    //we could convert parameters to a tuple and then run isExtendable() on two tuples
-                                    break;
-                                }
-                                default: {
-                                    throw runtime_error(fmt::format("CallExpression on {} not handled", typeToCall->kind));
-                                }
-                            }
-                            break;
-                        }
-                        case OP::Call: {
-                            const auto address = subroutine->parseUint32();
-                            const auto arguments = subroutine->parseUint16();
-                            call(subroutine->module, address, arguments);
-                            break;
-                        }
-                        case OP::Function: {
-                            //OP::Function has always its own subroutine, so it doesn't have it so own stack frame.
-                            //thus we readFrame() and not popFrame() (since Op::Return pops frame already).
-                            auto types = readFrame();
-                            auto function = make_shared<TypeFunction>();
-                            if (types.size() > 1) {
-                                auto end = std::prev(types.end());
-                                for (auto iter = types.begin(); iter != end; ++iter) {
-                                    function->parameters.push_back(reinterpret_pointer_cast<TypeParameter>(*iter));
-                                }
-                            } else if (types.empty()) {
-                                throw runtime_error("No types given for function");
-                            }
-                            function->returnType = types.back();
-                            push(function);
-                            break;
-                        }
-                        case OP::Parameter: {
-                            const auto address = subroutine->parseUint32();
-                            auto name = readStorage(subroutine->module->bin, address);
-                            push(make_shared<TypeParameter>(name, pop()));
-                            break;
-                        }
-                        case OP::Assign: {
-                            auto rvalue = pop();
-                            auto lvalue = pop();
-                            ExtendableStack stack;
-                            if (!isExtendable(lvalue, rvalue, stack)) {
-                                auto error = stack.errorMessage();
-                                error.ip = ip;
-                                report(error);
-                            }
-                            break;
-                        }
-                        case OP::IndexAccess: {
-                            auto right = pop();
-                            auto left = pop();
-
-//                            if (!isType(left)) {
-//                                push({ kind: TypeKind::never });
-//                            } else {
-
-                            //todo: we have to put all members of `left` on the stack, since subroutines could be required
-                            // to resolve super classes.
-                            auto t = indexAccess(left, right);
-//                                if (isWithAnnotations(t)) {
-//                                    t.indexAccessOrigin = { container: left as TypeObjectLiteral, index: right as Type };
-//                                }
-
-//                                t.parent = undefined;
-                            push(t);
+//                        case OP::Jump: {
+//                            subroutine->ip = readUint32(bin, 1) - 1; //minus 1 because for's i++
+//                            break;
+//                        }
+//                        case OP::Extends: {
+//                            auto right = pop();
+//                            auto left = pop();
+////                            debug("{} extends {} => {}", stringify(left), stringify(right), isAssignable(right, left));
+//                            const auto valid = isExtendable(left, right);
+//                            push(make_shared<TypeLiteral>(valid ? "true" : "false", TypeLiteralType::Boolean));
+//                            break;
+//                        }
+//                        case OP::Distribute: {
+//                            if (!frames.back().loop) {
+//                                auto type = pop();
+//                                pushFrame();
+//                                frames.back().loop = make_shared<LoopHelper>(type);
 //                            }
-                            break;
-                        }
-                        case OP::Rest: {
-                            push(make_shared<TypeRest>(pop()));
-                            break;
-                        }
-                        case OP::TupleMember: {
-                            push(make_shared<TypeTupleMember>(pop()));
-                            break;
-                        }
-                        case OP::TupleNamedMember: {
-                            break;
-                        }
-                        case OP::Tuple: {
-                            auto types = popFrame();
-
-                            //short path for [...x, y];
-                            if (types.size() == 2 && to<TypeTupleMember>(types[0])->type->kind == TypeKind::Rest) {
-                                //todo: we need a heuristic to determine if the array `x` actually can be mutated
-                                auto t = to<TypeRest>(to<TypeTupleMember>(types[0])->type);
-                                if (t->type->kind == TypeKind::Tuple && to<TypeTupleMember>(types[1])->type->kind != TypeKind::Rest) {
-                                    auto result = to<TypeTuple>(t->type);
-                                    result->types.push_back(to<TypeTupleMember>(types[1]));
-                                    push(result);
-                                    break;
-                                }
-                            }
-
-                            auto tuple = make_shared<TypeTuple>();
-                            for (auto &&type: types) {
-                                if (type->kind != TypeKind::TupleMember) {
-                                    debug("No tuple member in stack frame, but {}", type->kind);
-                                    continue;
-                                }
-                                auto member = reinterpret_pointer_cast<TypeTupleMember>(type);
-                                if (member->type->kind == TypeKind::Rest) {
-                                    auto rest = to<TypeRest>(member->type);
-                                    if (rest->type->kind == TypeKind::Tuple) {
-                                        for (auto &&sub: to<TypeTuple>(rest->type)->types) {
-                                            tuple->types.push_back(sub);
-                                        }
-                                    } else {
-                                        tuple->types.push_back(member);
-                                    }
-                                } else {
-                                    tuple->types.push_back(member);
-                                }
-                            }
-                            push(tuple);
-                            break;
-                        }
-                        case OP::Initializer: {
-                            auto t = pop();
-                            auto l = last();
-                            switch (l->kind) {
-                                case TypeKind::Parameter:to<TypeParameter>(l)->initializer = t;
-                                    break;
-                            }
-                            break;
-                        }
-                        case OP::Optional: {
-                            auto l = last();
-                            switch (l->kind) {
-                                case TypeKind::TupleMember: to<TypeTupleMember>(l)->optional = true;
-                                    break;
-                                case TypeKind::Parameter: to<TypeParameter>(l)->optional = true;
-                                    break;
-                                case TypeKind::PropertySignature: to<TypePropertySignature>(l)->optional = true;
-                                    break;
-                            }
-                            break;
-                        }
-                        case OP::Readonly: {
-                            auto l = last();
-                            switch (l->kind) {
-                                case TypeKind::PropertySignature: to<TypePropertySignature>(l)->readonly = true;
-                                    break;
-                            }
-                            break;
-                        }
-                        case OP::True: push(make_shared<TypeLiteral>("true", TypeLiteralType::Boolean));
-                            break;
-                        case OP::False: push(make_shared<TypeLiteral>("false", TypeLiteralType::Boolean));
-                            break;
-                        case OP::String: push(make_shared<TypeString>());
-                            break;
-                        case OP::Number: push(make_shared<TypeNumber>());
-                            break;
-                        case OP::Boolean: push(make_shared<TypeBoolean>());
-                            break;
-                        case OP::Unknown: push(make_shared<TypeUnknown>());
-                            break;
-                        case OP::Undefined: push(make_shared<TypeUndefined>());
-                            break;
-                        case OP::Void: push(make_shared<TypeVoid>());
-                            break;
-                        case OP::Never: push(make_shared<TypeNever>());
-                            break;
-                        case OP::Any: push(make_shared<TypeAny>());
-                            break;
-                        case OP::Symbol: push(make_shared<TypeSymbol>());
-                            break;
-                        case OP::Object: push(make_shared<TypeObject>());
-                            break;
-                        case OP::Union: {
-                            auto types = popFrame();
-                            if (types.size() == 2) {
-                                if (types[0]->kind == TypeKind::Literal && types[1]->kind == TypeKind::Literal) {
-                                    auto first = to<TypeLiteral>(types[0]);
-                                    auto second = to<TypeLiteral>(types[1]);
-                                    if (first->type == TypeLiteralType::Boolean && second->type == TypeLiteralType::Boolean) {
-                                        if (first->text() != second->text()) {
-                                            push(make_shared<TypeBoolean>());
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            auto t = make_shared<TypeUnion>();
-                            for (auto &&v: types) t->types.push_back(v);
-                            push(t);
-                            break;
-                        }
-                        case OP::NumberLiteral: {
-                            const auto address = subroutine->parseUint32();
-                            push(make_shared<TypeLiteral>(readStorage(subroutine->module->bin, address), TypeLiteralType::Number));
-                            break;
-                        }
-                        case OP::BigIntLiteral: {
-                            const auto address = subroutine->parseUint32();
-                            push(make_shared<TypeLiteral>(readStorage(subroutine->module->bin, address), TypeLiteralType::Bigint));
-                            break;
-                        }
-                        case OP::StringLiteral: {
-                            const auto address = subroutine->parseUint32();
-                            auto text = readStorage(subroutine->module->bin, address);
-                            push(make_shared<TypeLiteral>(text, TypeLiteralType::String));
-                            break;
-                        }
-                        case OP::Error: {
-                            const auto code = (instructions::ErrorCode) subroutine->parseUint16();
-                            switch (code) {
-                                case ErrorCode::CannotFind: {
-                                    report(DiagnosticMessage(fmt::format("Cannot find name '{}'", subroutine->module->findIdentifier(ip)), ip));
-                                    break;
-                                }
-                                default: {
-                                    report(DiagnosticMessage(fmt::format("{}", code), ip));
-                                }
-                            }
-                            break;
-                        }
-                        default: {
-                            throw runtime_error(fmt::format("unhandled op {}", op));
-                        }
+//
+//                            auto next = frames.back().loop->next();
+//                            if (!next) {
+//                                //done
+//                                auto types = popFrame();
+//                                if (types.empty()) {
+//                                    push(make_shared<TypeNever>());
+//                                } else if (types.size() == 1) {
+//                                    push(types[0]);
+//                                } else {
+//                                    auto result = make_shared<TypeUnion>();
+//                                    for (auto &&v: types) {
+//                                        if (v->kind != TypeKind::Never) result->types.push_back(v);
+//                                    }
+//                                    push(result);
+//                                }
+//                                //jump over parameter
+//                                subroutine->ip += 4;
+//                            } else {
+//                                //next
+//                                const auto loopProgram = readUint32(bin, subroutine->ip + 1);
+//                                subroutine->ip--; //we jump back if the loop is not done, so that this section is executed when the following call() is done
+//                                push(next);
+//                                call(subroutine->module, loopProgram, 1);
+//                            }
+//                            break;
+//                        }
+//                        case OP::JumpCondition: {
+//                            auto condition = pop();
+//                            const auto leftProgram = subroutine->parseUint16();
+//                            const auto rightProgram = subroutine->parseUint16();
+////                            debug("{} ? {} : {}", stringify(condition), leftProgram, rightProgram);
+//                            call(subroutine->module, isConditionTruthy(condition) ? leftProgram : rightProgram);
+//                            break;
+//                        }
+//                        case OP::Return: {
+//                            //the current frame could not only have the return value, but variables and other stuff,
+//                            //which we don't want. So if size is bigger than 1, we move last stack entry to first
+//                            // | [T] [T] [R] |
+//                            if (frames.back().size() > 1) {
+//                                stack[frames.back().initialSp] = stack[frames.back().sp - 1];
+//                            }
+//                            frames.pop_back();
+//                            frames.back().sp++; //consume the new stack entry from the function call, making it part of the caller frame
+//                            subroutine->active = false;
+//                            subroutine->ip++; //we jump directly to another subroutine, so for()'s increment doesn't apply
+//                            subroutine = subroutine->previous;
+//                            subroutine->ip--; //for()'s increment applies the wrong subroutine, so we decrease first
+//                            if (subroutine->typeArguments == 0) {
+//                                subroutine->subroutine->result = last();
+//                            }
+////                            debug("routine {} result: {}", subroutine->name, vm::stringify(last()));
+//                            break;
+//                        }
+//                        case OP::TypeArgument: {
+//                            if (frames.back().size() <= subroutine->typeArguments) {
+//                                auto unknown = make_shared<TypeUnknown>();
+//                                unknown->unprovidedArgument = true;
+//                                push(unknown);
+//                            }
+//                            subroutine->typeArguments++;
+//                            frames.back().variables++;
+//                            break;
+//                        }
+//                        case OP::TypeArgumentDefault: {
+//                            auto t = frameEntryAt(subroutine->typeArguments - 1);
+//                            //t is always set because TypeArgument ensures that
+//                            if (t->kind == TypeKind::Unknown && to<TypeUnknown>(t)->unprovidedArgument) {
+//                                frames.back().sp--; //remove unknown type from stack
+//                                const auto address = subroutine->parseUint32();
+//                                call(subroutine->module, address, 0); //the result is pushed on the stack
+//                            } else {
+//                                subroutine->ip += 4; //jump over address
+//                            }
+//                            break;
+//                        }
+//                        case OP::TemplateLiteral: {
+//                            handleTemplateLiteral();
+//                            break;
+//                        }
+//                        case OP::Var: {
+//                            frames.back().variables++;
+//                            push(make_shared<TypeUnknown>());
+//                            break;
+//                        }
+//                        case OP::Loads: {
+//                            const auto frameOffset = subroutine->parseUint16();
+//                            const auto varIndex = subroutine->parseUint16();
+//                            if (frameOffset == 0) {
+//                                push(stack[frames.back().initialSp + varIndex]);
+//                            } else if (frameOffset == 1) {
+//                                push(stack[frames[frames.size() - 2].initialSp + varIndex]);
+//                            } else if (frameOffset == 2) {
+//                                push(stack[frames[frames.size() - 2].initialSp + varIndex]);
+//                            } else {
+//                                throw runtime_error("frame offset not implement");
+//                            }
+////                            debug("load var {}/{}", frameOffset, varIndex);
+//                            break;
+//                        }
+//                        case OP::Frame: {
+//                            pushFrame();
+//                            break;
+//                        }
+//                        case OP::FunctionRef: {
+//                            const auto address = subroutine->parseUint32();
+//                            push(make_shared<TypeFunctionRef>(address));
+//                            break;
+//                        }
+//                        case OP::Dup: {
+//                            push(last());
+//                            break;
+//                        }
+//                        case OP::Widen: {
+//                            push(widen(pop()));
+//                            break;
+//                        }
+//                        case OP::Set: {
+//                            const auto address = subroutine->parseUint32();
+//                            subroutine->module->getSubroutine(address)->narrowed = pop();
+//                            break;
+//                        }
+//                        case OP::Instantiate: {
+//                            const auto arguments = subroutine->parseUint16();
+//                            auto ref = pop(); //FunctionRef/Class
+//
+//                            switch (ref->kind) {
+//                                case TypeKind::FunctionRef: {
+//                                    auto a = to<TypeFunctionRef>(ref);
+//                                    call(subroutine->module, a->address, arguments);
+//                                    break;
+//                                }
+//                                default: {
+//                                    throw runtime_error(fmt::format("Can not instantiate {}", ref->kind));
+//                                }
+//                            }
+//                            break;
+//                        }
+//                        case OP::PropertySignature: {
+//                            auto name = pop();
+//                            auto type = pop();
+//                            auto prop = pool.makePropertySignature(type);
+//                            auto valid = true;
+//                            switch (name->kind) {
+//                                case TypeKind::Literal: {
+//                                    prop->name = to<TypeLiteral>(name)->text(); //do we need a copy?
+//                                    break;
+//                                }
+//                                default: {
+//                                    valid = false;
+//                                    report("A computed property name in an interface must refer to an expression whose type is a literal type or a 'unique symbol' type", type);
+//                                }
+//                            }
+//                            if (valid) {
+//                                push(prop);
+//                            }
+//                            break;
+//                        }
+//                        case OP::ObjectLiteral: {
+//                            auto types = popFrame();
+//                            auto objectLiteral = pool.makeObjectLiteral();
+//                            pushObjectLiteralTypes(objectLiteral, types);
+//                            push(objectLiteral);
+//                            break;
+//                        }
+//                        case OP::CallExpression: {
+//                            const auto parameterAmount = subroutine->parseUint16();
+//
+//                            span<shared<Type>> parameters{stack.data() + frames.back().sp - parameterAmount, parameterAmount};
+//                            frames.back().sp -= parameterAmount;
+//
+//                            auto typeToCall = pop();
+//                            switch (typeToCall->kind) {
+//                                case TypeKind::Function: {
+//                                    auto fn = to<TypeFunction>(typeToCall);
+//                                    //it's important to handle parameters/typeArguments first before changing the stack with push()
+//                                    //since we have a span.
+//                                    auto end = fn->parameters.size();
+//                                    for (unsigned int i = 0; i < end; i++) {
+//                                        auto parameter = fn->parameters[i];
+//                                        auto optional = isOptional(parameter);
+//                                        if (i > parameters.size() - 1) {
+//                                            //parameter not provided
+//                                            if (!optional && !parameter->initializer) {
+//                                                report(fmt::format("An argument for '{}' was not provided.", parameter->name), parameter);
+//                                            }
+//                                            break;
+//                                        }
+//                                        auto lvalue = parameters[i];
+//                                        auto rvalue = reinterpret_pointer_cast<Type>(parameter);
+//                                        ExtendableStack stack;
+//                                        if (!isExtendable(lvalue, rvalue, stack)) {
+//                                            //rerun again with
+//                                            report(stack.errorMessage());
+//                                        }
+//                                    }
+//
+//                                    //we could convert parameters to a tuple and then run isExtendable() on two tuples
+//                                    break;
+//                                }
+//                                default: {
+//                                    throw runtime_error(fmt::format("CallExpression on {} not handled", typeToCall->kind));
+//                                }
+//                            }
+//                            break;
+//                        }
+//                        case OP::Call: {
+//                            const auto address = subroutine->parseUint32();
+//                            const auto arguments = subroutine->parseUint16();
+//                            call(subroutine->module, address, arguments);
+//                            break;
+//                        }
+//                        case OP::Function: {
+//                            //OP::Function has always its own subroutine, so it doesn't have it so own stack frame.
+//                            //thus we readFrame() and not popFrame() (since Op::Return pops frame already).
+//                            auto types = readFrame();
+//                            auto function = make_shared<TypeFunction>();
+//                            if (types.size() > 1) {
+//                                auto end = std::prev(types.end());
+//                                for (auto iter = types.begin(); iter != end; ++iter) {
+//                                    function->parameters.push_back(reinterpret_pointer_cast<TypeParameter>(*iter));
+//                                }
+//                            } else if (types.empty()) {
+//                                throw runtime_error("No types given for function");
+//                            }
+//                            function->returnType = types.back();
+//                            push(function);
+//                            break;
+//                        }
+//                        case OP::Parameter: {
+//                            const auto address = subroutine->parseUint32();
+//                            auto name = readStorage(bin, address);
+//                            push(make_shared<TypeParameter>(name, pop()));
+//                            break;
+//                        }
+//                        case OP::Assign: {
+//                            auto rvalue = pop();
+//                            auto lvalue = pop();
+//                            ExtendableStack stack;
+//                            if (!isExtendable(lvalue, rvalue, stack)) {
+//                                auto error = stack.errorMessage();
+//                                error.ip = ip;
+//                                report(error);
+//                            }
+//                            break;
+//                        }
+//                        case OP::IndexAccess: {
+//                            auto right = pop();
+//                            auto left = pop();
+//
+////                            if (!isType(left)) {
+////                                push({ kind: TypeKind::never });
+////                            } else {
+//
+//                            //todo: we have to put all members of `left` on the stack, since subroutines could be required
+//                            // to resolve super classes.
+//                            auto t = indexAccess(left, right);
+////                                if (isWithAnnotations(t)) {
+////                                    t.indexAccessOrigin = { container: left as TypeObjectLiteral, index: right as Type };
+////                                }
+//
+////                                t.parent = undefined;
+//                            push(t);
+////                            }
+//                            break;
+//                        }
+//                        case OP::Rest: {
+//                            push(make_shared<TypeRest>(pop()));
+//                            break;
+//                        }
+//                        case OP::Array: {
+//                            push(make_shared<TypeArray>(pop()));
+//                            break;
+//                        }
+//                        case OP::TupleMember: {
+//                            push(pool.makeTupleMember(pop()));
+//                            break;
+//                        }
+//                        case OP::TupleNamedMember: {
+//                            break;
+//                        }
+//                        case OP::Tuple: {
+//                            auto types = popFrame();
+//
+//                            //short path for [...x, y];
+////                            if (types.size() == 2 && to<TypeTupleMember>(types[0])->type->kind == TypeKind::Rest) {
+////                                //todo: we need a heuristic to determine if the array `x` actually can be mutated
+////                                auto t = to<TypeRest>(to<TypeTupleMember>(types[0])->type);
+////                                if (t->type->kind == TypeKind::Tuple && to<TypeTupleMember>(types[1])->type->kind != TypeKind::Rest) {
+////                                    auto result = to<TypeTuple>(t->type);
+////                                    result->types.push_back(to<TypeTupleMember>(types[1]));
+////                                    push(result);
+////                                    break;
+////                                }
+////                            }
+//
+////                            auto tuple = make_shared<TypeTuple>();
+////                            for (auto &&type: types) {
+////                                if (type->kind != TypeKind::TupleMember) {
+////                                    debug("No tuple member in stack frame, but {}", type->kind);
+////                                    continue;
+////                                }
+////                                auto member = reinterpret_pointer_cast<TypeTupleMember>(type);
+////                                if (member->type->kind == TypeKind::Rest) {
+////                                    auto rest = to<TypeRest>(member->type);
+////                                    if (rest->type->kind == TypeKind::Tuple) {
+////                                        for (auto &&sub: to<TypeTuple>(rest->type)->types) {
+////                                            tuple->types.push_back(sub);
+////                                        }
+////                                    } else {
+////                                        tuple->types.push_back(member);
+////                                    }
+////                                } else {
+////                                    tuple->types.push_back(member);
+////                                }
+////                            }
+////                            push(tuple);
+//                            push(make_shared<TypeUnknown>());
+//                            break;
+//                        }
+//                        case OP::Initializer: {
+//                            auto t = pop();
+//                            auto l = last();
+//                            switch (l->kind) {
+//                                case TypeKind::Parameter:to<TypeParameter>(l)->initializer = t;
+//                                    break;
+//                            }
+//                            break;
+//                        }
+//                        case OP::Optional: {
+//                            auto l = last();
+//                            switch (l->kind) {
+//                                case TypeKind::TupleMember: to<TypeTupleMember>(l)->optional = true;
+//                                    break;
+//                                case TypeKind::Parameter: to<TypeParameter>(l)->optional = true;
+//                                    break;
+//                                case TypeKind::PropertySignature: to<TypePropertySignature>(l)->optional = true;
+//                                    break;
+//                            }
+//                            break;
+//                        }
+//                        case OP::Readonly: {
+//                            auto l = last();
+//                            switch (l->kind) {
+//                                case TypeKind::PropertySignature: to<TypePropertySignature>(l)->readonly = true;
+//                                    break;
+//                            }
+//                            break;
+//                        }
+//                        case OP::True: push(make_shared<TypeLiteral>("true", TypeLiteralType::Boolean));
+//                            break;
+//                        case OP::False: push(make_shared<TypeLiteral>("false", TypeLiteralType::Boolean));
+//                            break;
+//                        case OP::String: push(make_shared<TypeString>());
+//                            break;
+//                        case OP::Number: push(make_shared<TypeNumber>());
+//                            break;
+//                        case OP::Boolean: push(make_shared<TypeBoolean>());
+//                            break;
+//                        case OP::Unknown: {
+//                            pool.makeUnknown();
+////                            push();
+//                            break;
+//                        }
+//                        case OP::Undefined: push(make_shared<TypeUndefined>());
+//                            break;
+//                        case OP::Void: push(make_shared<TypeVoid>());
+//                            break;
+//                        case OP::Never: push(make_shared<TypeNever>());
+//                            break;
+//                        case OP::Any: push(make_shared<TypeAny>());
+//                            break;
+//                        case OP::Symbol: push(make_shared<TypeSymbol>());
+//                            break;
+//                        case OP::Object: push(make_shared<TypeObject>());
+//                            break;
+//                        case OP::Union: {
+//                            auto types = popFrame();
+//                            if (types.size() == 2) {
+//                                //convert `true|false` into `boolean
+//                                if (types[0]->kind == TypeKind::Literal && types[1]->kind == TypeKind::Literal) {
+//                                    auto first = to<TypeLiteral>(types[0]);
+//                                    auto second = to<TypeLiteral>(types[1]);
+//                                    if (first->type == TypeLiteralType::Boolean && second->type == TypeLiteralType::Boolean) {
+//                                        if (!first->equal(second)) {
+//                                            push(make_shared<TypeBoolean>());
+//                                            break;
+//                                        }
+//                                    }
+//                                }
+//                            }
+////                            auto t = make_shared<TypeUnion>();
+////                            t->types.insert(t->types.begin(), types.begin(), types.end());
+////                            push(t);
+//                            push(make_shared<TypeUnknown>());
+//                            break;
+//                        }
+//                        case OP::NumberLiteral: {
+//                            const auto address = subroutine->parseUint32();
+//                            push(make_shared<TypeLiteral>(readStorage(bin, address), TypeLiteralType::Number));
+//                            break;
+//                        }
+//                        case OP::BigIntLiteral: {
+//                            const auto address = subroutine->parseUint32();
+//                            push(make_shared<TypeLiteral>(readStorage(bin, address), TypeLiteralType::Bigint));
+//                            break;
+//                        }
+//                        case OP::StringLiteral: {
+////                            const auto address = subroutine->parseUint32();
+//                            subroutine->ip += 4;
+////                            auto text = readStorage(bin, address);
+//                            push(pool.makeTypeLiteral("", TypeLiteralType::String));
+////                            push(make_shared<TypeLiteral>());
+//                            break;
+//                        }
+//                        case OP::Error: {
+//                            const auto code = (instructions::ErrorCode) subroutine->parseUint16();
+//                            switch (code) {
+//                                case ErrorCode::CannotFind: {
+//                                    report(DiagnosticMessage(fmt::format("Cannot find name '{}'", subroutine->module->findIdentifier(ip)), ip));
+//                                    break;
+//                                }
+//                                default: {
+//                                    report(DiagnosticMessage(fmt::format("{}", code), ip));
+//                                }
+//                            }
+//                            break;
+//                        }
+//                        default: {
+//                            throw runtime_error(fmt::format("unhandled op {}", op));
+//                        }
                     }
 
                     if (stepper) {
                         if (op == instructions::TypeArgument) {
-                            frame->variableIPs.push_back(ip);
+//                            frames.back().variableIPs.push_back(ip);
                         }
                         subroutine->ip++;
 //                        debug("Routine {} (ended={})", subroutine->depth, subroutine->ip == subroutine->end);
@@ -1025,8 +1056,8 @@ namespace ts::vm {
 //                to<TypeLiteral>(types[0])->type = TypeLiteralType::String;
                 auto t = to<TypeLiteral>(types[0]);
                 auto res = make_shared<TypeLiteral>(t->literal, TypeLiteralType::String);
-                if (t->literalText) {
-                    res->literalText = new string(*t->literalText);
+                if (t->dynamicString) {
+                    res->dynamicString = new string(*t->dynamicString);
                 }
                 push(res);
                 return;

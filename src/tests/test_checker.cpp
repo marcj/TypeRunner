@@ -4,18 +4,9 @@
 #include "../checker/compiler.h"
 #include "../checker/vm.h"
 #include "../checker/debug.h"
+#include "../utils.h"
 
 using namespace ts;
-
-string compile(string code, bool print = true) {
-    Parser parser;
-    auto result = parser.parseSourceFile("app.ts", code, ScriptTarget::Latest, false, ScriptKind::TS, {});
-    checker::Compiler compiler;
-    auto program = compiler.compileSourceFile(result);
-    auto bin = program.build();
-    if (print) checker::printBin(bin);
-    return bin;
-}
 
 void test(string code, unsigned int expectedErrors = 0) {
     auto bin = compile(code);
@@ -80,6 +71,21 @@ TEST(checker, type) {
     )";
 
     testBench(code, 0);
+}
+
+TEST(checker, typeObject) {
+    Parser parser;
+
+    string code = R"(
+type CommandConfig = { id: string };
+const commands: CommandConfig[] = [
+    {id: 'foo0'},
+    {id: false},
+    {id: false},
+];
+    )";
+
+    test(code, 2);
 }
 
 TEST(checker, typeError) {

@@ -9,9 +9,8 @@ endif()
 
 include_directories(libs/tracy/)
 include_directories(libs/fmt/include/)
-include_directories(libs)
 
-list(APPEND CMAKE_MODULE_PATH libs/)
+list(APPEND CMAKE_MODULE_PATH libs)
 
 #add_definitions(-DTRACY_ENABLE)
 #include_directories(libs/tracy/)
@@ -19,13 +18,17 @@ list(APPEND CMAKE_MODULE_PATH libs/)
 add_subdirectory(libs/tracy)
 add_subdirectory(libs/fmt)
 
+set(ASMJIT_STATIC TRUE)
+add_subdirectory(libs/asmjit)
+
 # enable for profiling
 #add_definitions(-DTRACY_ENABLE)
 #link_libraries(Tracy::TracyClient)
 
-add_subdirectory(src)
+include_directories(libs/asmjit/src)
+include_directories(libs/magic_enum)
 
-include_directories(libs)
+add_subdirectory(src)
 
 add_executable(typescript_main main.cpp)
 

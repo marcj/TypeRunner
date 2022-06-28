@@ -6,6 +6,8 @@ namespace ts {
     using std::string;
     using std::replace;
     using std::regex;
+    using ts::utf::charCodeAt;
+    using ts::utf::CharacterCodes;
 
     bool fileExtensionIs(const string &path, const string &extension) {
         return path.size() > extension.size() && endsWith(path, extension);

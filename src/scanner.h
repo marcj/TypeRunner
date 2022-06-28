@@ -6,11 +6,13 @@
 #include <any>
 #include "types.h"
 #include "utf.h"
-
-using namespace ts::types;
-using namespace std;
+#include "hash.h"
 
 namespace ts {
+    using namespace ts::types;
+    using namespace std;
+    using ts::utf::CharCode;
+
     struct ScanNumber {
         SyntaxKind type;
         string value;
@@ -414,8 +416,6 @@ namespace ts {
 
     /* @internal */
     bool isIdentifierText(string name, ScriptTarget languageVersion = ScriptTarget::Latest, LanguageVariant identifierVariant = LanguageVariant::Standard);
-
-    bool isLineBreak(const CharCode &ch);
 
     class Scanner {
     public:

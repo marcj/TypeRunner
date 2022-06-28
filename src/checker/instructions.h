@@ -1,8 +1,15 @@
 #pragma once
 
+#include "../enum.h"
+
 namespace ts::instructions {
     enum OP {
-        //type related
+        Noop,
+        Jump, //arbitrary jump, used at the beginning to jump over storage-data (storage-data's addresses are constant)
+        Halt,
+        SourceMap, //one parameter (size uint32). all subsequent bytes withing the given size is a map op:pos:end, each uint32
+        Main, //marks end of meta-data section (subroutine metadata + storage data). has one parameter that points to the actual main code.
+
         Never,
         Any,
         Unknown,
@@ -41,6 +48,7 @@ namespace ts::instructions {
         ObjectLiteral,
         IndexSignature,
 
+        Array,
         Tuple,
         TupleMember,
         TupleNamedMember, //has one parameter, the name in the storage
@@ -107,11 +115,8 @@ namespace ts::instructions {
         Frame, //creates a new stack frame
         Return,
 
-        SourceMap, //one parameter (size uint32). all subsequent bytes withing the given size is a map op:pos:end, each uint32
 
         Subroutine,
-        Jump, //arbitrary jump, used at the beginning to jump over storage-data (storage-data's addresses are constant)
-        Main, //marks end of meta-data section (subroutine metadata + storage data). has one parameter that points to the actual main code.
         Distribute, //calls a subroutine for each union member. one parameter (address to subroutine)
         Call //call a subroutine and push the result on the stack
     };
@@ -120,6 +125,7 @@ namespace ts::instructions {
         CannotFind, //e.g. Cannot find name 'abc'
     };
 }
+
 
 template<>
 struct fmt::formatter<ts::instructions::OP>: formatter<std::string_view> {

@@ -9,6 +9,7 @@ namespace ts {
     using std::string;
     using std::replace;
     using std::regex;
+    using ts::utf::CharCode;
 
     constexpr static auto directorySeparator = "/";
     constexpr static auto altDirectorySeparator = "\\";

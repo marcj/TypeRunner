@@ -1,12 +1,12 @@
-#pragma
+#pragma once
 
 #include <string>
 #include <functional>
 #include <utility>
 
-#include "../types.h"
 #include "./instructions.h"
 #include "./utils.h"
+#include "../node_test.h"
 
 namespace ts::checker {
 
@@ -192,24 +192,24 @@ namespace ts::checker {
          */
         void pushAddress(unsigned int address) {
             auto &ops = getOPs();
-            writeUint32(ops, ops.size(), address);
+            vm::writeUint32(ops, ops.size(), address);
         }
 
         void pushUint32(unsigned int v) {
             auto &ops = getOPs();
-            writeUint32(ops, ops.size(), v);
+            vm::writeUint32(ops, ops.size(), v);
         }
 
         void pushUint16(unsigned int v) {
             auto &ops = getOPs();
-            writeUint16(ops, ops.size(), v);
+            vm::writeUint16(ops, ops.size(), v);
         }
 
         void pushError(ErrorCode code, const shared<Node> &node) {
             //errors need to be part of main
             sourceMap.push(0, node->pos, node->end);
             ops.push_back(OP::Error);
-            writeUint16(ops, ops.size(), (unsigned int)code);
+            vm::writeUint16(ops, ops.size(), (unsigned int)code);
         }
 
         void pushSymbolAddress(Symbol &symbol) {
@@ -221,8 +221,8 @@ namespace ts::checker {
                 frameOffset++;
                 current = current->previous;
             }
-            writeUint16(ops, ops.size(), frameOffset);
-            writeUint16(ops, ops.size(), symbol.index);
+            vm::writeUint16(ops, ops.size(), frameOffset);
+            vm::writeUint16(ops, ops.size(), symbol.index);
         }
 
         vector<unsigned char> &getOPs() {
@@ -339,21 +339,19 @@ namespace ts::checker {
             vector<unsigned char> bin;
             unsigned int address = 0;
 
-            if (storage.size() || subroutines.size()) {
-                address = 5; //we add JUMP + index when building the program to jump over all subroutines&storages
-                bin.push_back(OP::Jump);
-                writeUint32(bin, bin.size(), 0); //set after storage handling
-            }
+            address = 5; //we add JUMP + index when building the program to jump over all subroutines&storages
+            bin.push_back(OP::Jump);
+            vm::writeUint32(bin, bin.size(), 0); //set after storage handling
 
             for (auto &&item: storage) {
                 address += 2 + item.size();
             }
 
             //set initial jump position to right after the storage data
-            writeUint32(bin, 1, address);
+            vm::writeUint32(bin, 1, address);
             //push all storage data to the binary
             for (auto &&item: storage) {
-                writeUint16(bin, bin.size(), item.size());
+                vm::writeUint16(bin, bin.size(), item.size());
                 bin.insert(bin.end(), item.begin(), item.end());
             }
 
@@ -366,7 +364,7 @@ namespace ts::checker {
 
             //write sourcemap
             bin.push_back(OP::SourceMap);
-            writeUint32(bin, bin.size(), sourceMapSize);
+            vm::writeUint32(bin, bin.size(), sourceMapSize);
             address += 1 + 4 + sourceMapSize; //OP::SourceMap + uint32 size
 
             unsigned int bytecodePosOffset = address;
@@ -375,17 +373,17 @@ namespace ts::checker {
 
             for (auto &&routine: subroutines) {
                 for (auto &&map: routine->sourceMap.map) {
-                    writeUint32(bin, bin.size(), bytecodePosOffset + map.bytecodePos);
-                    writeUint32(bin, bin.size(), map.sourcePos);
-                    writeUint32(bin, bin.size(), map.sourceEnd);
+                    vm::writeUint32(bin, bin.size(), bytecodePosOffset + map.bytecodePos);
+                    vm::writeUint32(bin, bin.size(), map.sourcePos);
+                    vm::writeUint32(bin, bin.size(), map.sourceEnd);
                 }
                 bytecodePosOffset += routine->ops.size();
             }
 
             for (auto &&map: sourceMap.map) {
-                writeUint32(bin, bin.size(), bytecodePosOffset + map.bytecodePos);
-                writeUint32(bin, bin.size(), map.sourcePos);
-                writeUint32(bin, bin.size(), map.sourceEnd);
+                vm::writeUint32(bin, bin.size(), bytecodePosOffset + map.bytecodePos);
+                vm::writeUint32(bin, bin.size(), map.sourcePos);
+                vm::writeUint32(bin, bin.size(), map.sourceEnd);
             }
 
             address += 1 + 4; //OP::Main + uint32 address
@@ -394,15 +392,15 @@ namespace ts::checker {
             //after the storage data follows the subroutine meta-data.
             for (auto &&routine: subroutines) {
                 bin.push_back(OP::Subroutine);
-                writeUint32(bin, bin.size(), routine->nameAddress);
-                writeUint32(bin, bin.size(), address);
+                vm::writeUint32(bin, bin.size(), routine->nameAddress);
+                vm::writeUint32(bin, bin.size(), address);
                 address += routine->ops.size();
             }
 
             //after subroutine meta-data follows the actual subroutine code, which we jump over.
             //this marks the end of the header.
             bin.push_back(OP::Main);
-            writeUint32(bin, bin.size(), address);
+            vm::writeUint32(bin, bin.size(), address);
 
             for (auto &&routine: subroutines) {
                 bin.insert(bin.end(), routine->ops.begin(), routine->ops.end());
@@ -410,6 +408,7 @@ namespace ts::checker {
 
             //now the main code is added
             bin.insert(bin.end(), ops.begin(), ops.end());
+            bin.push_back(OP::Halt);
 
             return string(bin.begin(), bin.end());
         }
@@ -920,6 +919,12 @@ namespace ts::checker {
                     program.pushOp(OP::Tuple, node);
                     program.popFrameImplicit();
                     //todo: handle `as const`, widen if not const
+                    break;
+                }
+                case types::SyntaxKind::ArrayType: {
+                    auto n = to<ArrayTypeNode>(node);
+                    handle(n->elementType, program);
+                    program.pushOp(OP::Array, node);
                     break;
                 }
                 case types::SyntaxKind::TupleType: {

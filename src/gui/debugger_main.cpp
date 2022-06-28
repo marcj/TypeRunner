@@ -1,11 +1,13 @@
 #include <string>
 #include <span>
+#include <filesystem>
 
 #include "./app.h"
 #include "../parser2.h"
 #include "../checker/compiler.h"
 #include "../checker/vm.h"
 #include "../checker/debug.h"
+#include "../fs.h"
 #include "TextEditor.h"
 
 using std::string;
@@ -42,7 +44,7 @@ int main() {
     editor.SetErrorMarkers(markers);
     editor.SetShowWhitespaces(false);
 
-    editor.SetText(R"(
+    string code = R"(
 // Here you can see in real-time what branch the conditional type takes
 type isNumber<T> = T extends number ? df : "no";
 const v2: isNumber<number> = "yes";
@@ -52,7 +54,14 @@ const v2: isNumber<number> = "yes";
 type NoNumber<T> = T extends number ? never : T;
 type Primitive = string | number | boolean;
 const v3: NoNumber<Primitive> = 34;
-)");
+)";
+
+    editor.SetText(code);
+
+    auto codePath = "debugger.code.txt";
+    if (fileExists(codePath)) {
+        editor.SetText(fileRead(codePath));
+    }
 
     auto fontDefault = ImGui::GetIO().Fonts->AddFontFromFileTTF("/System/Library/Fonts/SFNS.ttf", 32.0);
     auto fontMono = ImGui::GetIO().Fonts->AddFontFromFileTTF("/System/Library/Fonts/SFNSMono.ttf", 30.0);
@@ -75,23 +84,24 @@ const v3: NoNumber<Primitive> = 34;
     {
         checker::Compiler compiler;
         Parser parser;
-        auto result = parser.parseSourceFile(fileName, editor.GetText(), ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+        auto result = parser.parseSourceFile(fileName, code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
         auto program = compiler.compileSourceFile(result);
         auto bin = program.build();
-        module = make_shared<vm::Module>(std::move(bin), fileName, editor.GetText());
+        module = make_shared<vm::Module>(std::move(bin), fileName, code);
         debugBinResult = checker::parseBin(module->bin);
         extractErrors();
     }
 
     auto runProgram = [&] {
+        debug("runProgram");
         checker::Compiler compiler;
         Parser parser;
-        auto iterations = 1000;
+        auto iterations = 100;
 
         auto start = std::chrono::high_resolution_clock::now();
         shared<SourceFile> result;
         for (auto i = 0; i < iterations; i++) {
-            result = parser.parseSourceFile(fileName, editor.GetText(), ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+            result = parser.parseSourceFile(fileName, code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
         }
         lastExecution.parseTime = (std::chrono::high_resolution_clock::now() - start) / iterations;
 
@@ -110,7 +120,7 @@ const v3: NoNumber<Primitive> = 34;
         }
         lastExecution.binaryTime = (std::chrono::high_resolution_clock::now() - start) / iterations;
 
-        module = make_shared<vm::Module>(std::move(bin), fileName, editor.GetText());
+        module = make_shared<vm::Module>(std::move(bin), fileName, code);
         debugBinResult = checker::parseBin(module->bin);
 
         start = std::chrono::high_resolution_clock::now();
@@ -122,7 +132,6 @@ const v3: NoNumber<Primitive> = 34;
         }
         lastExecution.checkTime = (std::chrono::high_resolution_clock::now() - start) / iterations;
 
-//        vm.printErrors();
         editor.highlights.clear();
         extractErrors();
     };
@@ -153,6 +162,9 @@ const v3: NoNumber<Primitive> = 34;
 //        ImGui::Text("%.1f FPS", ImGui::GetIO().Framerate);
 
         if (editor.IsTextChanged()) {
+            debug("IsTextChanged");
+            code = editor.GetText();
+            fileWrite(codePath, code);
             runProgram();
         }
 
@@ -166,7 +178,7 @@ const v3: NoNumber<Primitive> = 34;
 
         {
             ImGui::SetNextWindowSize(ImVec2(300, 300), ImGuiCond_FirstUseEver);
-            if (ImGui::Begin("Run", nullptr)) {
+            if (ImGui::Begin("Profiler", nullptr)) {
                 if (ImGui::Button("Execute")) {
                     runProgram();
                     debugActive = false;
@@ -204,6 +216,60 @@ const v3: NoNumber<Primitive> = 34;
                 ImGui::BeginGroup();
                 ImGui::Text(fmt::format("Checking\n{:.6f}ms", lastExecution.checkTime.count()).c_str());
                 ImGui::EndGroup();
+
+                ImGui::Separator();
+
+                ImGui::Text("Instantiations");
+                ImGui::BeginTable("instantiations", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders);
+                ImGui::TableSetupColumn("type", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 60);
+                ImGui::TableSetupColumn("count", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort);
+                ImGui::TableHeadersRow();
+
+#ifdef TS_PROFILE
+                for (unsigned int type = 0; type < vm::profiler.data.typeCount; type++) {
+                    auto count = vm::profiler.data.instantiations[type];
+                    if (!count) continue;
+
+                    ImGui::TableNextRow();
+
+                    ImGui::TableNextColumn();
+                    ImGui::Text(string(magic_enum::enum_name((vm::TypeKind)type)).c_str());
+
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%lld", count);
+                }
+#endif
+
+                ImGui::EndTable();
+
+                ImGui::Text("Comparisons");
+                ImGui::BeginTable("comparison", 3, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders);
+                ImGui::TableSetupColumn("left", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 60);
+                ImGui::TableSetupColumn("right", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 60);
+                ImGui::TableSetupColumn("count", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort);
+                ImGui::TableHeadersRow();
+
+#ifdef TS_PROFILE
+                for (unsigned int left = 0; left < vm::profiler.data.typeCount; left++) {
+                    for (unsigned int right = 0; right < vm::profiler.data.typeCount; right++) {
+                        auto count = vm::profiler.data.comparisons[left][right];
+                        if (!count) continue;
+
+                        ImGui::TableNextRow();
+
+                        ImGui::TableNextColumn();
+                        ImGui::Text(string(magic_enum::enum_name((vm::TypeKind)left)).c_str());
+
+                        ImGui::TableNextColumn();
+                        ImGui::Text(string(magic_enum::enum_name((vm::TypeKind)right)).c_str());
+                        ImGui::TableNextColumn();
+                        ImGui::Text("%lld", count);
+                    }
+                }
+#endif
+
+                ImGui::EndTable();
+
 
                 ImGui::PopFont();
 //
@@ -311,12 +377,12 @@ const v3: NoNumber<Primitive> = 34;
 
                     if (debugVM.subroutine) {
 
-                        auto current = debugVM.frame;
                         vector<vm::Frame *> frames;
-                        while (current) {
-                            frames.push_back(current);
-                            current = current->previous;
-                        }
+//                        auto current = debugVM.frame;
+//                        while (current) {
+//                            frames.push_back(current);
+//                            current = current->previous;
+//                        }
                         ImGui::Text("Stack (%d/%d)", frames.size(), debugVM.stack.size());
 
                         static auto showNonVariables = false;
@@ -333,9 +399,9 @@ const v3: NoNumber<Primitive> = 34;
                                 auto frame = (*it);
                                 ImGui::PushID(i);
 
-                                if (!frame->subroutine->name.empty()) {
-                                    lastName = frame->subroutine->name;
-                                }
+//                                if (!frame->subroutine->name.empty()) {
+//                                    lastName = frame->subroutine->name;
+//                                }
                                 if (ImGui::Selectable((string(lastName)).c_str(), selectedFrame == frame)) {
                                     selectedFrame = frame;
                                 }
@@ -366,10 +432,10 @@ const v3: NoNumber<Primitive> = 34;
                                 ImGui::Text("    ");
                                 ImGui::SameLine();
                                 if (i < selectedFrame->variables) {
-                                    auto ip = selectedFrame->variableIPs[i];
-                                    auto identifier = module->findIdentifier(ip);
-                                    ImGui::Text(identifier.c_str());
-                                    ImGui::SameLine();
+//                                    auto ip = selectedFrame->variableIPs[i];
+//                                    auto identifier = module->findIdentifier(ip);
+//                                    ImGui::Text(identifier.c_str());
+//                                    ImGui::SameLine();
                                 }
                                 auto stype = vm::stringify(type);
                                 if (stype.size() > 20) stype = stype.substr(0, 20) + "...";

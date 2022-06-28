@@ -13,11 +13,13 @@
 #include "scanner.h"
 #include "node_test.h"
 #include "factory.h"
+#include "hash.h"
 #include "utilities.h"
 #include "diagnostic_messages.h"
 #include <fmt/core.h>
 
 using namespace ts::types;
+using namespace ts::hash;
 
 namespace ts {
     using std::string;
@@ -1480,7 +1482,7 @@ namespace ts {
             auto pos = skipTrivia(sourceText, node->pos);
 
             // Some known keywords are likely signs of syntax being used improperly.
-            switch (const_hash(expressionText)) {
+            switch (runtime_hash(expressionText)) {
                 case "const"_hash:
                 case "let"_hash:
                 case "var"_hash:

@@ -9,11 +9,6 @@ namespace ts::checker {
     using std::string_view;
     using ts::instructions::OP;
 
-    inline string_view readStorage(string_view &ops, unsigned int address) {
-        auto size = readUint16(ops, address);
-        return ops.substr(address + 2, size);
-    }
-
     struct PrintSubroutineOp {
         string text;
         unsigned int address;
@@ -50,7 +45,7 @@ namespace ts::checker {
         for (unsigned int i = 0; i < end; i++) {
             if (storageEnd) {
                 while (i < storageEnd) {
-                    auto size = readUint16(bin, i);
+                    auto size = vm::readUint16(bin, i);
                     auto data = bin.substr(i + 2, size);
                     if (print) fmt::print("(Storage ({})\"{}\") ", size, data);
                     result.storages.push_back(string(data));
@@ -83,22 +78,22 @@ namespace ts::checker {
 
             switch (op) {
                 case OP::Call: {
-                    params += fmt::format(" &{}[{}]", readUint32(bin, i + 1), readUint16(bin, i + 5));
+                    params += fmt::format(" &{}[{}]", vm::readUint32(bin, i + 1), vm::readUint16(bin, i + 5));
                     i += 6;
                     break;
                 }
                 case OP::SourceMap: {
-                    auto size = readUint32(bin, i + 1);
+                    auto size = vm::readUint32(bin, i + 1);
                     auto start = i + 1;
                     i += 4 + size;
                     params += fmt::format(" {}->{} ({})", start, i, size / (4 * 3)); //each entry has 3x 4bytes (uint32)
 
                     for (unsigned int j = start + 4; j < i; j += 4 * 3) {
                         DebugSourceMapEntry sourceMapEntry{
-                                                                   .op = (OP)(bin[readUint32(bin, j)]),
-                                                                   .bytecodePos = readUint32(bin, j),
-                                                                   .sourcePos = readUint32(bin, j + 4),
-                                                                   .sourceEnd =  readUint32(bin, j + 8),
+                                                                   .op = (OP)(bin[vm::readUint32(bin, j)]),
+                                                                   .bytecodePos = vm::readUint32(bin, j),
+                                                                   .sourcePos = vm::readUint32(bin, j + 4),
+                                                                   .sourceEnd =  vm::readUint32(bin, j + 8),
                                                            };
                         result.sourceMap.push_back(sourceMapEntry);
                         if (print) debug("Map [{}]{} to {}:{}", sourceMapEntry.bytecodePos, sourceMapEntry.op, sourceMapEntry.sourcePos, sourceMapEntry.sourceEnd);
@@ -106,9 +101,9 @@ namespace ts::checker {
                     break;
                 }
                 case OP::Subroutine: {
-                    auto nameAddress = readUint32(bin, i + 1);
-                    auto address = readUint32(bin, i + 5);
-                    string name = nameAddress ? string(readStorage(bin, nameAddress)) : "";
+                    auto nameAddress = vm::readUint32(bin, i + 1);
+                    auto address = vm::readUint32(bin, i + 5);
+                    string name = nameAddress ? string(vm::readStorage(bin, nameAddress)) : "";
                     params += fmt::format(" {}[{}]", name, address);
                     i += 8;
                     result.subroutines.push_back({.name = name, .address = address});
@@ -116,7 +111,7 @@ namespace ts::checker {
                 }
                 case OP::Main:
                 case OP::Jump: {
-                    auto address = readUint32(bin, i + 1);
+                    auto address = vm::readUint32(bin, i + 1);
                     params += fmt::format(" &{}", address);
                     i += 4;
                     if (op == OP::Jump) {
@@ -132,39 +127,39 @@ namespace ts::checker {
                     break;
                 }
                 case OP::JumpCondition: {
-                    params += fmt::format(" &{}:&{}", readUint16(bin, i + 1), readUint16(bin, i + 3));
+                    params += fmt::format(" &{}:&{}", vm::readUint16(bin, i + 1), vm::readUint16(bin, i + 3));
                     i += 4;
                     break;
                 }
                 case OP::Set:
                 case OP::TypeArgumentDefault:
                 case OP::Distribute: {
-                    params += fmt::format(" &{}", readUint32(bin, i + 1));
+                    params += fmt::format(" &{}", vm::readUint32(bin, i + 1));
                     i += 4;
                     break;
                 }
                 case OP::FunctionRef: {
-                    params += fmt::format(" &{}", readUint32(bin, i + 1));
+                    params += fmt::format(" &{}", vm::readUint32(bin, i + 1));
                     i += 4;
                     break;
                 }
                 case OP::Instantiate: {
-                    params += fmt::format(" {}", readUint16(bin, i + 1));
+                    params += fmt::format(" {}", vm::readUint16(bin, i + 1));
                     i += 2;
                     break;
                 }
                 case OP::Error: {
-                    params += fmt::format(" {}", (ErrorCode)readUint16(bin, i + 1));
+                    params += fmt::format(" {}", (instructions::ErrorCode)vm::readUint16(bin, i + 1));
                     i += 2;
                     break;
                 }
                 case OP::CallExpression: {
-                    params += fmt::format(" &{}", readUint16(bin, i + 1));
+                    params += fmt::format(" &{}", vm::readUint16(bin, i + 1));
                     i += 2;
                     break;
                 }
                 case OP::Loads: {
-                    params += fmt::format(" &{}:{}", readUint16(bin, i + 1), readUint16(bin, i + 3));
+                    params += fmt::format(" &{}:{}", vm::readUint16(bin, i + 1), vm::readUint16(bin, i + 3));
                     i += 4;
                     break;
                 }
@@ -172,8 +167,8 @@ namespace ts::checker {
                 case OP::NumberLiteral:
                 case OP::BigIntLiteral:
                 case OP::StringLiteral: {
-                    auto address = readUint32(bin, i + 1);
-                    params += fmt::format(" \"{}\"", readStorage(bin, address));
+                    auto address = vm::readUint32(bin, i + 1);
+                    params += fmt::format(" \"{}\"", vm::readStorage(bin, address));
                     i += 4;
                     break;
                 }
@@ -191,7 +186,7 @@ namespace ts::checker {
                 result.operations.push_back(text);
             }
             if (print) {
-                std::cout << "[" << startI << "] (" << text << ") ";
+                std::cout << "[" << startI << "](" << text << ") ";
             }
         }
         if (print) fmt::print("\n");

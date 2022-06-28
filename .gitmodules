@@ -7,3 +7,6 @@
 [submodule "libs/imgui"]
 	path = libs/imgui
 	url = git@github.com:ocornut/imgui.git
+[submodule "libs/asmjit"]
+	path = libs/asmjit
+	url = git@github.com:asmjit/asmjit.git

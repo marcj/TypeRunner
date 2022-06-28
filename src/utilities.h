@@ -9,6 +9,7 @@
 #include "diagnostic_messages.h"
 #include "node_test.h"
 #include "scanner.h"
+#include "hash.h"
 
 namespace ts {
     using namespace ts::types;
@@ -19,6 +20,9 @@ namespace ts {
     using ts::types::SyntaxKind;
     using ts::types::Extension;
     using ts::types::LanguageVariant;
+    using ts::utf::charCodeAt;
+    using ts::utf::CharCode;
+    using ts::utf::CharacterCodes;
     using types::DiagnosticMessage;
     using types::DiagnosticCategory;
     using types::DiagnosticWithDetachedLocation;

@@ -3,16 +3,14 @@
 #include "../core.h"
 #include "./utils.h"
 #include "../utf.h"
+#include "../hash.h"
+#include "../enum.h"
 #include <string>
 #include <array>
 #include <utility>
 #include <vector>
 #include <memory>
-
-#define MAGIC_ENUM_RANGE_MIN 0
-#define MAGIC_ENUM_RANGE_MAX 512
-
-#include "magic_enum.hpp"
+#include <unordered_set>
 
 namespace ts::checker {
 }
@@ -23,9 +21,34 @@ namespace ts::vm {
     using std::to_string;
     using std::make_shared;
     using std::reference_wrapper;
+    using ts::utf::eatWhitespace;
     using namespace ts::checker;
 
-    enum class TypeKind: unsigned char {
+    struct HashString {
+        uint64_t hash;
+//        uint64_t i;
+        string_view text;
+
+        HashString() { }
+
+        HashString(const string_view &text): text(text) {
+            hash = hash::runtime_hash(text);
+        }
+
+        string getString() {
+            return string(text);
+        }
+
+        bool operator ==(HashString &other) {
+            return getHash() == other.getHash();
+        }
+
+        uint64_t getHash() {
+            return hash;
+        }
+    };
+
+    enum class TypeKind: int {
         Never,
         Any,
         Unknown,
@@ -61,6 +84,7 @@ namespace ts::vm {
         Intersection,
 
         Array,
+
         Tuple,
         TupleMember,
         EnumMember,
@@ -86,160 +110,63 @@ namespace ts::vm {
         }
     };
 
-    struct ModuleSubroutine {
-        string_view name;
-        unsigned int address;
-        bool exported = false;
-        sharedOpt<Type> result = nullptr;
-        sharedOpt<Type> narrowed = nullptr; //when control flow analysis sets a new value
-        ModuleSubroutine(string_view name, unsigned int address): name(name), address(address) {}
-    };
+//todo make configurable
+//#define TS_PROFILE
 
-    struct Module;
+    struct ProfilerData {
+        vector<vector<long long>> comparisons;
+        vector<long long> instantiations;
+        unsigned int typeCount = magic_enum::enum_count<TypeKind>();
 
-    struct DiagnosticMessage {
-        string message;
-        unsigned int ip; //ip of the node/OP
-        shared<Module> module = nullptr;
-        DiagnosticMessage() {}
-        explicit DiagnosticMessage(const string &message, unsigned int &ip): message(message), ip(ip) {}
-    };
-
-    struct FoundSourceMap {
-        unsigned int pos;
-        unsigned int end;
-
-        bool found() {
-            return pos != 0 && end != 0;
+        ProfilerData() {
+            instantiations.resize(typeCount);
+            comparisons.resize(typeCount);
+            for (auto &&c: comparisons) c.resize(typeCount);
         }
     };
-
-    struct FoundSourceLineCharacter {
-        unsigned int line;
-        unsigned int pos;
-        unsigned int end;
-    };
-
-    /**
-     * const     v2: a<number> = "as"
-     *      ^-----^ this is the identifier source map.
-     *
-     * This function makes sure map.pos starts at `v`, basically eating whitespace.
-     */
-    inline void omitWhitespace(const string &code, FoundSourceMap &map) {
-        map.pos = eatWhitespace(code, map.pos);
-    }
-
-    struct Module {
-        const string bin;
-        string fileName = "index.ts";
-        const string code = ""; //for diagnostic messages only
-
-        vector<ModuleSubroutine> subroutines;
-        unsigned int mainAddress;
-        unsigned int sourceMapAddress;
-        unsigned int sourceMapAddressEnd;
-
-        vector<DiagnosticMessage> errors;
-        Module() {}
-
-        Module(const string_view &bin, const string &fileName, const string &code): bin(bin), fileName(fileName), code(code) {
-        }
+    struct Profiler {
+#ifdef TS_PROFILE
+        ProfilerData data;
+#endif
 
         void clear() {
-            errors.clear();
-            subroutines.clear();
+#ifdef TS_PROFILE
+            data = ProfilerData();
+#endif
         }
 
-        ModuleSubroutine *getSubroutine(unsigned int index) {
-            return &subroutines[index];
+        void instantiate(TypeKind kind) {
+#ifdef TS_PROFILE
+            data.instantiations[(int)kind]++;
+#endif
         }
 
-        ModuleSubroutine *getMain() {
-            return &subroutines.back();
-        }
-
-        string findIdentifier(unsigned int ip) {
-            auto map = findNormalizedMap(ip);
-            if (!map.found()) return "";
-            return code.substr(map.pos, map.end - map.pos);
-        }
-
-        FoundSourceMap findMap(unsigned int ip) {
-            unsigned int found = 0;
-            for (unsigned int i = sourceMapAddress; i < sourceMapAddressEnd; i += 3 * 4) {
-                auto mapIp = readUint32(bin, i);
-                if (mapIp == ip) {
-                    found = i;
-                    break;
-                }
-//                if (mapIp > ip) break;
-//                found = i;
-            }
-
-            if (found) {
-                return {readUint32(bin, found + 4), readUint32(bin, found + 8)};
-            }
-            return {0, 0};
-        }
-
-        FoundSourceMap findNormalizedMap(unsigned int ip) {
-            auto map = findMap(ip);
-            if (map.found()) omitWhitespace(code, map);
-            return map;
-        }
-
-        /**
-         * Converts FindSourceMap{x,y} to
-         */
-        FoundSourceLineCharacter mapToLineCharacter(FoundSourceMap map) {
-            unsigned int pos = 0;
-            unsigned int line = 0;
-            while (pos < map.pos) {
-                std::size_t lineStart = code.find('\n', pos);
-                if (lineStart == std::string::npos) {
-                    return {.line = line, .pos = map.pos - pos, .end = map.end - pos};
-                } else if (lineStart > map.pos) {
-                    //dont overshot
-                    break;
-                }
-                pos = lineStart + 1;
-                line++;
-            }
-            return {.line = line, .pos = map.pos - pos, .end = map.end - pos};
-        }
-
-        void printErrors() {
-            for (auto &&e: errors) {
-                if (e.ip) {
-                    auto map = findNormalizedMap(e.ip);
-
-                    if (map.found()) {
-                        std::size_t lineStart = code.rfind('\n', map.pos);
-                        lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
-
-                        std::size_t lineEnd = code.find('\n', map.end);
-                        if (lineEnd == std::string::npos) lineEnd = code.size();
-                        std::cout << cyan << fileName << ":" << yellow << map.pos << ":" << map.end << reset << " - " << red << "error" << reset << " TS0000: " << e.message << "\n\n";
-                        std::cout << code.substr(lineStart, lineEnd - lineStart - 1) << "\n";
-                        auto space = map.pos - lineStart;
-                        std::cout << std::string(space, ' ') << red << "^" << reset << "\n\n";
-                        continue;
-                    }
-                }
-                std::cout << "  " << e.message << "\n";
-            }
-            std::cout << "Found " << errors.size() << " errors in " << fileName << "\n";
+        void compare(const shared<Type> &left, const shared<Type> &right) {
+#ifdef TS_PROFILE
+            data.comparisons[(int)left->kind][(int)right->kind]++;
+#endif
         }
     };
+
+    static Profiler profiler;
 
     template<TypeKind T, class ... Base>
     struct BrandKind: Base ... {
         constexpr static const TypeKind KIND = T;
         BrandKind() {
             this->kind = T;
+            profiler.instantiate(T);
         }
     };
+
+    struct Module;
+
+    template<class T>
+    sharedOpt<T> to(const sharedOpt<Type> &p) {
+        if (!p) return nullptr;
+        if (T::KIND != TypeKind::Unknown && p->kind != T::KIND) return nullptr;
+        return reinterpret_pointer_cast<T>(p);
+    }
 
     struct TypeNever: BrandKind<TypeKind::Never, Type> {};
     struct TypeAny: BrandKind<TypeKind::Any, Type> {};
@@ -264,13 +191,15 @@ namespace ts::vm {
         explicit TypeTemplateLiteral(const vector<shared<Type>> &types): types(types) {}
     };
 
-    struct TypeUnion: BrandKind<TypeKind::Union, Type> {
-        vector<shared<Type>> types;
-    };
-
     struct TypeRest: BrandKind<TypeKind::Rest, Type> {
         shared<Type> type;
         explicit TypeRest(shared<Type> type): type(std::move(type)) {
+        }
+    };
+
+    struct TypeArray: BrandKind<TypeKind::Array, Type> {
+        shared<Type> type;
+        explicit TypeArray(shared<Type> type): type(std::move(type)) {
         }
     };
 
@@ -278,6 +207,9 @@ namespace ts::vm {
         shared<Type> type;
         bool optional = false;
         string_view name = "";
+
+        explicit TypeTupleMember() {
+        }
 
         explicit TypeTupleMember(shared<Type> type): type(std::move(type)) {
         }
@@ -296,12 +228,26 @@ namespace ts::vm {
 
     struct TypeLiteral: BrandKind<TypeKind::Literal, Type> {
     public:
-        string *literalText = nullptr;
-        string_view literal;
+        string *dynamicString = nullptr;
+        HashString literal;
         TypeLiteralType type;
+
+        TypeLiteral() {}
+
+        explicit TypeLiteral(const HashString literal, TypeLiteralType type): literal(literal), type(type) {
+
+        }
+
+        explicit TypeLiteral(const string_view &literal, TypeLiteralType type): literal(HashString(literal)), type(type) {
+
+        }
+
         void append(const string_view &text) {
-            if (!literalText) literalText = new string(literal);
-            literalText->append(text);
+            if (!dynamicString) {
+                dynamicString = new string(literal.text);
+            }
+            dynamicString->append(text);
+            literal = HashString(*dynamicString);
         }
 
         void append(int n) {
@@ -309,15 +255,56 @@ namespace ts::vm {
         }
 
         virtual ~TypeLiteral() {
-            delete literalText;
+            delete dynamicString;
+        }
+
+        bool equal(const shared<TypeLiteral> &other) {
+            return type == other->type && literal.getHash() == other->literal.getHash();
+//            if (type != other->type) return false;
+//            if (!literalText && !other->literalText) return literal == other->literal;
+//            if (!literalText && other->literalText) return literal == *other->literalText;
+//            if (literalText && !other->literalText) return *literalText == other->literal;
+//            return *literalText == *other->literalText;
         }
 
         string_view text() {
-            return literalText ? *literalText : literal;
+            return dynamicString ? *dynamicString : literal.text;
         }
-        TypeLiteral() {}
+    };
 
-        TypeLiteral(const string_view literal, TypeLiteralType type): literal(literal), type(type) {}
+    struct TypeUnion: BrandKind<TypeKind::Union, Type> {
+        vector<shared<Type>> types;
+        bool indexed = false;
+        bool onlyLiterals = false;
+        std::unordered_set<uint64_t> literalIndex;
+
+        void index() {
+            onlyLiterals = true;
+            for (auto &&t: types) {
+                if (t->kind != TypeKind::Literal) {
+                    onlyLiterals = false;
+                    break;
+                }
+            }
+            if (onlyLiterals) {
+                for (auto &&t: types) {
+                    literalIndex.insert(to<TypeLiteral>(t)->literal.hash);
+                }
+            }
+        }
+
+        bool fastLiteralCheck() {
+            if (!indexed) index();
+            return onlyLiterals;
+        }
+
+        bool includes(const shared<Type> &type) {
+            if (type->kind == TypeKind::Literal) {
+                return literalIndex.contains(to<TypeLiteral>(type)->literal.hash);
+            }
+
+            return false;
+        }
     };
 
     struct TypeParameter: BrandKind<TypeKind::Parameter, Type> {
@@ -340,7 +327,7 @@ namespace ts::vm {
     };
 
     struct TypeProperty: BrandKind<TypeKind::Property, Type> {
-        string_view name; //todo change to something that is number | string | symbol, same for MethodSignature
+        HashString name; //todo change to something that is number | string | symbol, same for MethodSignature
         bool optional = false;
         bool readonly = false;
         shared<Type> type;
@@ -348,22 +335,23 @@ namespace ts::vm {
     };
 
     struct TypePropertySignature: BrandKind<TypeKind::PropertySignature, Type> {
-        string_view name; //todo change to something that is number | string | symbol, same for MethodSignature
+        HashString name; //todo change to something that is number | string | symbol, same for MethodSignature
         bool optional = false;
         bool readonly = false;
         shared<Type> type;
+        TypePropertySignature() {}
         TypePropertySignature(const shared<Type> &type): type(type) {}
     };
 
     struct TypeMethodSignature: BrandKind<TypeKind::MethodSignature, Type> {
-        string_view name;
+        HashString name;
         bool optional = false;
         vector<shared<Type>> parameters;
         shared<Type> returnType;
     };
 
     struct TypeMethod: BrandKind<TypeKind::MethodSignature, Type> {
-        string_view name;
+        HashString name;
         bool optional = false;
         vector<shared<Type>> parameters;
         shared<Type> returnType;
@@ -379,13 +367,6 @@ namespace ts::vm {
         explicit TypeObjectLiteral() {}
         explicit TypeObjectLiteral(vector<shared<Type>> types): types(types) {}
     };
-
-    template<class T>
-    sharedOpt<T> to(const sharedOpt<Type> &p) {
-        if (!p) return nullptr;
-        if (T::KIND != TypeKind::Unknown && p->kind != T::KIND) return nullptr;
-        return reinterpret_pointer_cast<T>(p);
-    }
 
     string stringify(shared<Type> type) {
         //todo: recursive types
@@ -437,7 +418,7 @@ namespace ts::vm {
             }
             case TypeKind::PropertySignature: {
                 auto n = to<TypePropertySignature>(type);
-                string r = (n->readonly ? "readonly " : "") + string(n->name);
+                string r = (n->readonly ? "readonly " : "") + n->name.getString();
                 if (n->optional) r += "?";
                 return r + ": " + stringify(n->type);
             }
@@ -463,6 +444,9 @@ namespace ts::vm {
                 r += ") => ";
                 r += stringify(fn->returnType);
                 return r;
+            }
+            case TypeKind::Array: {
+                return "Array<" + stringify(to<TypeArray>(type)->type) + ">";
             }
             case TypeKind::Tuple: {
                 auto tuple = to<TypeTuple>(type);

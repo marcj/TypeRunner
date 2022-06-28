@@ -10,11 +10,9 @@
 #include <type_traits>
 #include <stdexcept>
 #include "core.h"
+#include "enum.h"
 #include <fmt/core.h>
 #include <fmt/format.h>
-#define MAGIC_ENUM_RANGE_MIN 0
-#define MAGIC_ENUM_RANGE_MAX 512
-#include "magic_enum.hpp"
 
 namespace ts {
     struct SourceFile;
@@ -1521,15 +1519,12 @@ namespace ts {
         OptionalProperty(expression, Expression);
     };
 
-    //this seems to be related to instantiated types
-    struct Type {};
-
     struct ParameterDeclaration;
     struct NamedTupleMember;
 
     struct SyntheticExpression: BrandKind<SyntaxKind::SyntheticExpression, Expression> {
         bool isSpread;
-        Property(type, Type);
+        Property(type, Node);
         OptionalUnionProperty(tupleNameSource, ParameterDeclaration, NamedTupleMember);
     };
 
