@@ -93,6 +93,7 @@ namespace ts::vm2 {
         }
 
         Type *next() {
+            if (!current) return nullptr;
             auto t = current->type;
             current = current->next;
             return t;
@@ -157,6 +158,7 @@ namespace ts::vm2 {
     void gc(Type *type);
     // Garbage collect whatever is left on the stack
     void gcStack();
+    void gcStackAndFlush();
 
     std::span<Type *> popFrame();
 

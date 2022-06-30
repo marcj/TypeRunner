@@ -15,78 +15,6 @@ using namespace ts::vm2;
 using std::string;
 using std::string_view;
 
-//struct StringLiteral {
-//    string_view text;
-//};
-
-//struct Type;
-//
-//struct PropertySignature {
-//    string_view name;
-////    std::reference_wrapper<Type> type;
-//};
-//
-//struct ObjectLiteral {
-//    string_view name;
-//    std::array<shared<Type>, 4> types;
-////    std::vector<Type> types;
-//};
-//
-//struct Type {
-//    unsigned int ip;
-//    TypeKind type = TypeKind::Unknown;
-//
-//    union T {
-//        struct StringLiteral stringLiteral;
-//        struct PropertySignature propertySignature;
-////        struct ObjectLiteral objectLiteral;
-//    };
-//
-//    T v;
-//};
-
-template<class T>
-struct Pool {
-    std::array<T, 300> pool;
-    unsigned int i{};
-
-    void clear() {
-        i = 0;
-    }
-
-    T *allocate() {
-        return &pool[i++];
-    }
-
-//    std::vector<T> pool;
-//    Pool () {
-//        pool.reserve(300);
-//    }
-//    T *make() {
-//        return &pool.emplace_back();
-//    }
-
-//    shared<T> make() {
-//        return std::make_shared<T>();
-//    }
-};
-//
-//struct TypeMemoryPool {
-//    Pool<TypeNever> never;
-//    Pool<TypeAny> any;
-//    Pool<TypeLiteral> literal;
-//    Pool<TypeObjectLiteral> objectLiteral;
-//    Pool<TypePropertySignature> propertySignature;
-//
-//    void clear() {
-//        never.clear();
-//        any.clear();
-//        literal.clear();
-//        objectLiteral.clear();
-//        propertySignature.clear();
-//    }
-//};
-
 TEST(bench, size) {
     std::array<Type, 1> a1;
     std::array<Type, 2> a2;
@@ -101,15 +29,6 @@ TEST(bench, size) {
     debug("std::array<TypeBase, 4> = {}", sizeof(std::array<Type, 4>));
 }
 
-//TEST(vm2, reinterpret) {
-//    auto base = std::make_shared<Type>();
-////    printKind(base);
-//    printKind(std::reinterpret_pointer_cast<TypeNever>(base));
-//    auto never = std::make_shared<TypeNever>();
-//    printKind(never);
-////    printKind(std::reinterpret_pointer_cast<TypeBase>(never));
-//}
-
 TEST(vm2, vm2Base1) {
     string code = R"(
 const v1: string = "abc";
@@ -118,6 +37,9 @@ const v2: number = 123;
     auto module = std::make_shared<vm2::Module>(ts::compile(code), "app.ts", "");
     run(module);
     EXPECT_EQ(module->errors.size(), 0);
+    ts::vm2::gcStackAndFlush();
+    //only v1, v2
+    EXPECT_EQ(ts::vm2::pool.active, 2);
 
     ts::bench("first", 1000, [&] {
         module->clear();
@@ -141,9 +63,9 @@ const v3: a<true> = false;
     module->printErrors();
 
     EXPECT_EQ(module->errors.size(), 1);
-    ts::vm2::gcFlush();
-    //only v1, v2, v3 cached value should live
-    EXPECT_EQ(ts::vm2::pool.active, 3);
+    ts::vm2::gcStackAndFlush();
+    //only v1, v2, v3 plus for each 4 union (true | string | number)
+    EXPECT_EQ(ts::vm2::pool.active, 3 * 4);
 
     ts::bench("first", 1000, [&] {
         ts::vm2::clear(module);
@@ -164,8 +86,8 @@ const v3: a<string> = 'nope';
     module->printErrors();
 
     EXPECT_EQ(module->errors.size(), 1);
-    ts::vm2::gcFlush();
     //only v1, v2, v3, plus 'yes' : 'no' subroutine cached value should live
+    ts::vm2::gcStackAndFlush();
     EXPECT_EQ(ts::vm2::pool.active, 5);
 
     ts::bench("first", 1000, [&] {
@@ -222,7 +144,7 @@ const var1: a<string> = false;
     EXPECT_EQ(ts::vm2::pool.active, 1);
 
     ts::vm2::clear(module);
-    ts::vm2::gcFlush();
+    ts::vm2::gcStackAndFlush();
     EXPECT_EQ(ts::vm2::pool.active, 0);
 
     ts::bench("first", 1000, [&] {
@@ -246,8 +168,7 @@ TEST(vm2, gcUnion) {
     auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
     run(module);
     EXPECT_EQ(module->errors.size(), 0);
-    ts::vm2::gcStack();
-    ts::vm2::gcFlush();
+    ts::vm2::gcStackAndFlush();
     EXPECT_EQ(ts::vm2::pool.active, 0);
 }
 
@@ -264,8 +185,7 @@ TEST(vm2, gcTuple) {
     auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
     run(module);
     EXPECT_EQ(module->errors.size(), 0);
-    ts::vm2::gcStack();
-    ts::vm2::gcFlush();
+    ts::vm2::gcStackAndFlush();
     EXPECT_EQ(ts::vm2::pool.active, 0);
 }
 
@@ -285,8 +205,7 @@ TEST(vm2, gcObject) {
     auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
     run(module);
     EXPECT_EQ(module->errors.size(), 0);
-    ts::vm2::gcStack();
-    ts::vm2::gcFlush();
+    ts::vm2::gcStackAndFlush();
     EXPECT_EQ(ts::vm2::pool.active, 0);
 }
 

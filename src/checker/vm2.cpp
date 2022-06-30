@@ -42,12 +42,19 @@ namespace ts::vm2 {
         gcQueueRef[gcQueueRefIdx++] = typeRef;
     }
 
-    void gc(Type *type) {
+    inline void gcWithoutChildren(Type *type) {
         if (gcQueueIdx>=maxGcSize) {
             //garbage collect now
             gcFlush();
         }
 //        debug("gc ({}) {}", type->users, stringify(type));
+        if (type->users > 0) return;
+        gcQueue[gcQueueIdx++] = type;
+    }
+
+    void gc(Type *type) {
+        gcWithoutChildren(type);
+
         switch (type->kind) {
             case TypeKind::Union:
             case TypeKind::Tuple:
@@ -69,7 +76,6 @@ namespace ts::vm2 {
                 break;
             }
         }
-        gcQueue[gcQueueIdx++] = type;
     }
 
     inline Type *use(Type *type) {
@@ -105,17 +111,23 @@ namespace ts::vm2 {
     void drop(Type *type) {
         if (type == nullptr) return;
 
+//        debug("drop({}) {}", stringify(type), type->users);
         type->users--;
-//        debug("drop ({}) {}", type->users, stringify(type));
         if (!type->users) {
             gc(type);
         }
+    }
+
+    void gcStackAndFlush() {
+        gcStack();
+        gcFlush();
     }
 
     void gcStack() {
         for (unsigned int i = 0; i<sp; i++) {
             gc(stack[i]);
         }
+        sp = 0;
     }
 
     void clear(shared<ts::vm2::Module> &module) {
@@ -164,6 +176,10 @@ namespace ts::vm2 {
 
     inline void report(const string &message) {
         report(DiagnosticMessage(message, activeSubroutine->ip));
+    }
+
+    inline void report(const string &message, unsigned int ip) {
+        report(DiagnosticMessage(message, ip));
     }
 
     inline void pushFrame() {
@@ -427,6 +443,7 @@ namespace ts::vm2 {
                 case OP::Halt: {
 //                    activeSubroutine = activeSubroutines.reset();
 //                    frame = frames.reset();
+//                    gcStack();
 //                    gcFlush();
                     return;
                 }
@@ -545,7 +562,7 @@ namespace ts::vm2 {
                             push(types[0]);
                         } else {
                             auto result = allocate(TypeKind::Union);
-                            TypeRef *current = useAsRef(types[0]);
+                            TypeRef *current = (TypeRef *)(result->type = useAsRef(types[0]));
                             for_each(++types.begin(), types.end(), [&current](auto v) {
                                 current->next = useAsRef(v);
                                 current = current->next;
@@ -715,6 +732,7 @@ namespace ts::vm2 {
                     auto types = popFrame();
                     if (types.empty()) {
                         item->type = nullptr;
+                        push(item);
                         break;
                     }
 
@@ -723,8 +741,9 @@ namespace ts::vm2 {
                         //if type has no owner, we can steal its children
                         if (type->users == 0) {
                             item->type = type->type;
-                            item->type = nullptr;
-                            //set current to the end of the list
+                            type->type = nullptr;
+                            //since we stole its children, we want it to GC but without its children. their 'users' count belongs now to us.
+                            gcWithoutChildren(type);
                         } else {
                             throw std::runtime_error("Can not merge used union");
                         }
@@ -742,6 +761,8 @@ namespace ts::vm2 {
                             if (v->users == 0) {
                                 current->next = (TypeRef *) v->type;
                                 v->type = nullptr;
+                                //since we stole its children, we want it to GC but without its children. their 'users' count belongs now to us.
+                                gcWithoutChildren(v);
                                 //set current to the end of the list
                                 while (current->next) current = current->next;
                             } else {
@@ -753,8 +774,7 @@ namespace ts::vm2 {
                         }
                     });
                     current->next = nullptr;
-
-                    stack[sp++] = item;
+                    push(item);
                     break;
                 }
                 case OP::TupleMember: {
