@@ -34,6 +34,8 @@ public:
 
     ~MemoryPool() noexcept;
 
+    unsigned int active = 0;
+
     MemoryPool &operator=(const MemoryPool &memoryPool) = delete;
     MemoryPool &operator=(MemoryPool &&memoryPool) noexcept;
 
@@ -43,6 +45,9 @@ public:
     // Can only allocate one object at a time. n and hint are ignored
     pointer allocate(size_type n = 1, const_pointer hint = 0);
     void deallocate(pointer p, size_type n = 1);
+
+    // Schedules for garbage collection
+    void gc(pointer p);
 
     size_type max_size() const noexcept;
 
@@ -172,6 +177,7 @@ MemoryPool<T, BlockSize>::allocateBlock() {
 template<typename T, size_t BlockSize>
 inline typename MemoryPool<T, BlockSize>::pointer
 MemoryPool<T, BlockSize>::allocate(size_type n, const_pointer hint) {
+    active++;
     if (freeSlots_ != nullptr) {
         pointer result = reinterpret_cast<pointer>(freeSlots_);
         freeSlots_ = freeSlots_->next;
@@ -179,7 +185,6 @@ MemoryPool<T, BlockSize>::allocate(size_type n, const_pointer hint) {
     } else {
         if (currentSlot_ >= lastSlot_) {
             allocateBlock();
-//            printf("allocate new block\n");
         }
         return reinterpret_cast<pointer>(currentSlot_++);
     }
@@ -187,7 +192,18 @@ MemoryPool<T, BlockSize>::allocate(size_type n, const_pointer hint) {
 
 template<typename T, size_t BlockSize>
 inline void
+MemoryPool<T, BlockSize>::gc(pointer p) {
+    deallocate(p);
+//    if (p != nullptr) {
+//        reinterpret_cast<slot_pointer_>(p)->next = freeSlots_;
+//        freeSlots_ = reinterpret_cast<slot_pointer_>(p);
+//    }
+}
+
+template<typename T, size_t BlockSize>
+inline void
 MemoryPool<T, BlockSize>::deallocate(pointer p, size_type n) {
+    active--;
     if (p != nullptr) {
         reinterpret_cast<slot_pointer_>(p)->next = freeSlots_;
         freeSlots_ = reinterpret_cast<slot_pointer_>(p);

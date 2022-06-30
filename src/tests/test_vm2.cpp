@@ -87,7 +87,6 @@ struct Pool {
 //    }
 //};
 
-
 TEST(bench, size) {
     std::array<Type, 1> a1;
     std::array<Type, 2> a2;
@@ -126,18 +125,180 @@ const v2: number = 123;
     });
 }
 
-TEST(vm2, vm2Base2) {
+TEST(vm2, allocator) {
+
+}
+
+TEST(vm2, vm2Union) {
     string code = R"(
-type a<T> = T extends string ? 'yes': 'no';
-const v1: a<number> = 'no';
-const v2: a<string> = 'yes';
-//const v3: a<string|number> = 'yes';
-const v4: a<string> = 'nope';
+type a<T> = T | (string | number);
+const v1: a<true> = 'yes';
+const v2: a<true> = true;
+const v3: a<true> = false;
 )";
     auto module = std::make_shared<vm2::Module>(ts::compile(code), "app.ts", code);
     run(module);
-
     module->printErrors();
+
+    EXPECT_EQ(module->errors.size(), 1);
+    ts::vm2::gcFlush();
+    //only v1, v2, v3 cached value should live
+    EXPECT_EQ(ts::vm2::pool.active, 3);
+
+    ts::bench("first", 1000, [&] {
+        ts::vm2::clear(module);
+//        module->clear();
+        run(module);
+    });
+}
+
+TEST(vm2, vm2Base2) {
+    string code = R"(
+type a<T> = T extends string ? 'yes' : 'no';
+const v1: a<number> = 'no';
+const v2: a<string> = 'yes';
+const v3: a<string> = 'nope';
+)";
+    auto module = std::make_shared<vm2::Module>(ts::compile(code), "app.ts", code);
+    run(module);
+    module->printErrors();
+
+    EXPECT_EQ(module->errors.size(), 1);
+    ts::vm2::gcFlush();
+    //only v1, v2, v3, plus 'yes' : 'no' subroutine cached value should live
+    EXPECT_EQ(ts::vm2::pool.active, 5);
+
+    ts::bench("first", 1000, [&] {
+        module->clear();
+        run(module);
+    });
+}
+
+TEST(vm2, vm2Base22) {
+    string code = R"(
+type a<K, T> = K | (T extends string ? 'yes': 'no');
+const v1: a<true, number> = 'no';
+const v2: a<true, string> = 'yes';
+const v3: a<true, string> = true;
+const v4: a<true, string|number> = 'yes';
+const v5: a<true, string> = 'nope';
+)";
+    auto module = std::make_shared<vm2::Module>(ts::compile(code), "app.ts", code);
+    run(module);
+    module->printErrors();
+
+    EXPECT_EQ(module->errors.size(), 1);
+
+    ts::bench("first", 1000, [&] {
+        ts::vm2::clear(module);
+//        module->clear();
+        run(module);
+    });
+}
+
+TEST(vm2, gc) {
+    // The idea of garbage collection is this: Each type has `users` counter.
+    // As soon as another type wants to hold on it, it increases `users`.
+    // This happens automatically once a user pop() from the stack. The stack itself
+    // is not an owner. If the user who pop()'d does not want to keep it, a drop(type) is necessary.
+    // This schedules it for garbage collection.
+    // If a type was received from somewhere else than the stack, the counter needs to be increased
+    // manually by using use(type).
+    // Subroutines like here `var1` keep the type for caching, hence this example has one active type
+    // and after clearing the module, all its subroutines reset their cache, so that is not no active type anymore.
+    string code = R"(
+type b<T> = T;
+type a<T> = 'a' extends b<T> ? T : never;
+const var1: a<string> = false;
+)";
+
+    auto module = std::make_shared<vm2::Module>(ts::compile(code), "app.ts", code);
+    run(module);
+    module->printErrors();
+    EXPECT_EQ(module->errors.size(), 1);
+
+    ts::vm2::gcFlush();
+    //only var1 cached value should live
+    EXPECT_EQ(ts::vm2::pool.active, 1);
+
+    ts::vm2::clear(module);
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, 0);
+
+    ts::bench("first", 1000, [&] {
+//        ts::vm2::clear(module);
+        module->clear();
+        //no vm2::clear necessary sine run() resets the type pool anyways
+        run(module);
+    });
+}
+
+TEST(vm2, gcUnion) {
+    ts::checker::Program program;
+    program.pushOp(OP::Frame);
+    for (auto i = 0; i<10; i++) {
+        program.pushOp(OP::StringLiteral);
+        program.pushStorage("a" + to_string(i));
+    }
+    program.pushOp(OP::Union);
+    program.pushOp(OP::Halt);
+
+    auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
+    run(module);
+    EXPECT_EQ(module->errors.size(), 0);
+    ts::vm2::gcStack();
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, 0);
+}
+
+TEST(vm2, gcTuple) {
+    ts::checker::Program program;
+    program.pushOp(OP::Frame);
+    for (auto i = 0; i<10; i++) {
+        program.pushOp(OP::String);
+        program.pushOp(OP::TupleMember);
+    }
+    program.pushOp(OP::Tuple);
+    program.pushOp(OP::Halt);
+
+    auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
+    run(module);
+    EXPECT_EQ(module->errors.size(), 0);
+    ts::vm2::gcStack();
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, 0);
+}
+
+TEST(vm2, gcObject) {
+    ts::checker::Program program;
+    program.pushOp(OP::Frame);
+    for (auto i = 0; i<10; i++) {
+        program.pushOp(OP::StringLiteral);
+        program.pushStorage("a");
+        program.pushOp(OP::StringLiteral);
+        program.pushStorage("foo1");
+        program.pushOp(OP::PropertySignature);
+    }
+    program.pushOp(OP::ObjectLiteral);
+    program.pushOp(OP::Halt);
+
+    auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
+    run(module);
+    EXPECT_EQ(module->errors.size(), 0);
+    ts::vm2::gcStack();
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, 0);
+}
+
+TEST(vm2, vm2Base3) {
+    string code = R"(
+type StringToNum<T extends string, A extends 0[] = []> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>;
+const var1: StringToNum<'999'> = 1002;
+)";
+    auto module = std::make_shared<vm2::Module>(ts::compile(code), "app.ts", code);
+    run(module);
+    module->printErrors();
+
     EXPECT_EQ(module->errors.size(), 1);
 
     ts::bench("first", 1000, [&] {
@@ -146,17 +307,17 @@ const v4: a<string> = 'nope';
     });
 }
 
-TEST(vm2, vm2) {
+TEST(vm2, bigUnion) {
     ts::checker::Program program;
     program.pushOp(OP::Frame);
-    for (auto i = 0; i < 300; i++) {
+    for (auto i = 0; i<300; i++) {
         program.pushOp(OP::StringLiteral);
-        program.pushStorage("a");
+        program.pushStorage("a" + to_string(i));
     }
     program.pushOp(OP::Union);
 
     program.pushOp(OP::Frame);
-    for (auto i = 0; i < 300; i++) {
+    for (auto i = 0; i<300; i++) {
         program.pushOp(OP::Frame);
         program.pushOp(OP::StringLiteral);
         program.pushStorage("a");
@@ -170,9 +331,17 @@ TEST(vm2, vm2) {
     program.pushOp(OP::Halt);
 
     auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
+    run(module);
+    EXPECT_EQ(module->errors.size(), 0);
+
+    ts::vm2::clear(module);
+    ts::vm2::gcStack();
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, 0);
 
     ts::bench("first", 1000, [&] {
         module->clear();
+//        ts::vm2::clear(module);
         run(module);
 //        EXPECT_EQ(process(ops), 300 * 6);
     });

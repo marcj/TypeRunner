@@ -8,6 +8,14 @@ namespace ts::vm {
     using std::vector;
     using std::string_view;
 
+    inline uint32_t readUint64(const vector<unsigned char> &bin, unsigned int offset) {
+        return *(uint64_t *) (bin.data() + offset);
+    }
+
+    inline uint32_t readUint64(const string_view &bin, unsigned int offset) {
+        return *(uint64_t *) (bin.data() + offset);
+    }
+
     inline uint32_t readUint32(const vector<unsigned char> &bin, unsigned int offset) {
         return *(uint32_t *) (bin.data() + offset);
     }
@@ -19,6 +27,11 @@ namespace ts::vm {
     inline void writeUint32(vector<unsigned char> &bin, unsigned int offset, uint32_t value) {
         if (offset + 4 > bin.size()) bin.resize(bin.size() + 4);
         *(uint32_t *) (bin.data() + offset) = value;
+    }
+
+    inline void writeUint64(vector<unsigned char> &bin, unsigned int offset, uint64_t value) {
+        if (offset + 8 > bin.size()) bin.resize(bin.size() + 8);
+        *(uint64_t *) (bin.data() + offset) = value;
     }
 
     inline uint16_t readUint16(const vector<unsigned char> &bin, unsigned int offset) {

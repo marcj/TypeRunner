@@ -101,7 +101,8 @@ namespace ts::checker {
         SourceMap sourceMap; //SourceMap of "main"
 
         vector<string_view> storage; //all kind of literals, as strings
-        unordered_map<string_view, reference_wrapper<StorageItem>> storageMap; //used to deduplicated storage entries
+        unordered_map<uint64_t, reference_wrapper<StorageItem>> storageMap; //used to deduplicated storage entries
+
         unsigned int storageIndex{};
         shared<Frame> frame = make_shared<Frame>();
 
@@ -209,7 +210,7 @@ namespace ts::checker {
             //errors need to be part of main
             sourceMap.push(0, node->pos, node->end);
             ops.push_back(OP::Error);
-            vm::writeUint16(ops, ops.size(), (unsigned int)code);
+            vm::writeUint16(ops, ops.size(), (unsigned int) code);
         }
 
         void pushSymbolAddress(Symbol &symbol) {
@@ -314,11 +315,11 @@ namespace ts::checker {
 
         //note: make sure the same name is not added twice. needs hashmap
         unsigned int registerStorage(const string_view &s) {
-            if (!storageIndex) storageIndex = 5; //jump+address
+            if (!storageIndex) storageIndex = 1 + 4; //jump+address
 
             const auto address = storageIndex;
             storage.push_back(s);
-            storageIndex += 2 + s.size();
+            storageIndex += 8 + 2 + s.size(); //hash + size + data
             return address;
         }
 
@@ -344,13 +345,14 @@ namespace ts::checker {
             vm::writeUint32(bin, bin.size(), 0); //set after storage handling
 
             for (auto &&item: storage) {
-                address += 2 + item.size();
+                address += 8 + 2 + item.size(); //hash+size+data
             }
 
             //set initial jump position to right after the storage data
             vm::writeUint32(bin, 1, address);
             //push all storage data to the binary
             for (auto &&item: storage) {
+                vm::writeUint64(bin, bin.size(), hash::runtime_hash(item));
                 vm::writeUint16(bin, bin.size(), item.size());
                 bin.insert(bin.end(), item.begin(), item.end());
             }
@@ -432,26 +434,35 @@ namespace ts::checker {
                     }
                     break;
                 }
-                case types::SyntaxKind::NeverKeyword: program.pushOp(OP::Never, node);
+                case types::SyntaxKind::NeverKeyword:
+                    program.pushOp(OP::Never, node);
                     break;
-                case types::SyntaxKind::BooleanKeyword: program.pushOp(OP::Boolean, node);
+                case types::SyntaxKind::BooleanKeyword:
+                    program.pushOp(OP::Boolean, node);
                     break;
-                case types::SyntaxKind::StringKeyword: program.pushOp(OP::String, node);
+                case types::SyntaxKind::StringKeyword:
+                    program.pushOp(OP::String, node);
                     break;
-                case types::SyntaxKind::NumberKeyword: program.pushOp(OP::Number, node);
+                case types::SyntaxKind::NumberKeyword:
+                    program.pushOp(OP::Number, node);
                     break;
-                case types::SyntaxKind::BigIntLiteral: program.pushOp(OP::BigIntLiteral, node);
+                case types::SyntaxKind::BigIntLiteral:
+                    program.pushOp(OP::BigIntLiteral, node);
                     program.pushStorage(to<BigIntLiteral>(node)->text);
                     break;
-                case types::SyntaxKind::NumericLiteral: program.pushOp(OP::NumberLiteral, node);
+                case types::SyntaxKind::NumericLiteral:
+                    program.pushOp(OP::NumberLiteral, node);
                     program.pushStorage(to<NumericLiteral>(node)->text);
                     break;
-                case types::SyntaxKind::StringLiteral: program.pushOp(OP::StringLiteral, node);
+                case types::SyntaxKind::StringLiteral:
+                    program.pushOp(OP::StringLiteral, node);
                     program.pushStorage(to<StringLiteral>(node)->text);
                     break;
-                case types::SyntaxKind::TrueKeyword: program.pushOp(OP::True, node);
+                case types::SyntaxKind::TrueKeyword:
+                    program.pushOp(OP::True, node);
                     break;
-                case types::SyntaxKind::FalseKeyword: program.pushOp(OP::False, node);
+                case types::SyntaxKind::FalseKeyword:
+                    program.pushOp(OP::False, node);
                     break;
                 case types::SyntaxKind::IndexedAccessType: {
                     const auto n = to<IndexedAccessTypeNode>(node);
@@ -547,7 +558,7 @@ namespace ts::checker {
                     const auto n = to<TypeAliasDeclaration>(node);
 
                     auto &symbol = program.pushSymbolForRoutine(n->name->escapedText, SymbolType::Type, n); //move this to earlier symbol-scan round
-                    if (symbol.declarations > 1) {
+                    if (symbol.declarations>1) {
                         //todo: for functions/variable embed an error that symbol was declared twice in the same scope
                     } else {
                         //populate routine
@@ -602,7 +613,7 @@ namespace ts::checker {
                     const auto n = to<FunctionDeclaration>(node);
                     if (const auto id = to<Identifier>(n->name)) {
                         auto &symbol = program.pushSymbolForRoutine(id->escapedText, SymbolType::Function, id); //move this to earlier symbol-scan round
-                        if (symbol.declarations > 1) {
+                        if (symbol.declarations>1) {
                             //todo: embed error since function is declared twice
                         } else {
                             if (n->typeParameters) {
@@ -974,7 +985,8 @@ namespace ts::checker {
 
                             break;
                         }
-                        default: throw runtime_error(fmt::format("BinaryExpression Operator token {} not handled", n->operatorToken->kind));
+                        default:
+                            throw runtime_error(fmt::format("BinaryExpression Operator token {} not handled", n->operatorToken->kind));
                     }
                     break;
                 }
@@ -988,7 +1000,7 @@ namespace ts::checker {
                     const auto n = to<VariableDeclaration>(node);
                     if (const auto id = to<Identifier>(n->name)) {
                         auto &symbol = program.pushSymbolForRoutine(id->escapedText, SymbolType::Variable, id); //move this to earlier symbol-scan round
-                        if (symbol.declarations > 1) {
+                        if (symbol.declarations>1) {
                             //todo: embed error since variable is declared twice
                         } else {
                             if (n->type) {

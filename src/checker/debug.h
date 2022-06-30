@@ -45,11 +45,11 @@ namespace ts::checker {
         for (unsigned int i = 0; i < end; i++) {
             if (storageEnd) {
                 while (i < storageEnd) {
-                    auto size = vm::readUint16(bin, i);
-                    auto data = bin.substr(i + 2, size);
+                    auto size = vm::readUint16(bin, i + 8);
+                    auto data = bin.substr(i + 8 + 2, size);
                     if (print) fmt::print("(Storage ({})\"{}\") ", size, data);
                     result.storages.push_back(string(data));
-                    i += 2 + size;
+                    i += 8 + 2 + size;
                 }
                 debug("");
                 storageEnd = 0;
@@ -103,7 +103,7 @@ namespace ts::checker {
                 case OP::Subroutine: {
                     auto nameAddress = vm::readUint32(bin, i + 1);
                     auto address = vm::readUint32(bin, i + 5);
-                    string name = nameAddress ? string(vm::readStorage(bin, nameAddress)) : "";
+                    string name = nameAddress ? string(vm::readStorage(bin, nameAddress + 8)) : "";
                     params += fmt::format(" {}[{}]", name, address);
                     i += 8;
                     result.subroutines.push_back({.name = name, .address = address});
@@ -168,7 +168,7 @@ namespace ts::checker {
                 case OP::BigIntLiteral:
                 case OP::StringLiteral: {
                     auto address = vm::readUint32(bin, i + 1);
-                    params += fmt::format(" \"{}\"", vm::readStorage(bin, address));
+                    params += fmt::format(" \"{}\"", vm::readStorage(bin, address + 8));
                     i += 4;
                     break;
                 }
