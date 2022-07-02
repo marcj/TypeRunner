@@ -129,7 +129,7 @@ namespace ts::vm {
             right = to<TypeParameter>(right)->type;
         }
         profiler.compare(left, right);
-        return true;
+//        return true;
 
         switch (right->kind) {
             case TypeKind::ObjectLiteral: {

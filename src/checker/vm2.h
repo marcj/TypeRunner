@@ -125,6 +125,7 @@ namespace ts::vm2 {
         }
 
         T *push() {
+            if (i >= Size) throw std::runtime_error("Stack overflow");
             return &values[++i];
         }
 
@@ -159,6 +160,8 @@ namespace ts::vm2 {
     // Garbage collect whatever is left on the stack
     void gcStack();
     void gcStackAndFlush();
+    TypeRef *useAsRef(Type *type);
+    Type *allocate(TypeKind kind);
 
     std::span<Type *> popFrame();
 
@@ -173,4 +176,97 @@ namespace ts::vm2 {
     }
 
     void call(shared<Module> &module, unsigned int index = 0, unsigned int arguments = 0);
+
+    struct CStack {
+        vector<Type *> iterator;
+        unsigned int i;
+        unsigned int round;
+    };
+
+    class CartesianProduct {
+        vector<CStack> stack;
+    public:
+
+        Type *current(CStack &s) {
+            return s.iterator[s.i];
+        }
+
+        bool next(CStack &s) {
+            return (++s.i == s.iterator.size()) ? (s.i = 0, false) : true;
+        }
+
+        vector<Type *> toGroup(Type *type) {
+            if (type->kind == TypeKind::Boolean) {
+                return {allocate(TypeKind::Literal)->setFlag(TypeFlag::True), allocate(TypeKind::Literal)->setFlag(TypeFlag::False)};
+            } else if (type->kind == TypeKind::Null) {
+                return {allocate(TypeKind::Literal)->setLiteral(TypeFlag::StringLiteral, "null")};
+            } else if (type->kind == TypeKind::Undefined) {
+                return {allocate(TypeKind::Literal)->setLiteral(TypeFlag::StringLiteral, "undefined")};
+                // } else if (type->kind == TypeKind::templateLiteral) {
+                // //     //todo: this is wrong
+                // //     return type.types;
+                //     const result: Type[] = [];
+                //     for (const s of type.types) {
+                //         const g = this.toGroup(s);
+                //         result.push(...g);
+                //     }
+                //
+                //     return result;
+            } else if (type->kind == TypeKind::Union) {
+                vector<Type *> result;
+                auto current = (TypeRef *) type->type;
+                while (current) {
+                    auto g = toGroup(current->type);
+                    for (auto &&s: g) result.push_back(s);
+                    current = current->next;
+                }
+
+                return result;
+            } else {
+                return {type};
+            }
+        }
+
+        void add(Type *item) {
+            stack.push_back({.iterator=toGroup(item), .i= 0, .round= 0});
+        }
+
+        vector<vector<Type *>> calculate() {
+            vector<vector<Type *>> result;
+
+            outer:
+            while (true) {
+                vector<Type *> row;
+                for (auto &&s: stack) {
+                    auto item = current(s);
+                    if (item->kind == TypeKind::TemplateLiteral) {
+                        auto current = (TypeRef *) item->type;
+                        while (current) {
+                            row.push_back(current->type);
+                            current = current->next;
+                        }
+                    } else {
+                        row.push_back(item);
+                    }
+                }
+                result.push_back(row);
+
+                for (unsigned int i = stack.size() - 1; i >= 0; i--) {
+                    auto active = next(stack[i]);
+                    //when that i stack is active, continue in main loop
+                    if (active) goto outer;
+
+                    //i stack was rewinded. If it's the first, it means we are done
+                    if (i == 0) {
+                        goto done;
+                    }
+                }
+                break;
+            }
+
+            done:
+            return result;
+        }
+    };
+
 }

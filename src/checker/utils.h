@@ -8,11 +8,11 @@ namespace ts::vm {
     using std::vector;
     using std::string_view;
 
-    inline uint32_t readUint64(const vector<unsigned char> &bin, unsigned int offset) {
+    inline uint64_t readUint64(const vector<unsigned char> &bin, unsigned int offset) {
         return *(uint64_t *) (bin.data() + offset);
     }
 
-    inline uint32_t readUint64(const string_view &bin, unsigned int offset) {
+    inline uint64_t readUint64(const string_view &bin, unsigned int offset) {
         return *(uint64_t *) (bin.data() + offset);
     }
 

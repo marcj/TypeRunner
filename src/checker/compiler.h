@@ -598,15 +598,16 @@ namespace ts::checker {
                 case types::SyntaxKind::TypeParameter: {
                     const auto n = to<TypeParameterDeclaration>(node);
                     auto &symbol = program.pushSymbol(n->name->escapedText, SymbolType::TypeVariable, n);
-                    program.pushOp(instructions::TypeArgument, n->name);
                     if (n->defaultType) {
                         program.pushSubroutineNameLess(n->defaultType);
                         handle(n->defaultType, program);
                         auto routine = program.popSubroutine();
-                        program.pushOp(instructions::TypeArgumentDefault);
+                        program.pushOp(instructions::TypeArgumentDefault, n->name);
                         program.pushAddress(routine->index);
+                    } else {
+                        program.pushOp(instructions::TypeArgument, n->name);
                     }
-                    //todo constraints + default
+                    //todo constraints
                     break;
                 }
                 case types::SyntaxKind::FunctionDeclaration: {

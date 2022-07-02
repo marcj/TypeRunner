@@ -8,44 +8,6 @@
 
 using namespace ts;
 
-void test(string code, unsigned int expectedErrors = 0) {
-    auto bin = compile(code);
-    auto module = make_shared<vm::Module>(bin, "app.ts", code);
-    vm::VM vm;
-    vm.run(module);
-    vm.printErrors();
-    EXPECT_EQ(expectedErrors, vm.getErrors());
-}
-
-void testBench(string code, unsigned int expectedErrors = 0) {
-    auto bin = compile(code);
-    auto module = make_shared<vm::Module>(bin, "app.ts", code);
-    vm::VM vm;
-    vm.run(module);
-    vm.printErrors();
-    EXPECT_EQ(expectedErrors, vm.getErrors());
-
-    auto iterations = 10;
-
-    auto warmTime = benchRun(iterations, [&module] {
-        module->clear();
-        vm::VM vm;
-        vm.run(module);
-    });
-
-    auto compileTime = benchRun(iterations, [&code] {
-        compile(code, false);
-    });
-
-    auto coldTime = benchRun(iterations, [&code] {
-        vm::VM vm;
-        auto module = make_shared<vm::Module>(compile(code, false), "app.ts", code);
-        vm.run(module);
-    });
-
-    fmt::print("{} iterations: compile {}/op, cold {}/op, warm {}/op", iterations, compileTime.count() / iterations, coldTime.count() / iterations, warmTime.count() / iterations);
-}
-
 TEST(checker, program) {
     checker::Program program;
 

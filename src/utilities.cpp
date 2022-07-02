@@ -283,19 +283,20 @@ namespace ts {
 //            text = formatStringFromArg(text, 0, v);
 //        }
 
-        return DiagnosticWithDetachedLocation{
-                {
-                        {
-                                .messageText = text,
-                                .category = message->category,
-                                .code = message->code,
-                        },
-                        .reportsUnnecessary = message->reportsUnnecessary,
-                },
-                .fileName = fileName,
-                .start = start,
-                .length = length,
-        };
+        return DiagnosticWithDetachedLocation(fileName, text, message->category, message->code, message->reportsUnnecessary, start, length);
+//        {
+//                {
+//                        {
+//                                .messageText = text,
+//                                .category = message->category,
+//                                .code = message->code,
+//                        },
+//                        .reportsUnnecessary = message->reportsUnnecessary,
+//                },
+//                .fileName = fileName,
+//                .start = start,
+//                .length = length,
+//        };
     }
 
     DiagnosticWithDetachedLocation &addRelatedInfo(DiagnosticWithDetachedLocation &diagnostic, vector<DiagnosticRelatedInformation> relatedInformation) {

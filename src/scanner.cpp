@@ -550,7 +550,7 @@ namespace ts {
     }
 
     /* @internal */
-    int ts::skipTrivia(string &text, int pos, optional<bool> stopAfterLineBreak, optional<bool> stopAtComments, optional<bool> inJSDoc) {
+    int skipTrivia(string &text, int pos, optional<bool> stopAfterLineBreak, optional<bool> stopAtComments, optional<bool> inJSDoc) {
         ZoneScoped;
         if (positionIsSynthesized(pos)) {
             return pos;
@@ -944,7 +944,7 @@ namespace ts {
             tokenValue = result;
             auto type = checkBigIntSuffix(); // if value is an integer, check whether it is a bigint
             checkForIdentifierStartAfterNumericLiteral(start);
-            return {type, .value = tokenValue};
+            return {.type = type, .value = tokenValue};
         }
     }
 

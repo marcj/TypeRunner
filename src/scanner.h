@@ -17,6 +17,7 @@ namespace ts {
         SyntaxKind type;
         string value;
     };
+
     using ErrorCallback = function<
             void(const shared<DiagnosticMessage>
                  &message,

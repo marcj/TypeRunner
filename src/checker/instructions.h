@@ -88,7 +88,8 @@ namespace ts::instructions {
          * ```
          */
         TypeArgument,
-        TypeArgumentDefault, //expects an entry on the stack
+        TypeArgumentDefault, //one parameter with the address of the subroutine of the default value
+
         TypeArgumentConstraint, //expects an entry on the stack
 
 

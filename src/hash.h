@@ -91,9 +91,9 @@ namespace ts::hash {
         return xxh64::hash(input, constLength(input), 0);
     }
 
-    inline consteval uint64_t const_hash(const std::string &input) {
-        return const_hash(input.c_str());
-    }
+//    inline uint64_t const_hash(const std::string &input) {
+//        return const_hash(input.c_str());
+//    }
 
     inline uint64_t runtime_hash(const std::string &input) {
         return xxh64::hash(input.c_str(), input.size(), 0);

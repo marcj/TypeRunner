@@ -134,13 +134,27 @@ namespace ts::types {
         bool reportsDeprecated = false;
         string source;
         optional<vector<DiagnosticRelatedInformation>> relatedInformation;
-        /* @internal */ CompilerOptions *skippedOn = nullptr;
+//        /* @internal */ CompilerOptions *skippedOn = nullptr;
     };
 
     struct DiagnosticWithDetachedLocation: Diagnostic {
         string fileName;
         int start = 0;
         int length = 0;
+
+        DiagnosticWithDetachedLocation() {}
+
+        explicit DiagnosticWithDetachedLocation(
+                const string &fileName, const string_view &messageText, DiagnosticCategory category, int code,
+                bool reportsUnnecessary, int start, int length
+        ): fileName(fileName) {
+            this->category = category;
+            this->code = code;
+            this->messageText = messageText;
+            this->reportsUnnecessary = reportsUnnecessary;
+            this->start = start;
+            this->length = length;
+        }
     };
 
     enum class ImportsNotUsedAsValues {
@@ -359,24 +373,24 @@ namespace ts::types {
     enum TokenFlags {
         None = 0,
         /* @internal */
-        PrecedingLineBreak = 1 << 0,
+        PrecedingLineBreak = 1<<0,
         /* @internal */
-        PrecedingJSDocComment = 1 << 1,
+        PrecedingJSDocComment = 1<<1,
         /* @internal */
-        Unterminated = 1 << 2,
+        Unterminated = 1<<2,
         /* @internal */
-        ExtendedUnicodeEscape = 1 << 3,
-        Scientific = 1 << 4,        // e.g. `10e2`
-        Octal = 1 << 5,             // e.g. `0777`
-        HexSpecifier = 1 << 6,      // e.g. `0x00000000`
-        BinarySpecifier = 1 << 7,   // e.g. `0b0110010000000000`
-        OctalSpecifier = 1 << 8,    // e.g. `0o777`
+        ExtendedUnicodeEscape = 1<<3,
+        Scientific = 1<<4,        // e.g. `10e2`
+        Octal = 1<<5,             // e.g. `0777`
+        HexSpecifier = 1<<6,      // e.g. `0x00000000`
+        BinarySpecifier = 1<<7,   // e.g. `0b0110010000000000`
+        OctalSpecifier = 1<<8,    // e.g. `0o777`
         /* @internal */
-        ContainsSeparator = 1 << 9, // e.g. `0b1100_0101`
+        ContainsSeparator = 1<<9, // e.g. `0b1100_0101`
         /* @internal */
-        UnicodeEscape = 1 << 10,
+        UnicodeEscape = 1<<10,
         /* @internal */
-        ContainsInvalidEscape = 1 << 11,    // e.g. `\uhello`
+        ContainsInvalidEscape = 1<<11,    // e.g. `\uhello`
         /* @internal */
         BinaryOrOctalSpecifier = BinarySpecifier | OctalSpecifier,
         /* @internal */
@@ -829,27 +843,27 @@ namespace ts::types {
 
     enum class NodeFlags {
         None = 0,
-        Let = 1 << 0,  // Variable declaration
-        Const = 1 << 1,  // Variable declaration
-        NestedNamespace = 1 << 2,  // Namespace declaration
-        Synthesized = 1 << 3,  // BaseNode was synthesized during transformation
-        Namespace = 1 << 4,  // Namespace declaration
-        OptionalChain = 1 << 5,  // Chained MemberExpression rooted to a pseudo-OptionalExpression
-        ExportContext = 1 << 6,  // Export context (initialized by binding)
-        ContainsThis = 1 << 7,  // Interface contains references to "this"
-        HasImplicitReturn = 1 << 8,  // If function implicitly returns on one of codepaths (initialized by binding)
-        HasExplicitReturn = 1 << 9,  // If function has explicit reachable return on one of codepaths (initialized by binding)
-        GlobalAugmentation = 1 << 10,  // Set if module declaration is an augmentation for the global scope
-        HasAsyncFunctions = 1 << 11, // If the file has async functions (initialized by binding)
-        DisallowInContext = 1 << 12, // If BaseNode was parsed in a context where 'in-expressions' are not allowed
-        YieldContext = 1 << 13, // If BaseNode was parsed in the 'yield' context created when parsing a generator
-        DecoratorContext = 1 << 14, // If BaseNode was parsed as part of a decorator
-        AwaitContext = 1 << 15, // If BaseNode was parsed in the 'await' context created when parsing an async function
-        DisallowConditionalTypesContext = 1 << 16, // If BaseNode was parsed in a context where conditional types are not allowed
-        ThisNodeHasError = 1 << 17, // If the parser encountered an error when parsing the code that created this node
-        JavaScriptFile = 1 << 18, // If BaseNode was parsed in a JavaScript
-        ThisNodeOrAnySubNodesHasError = 1 << 19, // If this BaseNode or any of its children had an error
-        HasAggregatedChildData = 1 << 20, // If we've computed data from children and cached it in this node
+        Let = 1<<0,  // Variable declaration
+        Const = 1<<1,  // Variable declaration
+        NestedNamespace = 1<<2,  // Namespace declaration
+        Synthesized = 1<<3,  // BaseNode was synthesized during transformation
+        Namespace = 1<<4,  // Namespace declaration
+        OptionalChain = 1<<5,  // Chained MemberExpression rooted to a pseudo-OptionalExpression
+        ExportContext = 1<<6,  // Export context (initialized by binding)
+        ContainsThis = 1<<7,  // Interface contains references to "this"
+        HasImplicitReturn = 1<<8,  // If function implicitly returns on one of codepaths (initialized by binding)
+        HasExplicitReturn = 1<<9,  // If function has explicit reachable return on one of codepaths (initialized by binding)
+        GlobalAugmentation = 1<<10,  // Set if module declaration is an augmentation for the global scope
+        HasAsyncFunctions = 1<<11, // If the file has async functions (initialized by binding)
+        DisallowInContext = 1<<12, // If BaseNode was parsed in a context where 'in-expressions' are not allowed
+        YieldContext = 1<<13, // If BaseNode was parsed in the 'yield' context created when parsing a generator
+        DecoratorContext = 1<<14, // If BaseNode was parsed as part of a decorator
+        AwaitContext = 1<<15, // If BaseNode was parsed in the 'await' context created when parsing an async function
+        DisallowConditionalTypesContext = 1<<16, // If BaseNode was parsed in a context where conditional types are not allowed
+        ThisNodeHasError = 1<<17, // If the parser encountered an error when parsing the code that created this node
+        JavaScriptFile = 1<<18, // If BaseNode was parsed in a JavaScript
+        ThisNodeOrAnySubNodesHasError = 1<<19, // If this BaseNode or any of its children had an error
+        HasAggregatedChildData = 1<<20, // If we've computed data from children and cached it in this node
 
         // These flags will be set when the parser encounters a dynamic import expression or 'import.meta' to avoid
         // walking the tree if the flags are not set. However, these flags are just a approximation
@@ -860,15 +874,15 @@ namespace ts::types {
         // removal, it is likely that users will add the import anyway.
         // The advantage of this approach is its simplicity. For the case of batch compilation,
         // we guarantee that users won't have to pay the price of walking the tree if a dynamic import isn't used.
-        /* @internal */ PossiblyContainsDynamicImport = 1 << 21,
-        /* @internal */ PossiblyContainsImportMeta = 1 << 22,
+        /* @internal */ PossiblyContainsDynamicImport = 1<<21,
+        /* @internal */ PossiblyContainsImportMeta = 1<<22,
 
-        JSDoc = 1 << 23, // If BaseNode was parsed inside jsdoc
-        /* @internal */ Ambient = 1 << 24, // If BaseNode was inside an ambient context -- a declaration file, or inside something with the `declare` modifier.
-        /* @internal */ InWithStatement = 1 << 25, // If any ancestor of BaseNode was the `statement` of a WithStatement (not the `expression`)
-        JsonFile = 1 << 26, // If BaseNode was parsed in a Json
-        /* @internal */ TypeCached = 1 << 27, // If a type was cached for BaseNode at any point
-        /* @internal */ Deprecated = 1 << 28, // If has '@deprecated' JSDoc tag
+        JSDoc = 1<<23, // If BaseNode was parsed inside jsdoc
+        /* @internal */ Ambient = 1<<24, // If BaseNode was inside an ambient context -- a declaration file, or inside something with the `declare` modifier.
+        /* @internal */ InWithStatement = 1<<25, // If any ancestor of BaseNode was the `statement` of a WithStatement (not the `expression`)
+        JsonFile = 1<<26, // If BaseNode was parsed in a Json
+        /* @internal */ TypeCached = 1<<27, // If a type was cached for BaseNode at any point
+        /* @internal */ Deprecated = 1<<28, // If has '@deprecated' JSDoc tag
 
         BlockScoped = Let | Const,
 
@@ -889,61 +903,61 @@ namespace ts::types {
 
     enum class EmitFlags {
         None = 0,
-        SingleLine = 1 << 0,                    // The contents of this node should be emitted on a single line.
-        AdviseOnEmitNode = 1 << 1,              // The printer should invoke the onEmitNode callback when printing this node.
-        NoSubstitution = 1 << 2,                // Disables further substitution of an expression.
-        CapturesThis = 1 << 3,                  // The function captures a lexical `this`
-        NoLeadingSourceMap = 1 << 4,            // Do not emit a leading source map location for this node.
-        NoTrailingSourceMap = 1 << 5,           // Do not emit a trailing source map location for this node.
+        SingleLine = 1<<0,                    // The contents of this node should be emitted on a single line.
+        AdviseOnEmitNode = 1<<1,              // The printer should invoke the onEmitNode callback when printing this node.
+        NoSubstitution = 1<<2,                // Disables further substitution of an expression.
+        CapturesThis = 1<<3,                  // The function captures a lexical `this`
+        NoLeadingSourceMap = 1<<4,            // Do not emit a leading source map location for this node.
+        NoTrailingSourceMap = 1<<5,           // Do not emit a trailing source map location for this node.
         NoSourceMap = NoLeadingSourceMap | NoTrailingSourceMap, // Do not emit a source map location for this node.
-        NoNestedSourceMaps = 1 << 6,            // Do not emit source map locations for children of this node.
-        NoTokenLeadingSourceMaps = 1 << 7,      // Do not emit leading source map location for token nodes.
-        NoTokenTrailingSourceMaps = 1 << 8,     // Do not emit trailing source map location for token nodes.
+        NoNestedSourceMaps = 1<<6,            // Do not emit source map locations for children of this node.
+        NoTokenLeadingSourceMaps = 1<<7,      // Do not emit leading source map location for token nodes.
+        NoTokenTrailingSourceMaps = 1<<8,     // Do not emit trailing source map location for token nodes.
         NoTokenSourceMaps = NoTokenLeadingSourceMaps | NoTokenTrailingSourceMaps, // Do not emit source map locations for tokens of this node.
-        NoLeadingComments = 1 << 9,             // Do not emit leading comments for this node.
-        NoTrailingComments = 1 << 10,           // Do not emit trailing comments for this node.
+        NoLeadingComments = 1<<9,             // Do not emit leading comments for this node.
+        NoTrailingComments = 1<<10,           // Do not emit trailing comments for this node.
         NoComments = NoLeadingComments | NoTrailingComments, // Do not emit comments for this node.
-        NoNestedComments = 1 << 11,
-        HelperName = 1 << 12,                   // The Identifier refers to an *unscoped* emit helper (one that is emitted at the top of the file)
-        ExportName = 1 << 13,                   // Ensure an export prefix is added for an identifier that points to an exported declaration with a local name (see SymbolFlags.ExportHasLocal).
-        LocalName = 1 << 14,                    // Ensure an export prefix is not added for an identifier that points to an exported declaration.
-        InternalName = 1 << 15,                 // The name is internal to an ES5 class body function.
-        Indented = 1 << 16,                     // Adds an explicit extra indentation level for class and function bodies when printing (used to match old emitter).
-        NoIndentation = 1 << 17,                // Do not indent the node.
-        AsyncFunctionBody = 1 << 18,
-        ReuseTempVariableScope = 1 << 19,       // Reuse the existing temp variable scope during emit.
-        CustomPrologue = 1 << 20,               // Treat the statement as if it were a prologue directive (NOTE: Prologue directives are *not* transformed).
-        NoHoisting = 1 << 21,                   // Do not hoist this declaration in --module system
-        HasEndOfDeclarationMarker = 1 << 22,    // Declaration has an associated NotEmittedStatement to mark the end of the declaration
-        Iterator = 1 << 23,                     // The expression to a `yield*` should be treated as an Iterator when down-leveling, not an Iterable.
-        NoAsciiEscaping = 1 << 24,              // When synthesizing nodes that lack an original node or textSourceNode, we want to write the text on the node with ASCII escaping substitutions.
-        /*@internal*/ TypeScriptClassWrapper = 1 << 25, // The node is an IIFE class wrapper created by the ts transform.
-        /*@internal*/ NeverApplyImportHelper = 1 << 26, // Indicates the node should never be wrapped with an import star helper (because, for example, it imports tslib itself)
-        /*@internal*/ IgnoreSourceNewlines = 1 << 27,   // Overrides `printerOptions.preserveSourceNewlines` to print this node (and all descendants) with default whitespace.
-        /*@internal*/ Immutable = 1 << 28,      // Indicates a node is a singleton intended to be reused in multiple locations. Any attempt to make further changes to the node will result in an error.
-        /*@internal*/ IndirectCall = 1 << 29,   // Emit CallExpression as an indirect call: `(0, f)()`
+        NoNestedComments = 1<<11,
+        HelperName = 1<<12,                   // The Identifier refers to an *unscoped* emit helper (one that is emitted at the top of the file)
+        ExportName = 1<<13,                   // Ensure an export prefix is added for an identifier that points to an exported declaration with a local name (see SymbolFlags.ExportHasLocal).
+        LocalName = 1<<14,                    // Ensure an export prefix is not added for an identifier that points to an exported declaration.
+        InternalName = 1<<15,                 // The name is internal to an ES5 class body function.
+        Indented = 1<<16,                     // Adds an explicit extra indentation level for class and function bodies when printing (used to match old emitter).
+        NoIndentation = 1<<17,                // Do not indent the node.
+        AsyncFunctionBody = 1<<18,
+        ReuseTempVariableScope = 1<<19,       // Reuse the existing temp variable scope during emit.
+        CustomPrologue = 1<<20,               // Treat the statement as if it were a prologue directive (NOTE: Prologue directives are *not* transformed).
+        NoHoisting = 1<<21,                   // Do not hoist this declaration in --module system
+        HasEndOfDeclarationMarker = 1<<22,    // Declaration has an associated NotEmittedStatement to mark the end of the declaration
+        Iterator = 1<<23,                     // The expression to a `yield*` should be treated as an Iterator when down-leveling, not an Iterable.
+        NoAsciiEscaping = 1<<24,              // When synthesizing nodes that lack an original node or textSourceNode, we want to write the text on the node with ASCII escaping substitutions.
+        /*@internal*/ TypeScriptClassWrapper = 1<<25, // The node is an IIFE class wrapper created by the ts transform.
+        /*@internal*/ NeverApplyImportHelper = 1<<26, // Indicates the node should never be wrapped with an import star helper (because, for example, it imports tslib itself)
+        /*@internal*/ IgnoreSourceNewlines = 1<<27,   // Overrides `printerOptions.preserveSourceNewlines` to print this node (and all descendants) with default whitespace.
+        /*@internal*/ Immutable = 1<<28,      // Indicates a node is a singleton intended to be reused in multiple locations. Any attempt to make further changes to the node will result in an error.
+        /*@internal*/ IndirectCall = 1<<29,   // Emit CallExpression as an indirect call: `(0, f)()`
     };
 
     enum class ModifierFlags {
         None = 0,
-        Export = 1 << 0,  // Declarations
-        Ambient = 1 << 1,  // Declarations
-        Public = 1 << 2,  // Property/Method
-        Private = 1 << 3,  // Property/Method
-        Protected = 1 << 4,  // Property/Method
-        Static = 1 << 5,  // Property/Method
-        Readonly = 1 << 6,  // Property/Method
-        Abstract = 1 << 7,  // Class/Method/ConstructSignature
-        Async = 1 << 8,  // Property/Method/Function
-        Default = 1 << 9,  // Function/Class (export default declaration)
-        Const = 1 << 11, // Const enum
-        HasComputedJSDocModifiers = 1 << 12, // Indicates the computed modifier flags include modifiers from JSDoc.
+        Export = 1<<0,  // Declarations
+        Ambient = 1<<1,  // Declarations
+        Public = 1<<2,  // Property/Method
+        Private = 1<<3,  // Property/Method
+        Protected = 1<<4,  // Property/Method
+        Static = 1<<5,  // Property/Method
+        Readonly = 1<<6,  // Property/Method
+        Abstract = 1<<7,  // Class/Method/ConstructSignature
+        Async = 1<<8,  // Property/Method/Function
+        Default = 1<<9,  // Function/Class (export default declaration)
+        Const = 1<<11, // Const enum
+        HasComputedJSDocModifiers = 1<<12, // Indicates the computed modifier flags include modifiers from JSDoc.
 
-        Deprecated = 1 << 13, // Deprecated tag.
-        Override = 1 << 14, // Override method.
-        In = 1 << 15, // Contravariance modifier
-        Out = 1 << 16, // Covariance modifier
-        HasComputedFlags = 1 << 29, // Modifier flags have been computed
+        Deprecated = 1<<13, // Deprecated tag.
+        Override = 1<<14, // Override method.
+        In = 1<<15, // Contravariance modifier
+        Out = 1<<16, // Covariance modifier
+        HasComputedFlags = 1<<29, // Modifier flags have been computed
 
         AccessibilityModifier = Public | Private | Protected,
         // Accessibility modifiers and 'readonly' can be attached to a parameter in a constructor to make it a property.
@@ -960,41 +974,41 @@ namespace ts::types {
 
         // Facts
         // - Flags used to indicate that a BaseNode or subtree contains syntax that requires transformation.
-        ContainsTypeScript = 1 << 0,
-        ContainsJsx = 1 << 1,
-        ContainsESNext = 1 << 2,
-        ContainsES2022 = 1 << 3,
-        ContainsES2021 = 1 << 4,
-        ContainsES2020 = 1 << 5,
-        ContainsES2019 = 1 << 6,
-        ContainsES2018 = 1 << 7,
-        ContainsES2017 = 1 << 8,
-        ContainsES2016 = 1 << 9,
-        ContainsES2015 = 1 << 10,
-        ContainsGenerator = 1 << 11,
-        ContainsDestructuringAssignment = 1 << 12,
+        ContainsTypeScript = 1<<0,
+        ContainsJsx = 1<<1,
+        ContainsESNext = 1<<2,
+        ContainsES2022 = 1<<3,
+        ContainsES2021 = 1<<4,
+        ContainsES2020 = 1<<5,
+        ContainsES2019 = 1<<6,
+        ContainsES2018 = 1<<7,
+        ContainsES2017 = 1<<8,
+        ContainsES2016 = 1<<9,
+        ContainsES2015 = 1<<10,
+        ContainsGenerator = 1<<11,
+        ContainsDestructuringAssignment = 1<<12,
 
         // Markers
         // - Flags used to indicate that a subtree contains a specific transformation.
-        ContainsTypeScriptClassSyntax = 1 << 12, // Decorators, Property Initializers, Parameter Property Initializers
-        ContainsLexicalThis = 1 << 13,
-        ContainsRestOrSpread = 1 << 14,
-        ContainsObjectRestOrSpread = 1 << 15,
-        ContainsComputedPropertyName = 1 << 16,
-        ContainsBlockScopedBinding = 1 << 17,
-        ContainsBindingPattern = 1 << 18,
-        ContainsYield = 1 << 19,
-        ContainsAwait = 1 << 20,
-        ContainsHoistedDeclarationOrCompletion = 1 << 21,
-        ContainsDynamicImport = 1 << 22,
-        ContainsClassFields = 1 << 23,
-        ContainsPossibleTopLevelAwait = 1 << 24,
-        ContainsLexicalSuper = 1 << 25,
-        ContainsUpdateExpressionForIdentifier = 1 << 26,
+        ContainsTypeScriptClassSyntax = 1<<12, // Decorators, Property Initializers, Parameter Property Initializers
+        ContainsLexicalThis = 1<<13,
+        ContainsRestOrSpread = 1<<14,
+        ContainsObjectRestOrSpread = 1<<15,
+        ContainsComputedPropertyName = 1<<16,
+        ContainsBlockScopedBinding = 1<<17,
+        ContainsBindingPattern = 1<<18,
+        ContainsYield = 1<<19,
+        ContainsAwait = 1<<20,
+        ContainsHoistedDeclarationOrCompletion = 1<<21,
+        ContainsDynamicImport = 1<<22,
+        ContainsClassFields = 1<<23,
+        ContainsPossibleTopLevelAwait = 1<<24,
+        ContainsLexicalSuper = 1<<25,
+        ContainsUpdateExpressionForIdentifier = 1<<26,
         // Please leave this as 1 << 29.
         // It is the maximum bit we can set before we outgrow the size of a v8 small integer (SMI) on an x86 system.
         // It is a good reminder of how much room we have left
-        HasComputedFlags = 1 << 29, // Transform flags have been computed.
+        HasComputedFlags = 1<<29, // Transform flags have been computed.
 
         // Assertions
         // - Bitmasks that are used to assert facts about the syntax of a BaseNode and its subtree.
@@ -1043,20 +1057,22 @@ namespace ts::types {
     };
 
     enum class OuterExpressionKinds {
-        Parentheses = 1 << 0,
-        TypeAssertions = 1 << 1,
-        NonNullAssertions = 1 << 2,
-        PartiallyEmittedExpressions = 1 << 3,
+        Parentheses = 1<<0,
+        TypeAssertions = 1<<1,
+        NonNullAssertions = 1<<2,
+        PartiallyEmittedExpressions = 1<<3,
 
         Assertions = TypeAssertions | NonNullAssertions,
         All = Parentheses | Assertions | PartiallyEmittedExpressions,
 
-        ExcludeJSDocTypeAssertion = 1 << 4,
+        ExcludeJSDocTypeAssertion = 1<<4,
     };
 }
 
-template <> struct fmt::formatter<ts::types::SyntaxKind> : formatter<std::string_view> {
-    template <typename FormatContext> auto format(ts::types::SyntaxKind p, FormatContext &ctx) {
+template<>
+struct fmt::formatter<ts::types::SyntaxKind>: formatter<std::string_view> {
+    template<typename FormatContext>
+    auto format(ts::types::SyntaxKind p, FormatContext &ctx) {
         return formatter<string_view>::format(magic_enum::enum_name(p), ctx);
     }
 };
@@ -1215,15 +1231,16 @@ namespace ts {
             if (pos != other.pos || end != other.end || hasTrailingComma != other.hasTrailingComma || isMissingList != other.isMissingList) return false;
             if (transformFlags != other.transformFlags) return false;
             if (list.size() != other.list.size()) return false;
-            for (int i = 0; i < list.size(); i++) {
+            for (int i = 0; i<list.size(); i++) {
                 if (list[i] != other.list[i]) return false;
             }
             return true;
         }
 
         vector<shared<Node>> slice(int start, int end = 0) {
-            return slice < shared<Node>>
-            (list, start, end);
+            if (!end) end = list.size();
+            return std::vector<shared<Node>>(list.begin() + start, list.begin() + end);
+//            return slice<shared<Node>>(list, start, end);
         }
     };
 
@@ -1574,10 +1591,10 @@ namespace ts {
         /*@internal*/ KindMask = 7,         // Mask to extract the kind of identifier from its flags.
 
         // Flags
-        ReservedInNestedScopes = 1 << 3,    // Reserve the generated name in nested scopes
-        Optimistic = 1 << 4,                // First instance won't use '_#' if there's no conflict
-        FileLevel = 1 << 5,                 // Use only the file identifiers list and not generated names to search for conflicts
-        AllowNameSubstitution = 1 << 6, // Used by `module.ts` to indicate generated nodes which can have substitutions performed upon them (as they were generated by an earlier transform phase)
+        ReservedInNestedScopes = 1<<3,    // Reserve the generated name in nested scopes
+        Optimistic = 1<<4,                // First instance won't use '_#' if there's no conflict
+        FileLevel = 1<<5,                 // Use only the file identifiers list and not generated names to search for conflicts
+        AllowNameSubstitution = 1<<6, // Used by `module.ts` to indicate generated nodes which can have substitutions performed upon them (as they were generated by an earlier transform phase)
     };
 
     struct Identifier: BrandKind<SyntaxKind::Identifier, PrimaryExpression> {
@@ -1596,19 +1613,19 @@ namespace ts {
     };
 
     enum class FlowFlags {
-        Unreachable = 1 << 0,  // Unreachable code
-        Start = 1 << 1,  // Start of flow graph
-        BranchLabel = 1 << 2,  // Non-looping junction
-        LoopLabel = 1 << 3,  // Looping junction
-        Assignment = 1 << 4,  // Assignment
-        TrueCondition = 1 << 5,  // Condition known to be true
-        FalseCondition = 1 << 6,  // Condition known to be false
-        SwitchClause = 1 << 7,  // Switch statement clause
-        ArrayMutation = 1 << 8,  // Potential array mutation
-        Call = 1 << 9,  // Potential assertion call
-        ReduceLabel = 1 << 10, // Temporarily reduce antecedents of label
-        Referenced = 1 << 11, // Referenced as antecedent once
-        Shared = 1 << 12, // Referenced as antecedent more than once
+        Unreachable = 1<<0,  // Unreachable code
+        Start = 1<<1,  // Start of flow graph
+        BranchLabel = 1<<2,  // Non-looping junction
+        LoopLabel = 1<<3,  // Looping junction
+        Assignment = 1<<4,  // Assignment
+        TrueCondition = 1<<5,  // Condition known to be true
+        FalseCondition = 1<<6,  // Condition known to be false
+        SwitchClause = 1<<7,  // Switch statement clause
+        ArrayMutation = 1<<8,  // Potential array mutation
+        Call = 1<<9,  // Potential assertion call
+        ReduceLabel = 1<<10, // Temporarily reduce antecedents of label
+        Referenced = 1<<11, // Referenced as antecedent once
+        Shared = 1<<12, // Referenced as antecedent more than once
 
         Label = BranchLabel | LoopLabel,
         Condition = TrueCondition | FalseCondition,
@@ -2239,7 +2256,6 @@ namespace ts {
     struct JSDocOptionalType: BrandKind<SyntaxKind::JSDocOptionalType, TypeNode> {
         Property(type, TypeNode);
     };
-
 
 #define NamedImportsOrExports NamedImports, NamedExports
 #define ImportOrExportSpecifier ImportSpecifier, ExportSpecifier

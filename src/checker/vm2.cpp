@@ -1,6 +1,7 @@
 #include "./vm2.h"
 #include "../hash.h"
 #include "./check2.h"
+#include "./vm2_utils.h"
 #include <ranges>
 
 namespace ts::vm2 {
@@ -19,23 +20,23 @@ namespace ts::vm2 {
     }
 
     // TypeRef is an owning reference
-    inline TypeRef *useAsRef(Type *type) {
+    TypeRef *useAsRef(Type *type) {
         type->users++;
         auto t = poolRef.newElement();
         t->type = type;
         return t;
     }
 
-    inline Type *allocate(TypeKind kind) {
+    Type *allocate(TypeKind kind) {
         auto type = pool.newElement();
         type->kind = kind;
         type->users = 0;
-//        debug("allocate {}", stringify(type));
+        debug("allocate {}", stringify(type));
         return type;
     }
 
     void gc(TypeRef *typeRef) {
-        if (gcQueueRefIdx>=maxGcSize) {
+        if (gcQueueRefIdx >= maxGcSize) {
             //garbage collect now
             gcRefFlush();
         }
@@ -43,16 +44,16 @@ namespace ts::vm2 {
     }
 
     inline void gcWithoutChildren(Type *type) {
-        if (gcQueueIdx>=maxGcSize) {
+        if (gcQueueIdx >= maxGcSize) {
             //garbage collect now
             gcFlush();
         }
-//        debug("gc ({}) {}", type->users, stringify(type));
-        if (type->users > 0) return;
+        debug("gc ({}) {}", type->users, stringify(type));
         gcQueue[gcQueueIdx++] = type;
     }
 
     void gc(Type *type) {
+        if (type->users > 0) return;
         gcWithoutChildren(type);
 
         switch (type->kind) {
@@ -85,7 +86,7 @@ namespace ts::vm2 {
     }
 
     void gcRefFlush() {
-        for (unsigned int i = 0; i<gcQueueRefIdx; i++) {
+        for (unsigned int i = 0; i < gcQueueRefIdx; i++) {
             auto type = gcQueueRef[i];
             poolRef.deleteElement(type);
         }
@@ -93,7 +94,7 @@ namespace ts::vm2 {
     }
 
     void gcFlush() {
-        for (unsigned int i = 0; i<gcQueueIdx; i++) {
+        for (unsigned int i = 0; i < gcQueueIdx; i++) {
             auto type = gcQueue[i];
             if (type->users) continue;
             pool.deleteElement(type);
@@ -124,12 +125,15 @@ namespace ts::vm2 {
     }
 
     void gcStack() {
-        for (unsigned int i = 0; i<sp; i++) {
+        for (unsigned int i = 0; i < sp; i++) {
             gc(stack[i]);
         }
         sp = 0;
     }
 
+    /**
+     * Unuse all cached types of subroutines and make them available for GC.
+     */
     void clear(shared<ts::vm2::Module> &module) {
         for (auto &&subroutine: module->subroutines) {
             if (subroutine.result) drop(subroutine.result);
@@ -230,6 +234,15 @@ namespace ts::vm2 {
         return type->flag & TypeFlag::True;
     }
 
+    unsigned int refLength(TypeRef *current) {
+        unsigned int i = 0;
+        while (current) {
+            i++;
+            current = current->next;
+        }
+        return i;
+    }
+
     /**
      * Query a container type and return the result.
      *
@@ -240,16 +253,16 @@ namespace ts::vm2 {
      * e.g. [string, number][0] => string
      * e.g. [string, number][number] => string | number
      */
+    inline uint64_t lengthHash = hash::const_hash("length");
+
     inline Type *indexAccess(Type *container, Type *index) {
         if (container->kind == TypeKind::Array) {
 //            if ((index.kind == TypeKind::literal && 'number' == typeof index.literal) || index.kind == TypeKind::number) return container.type;
 //            if (index.kind == TypeKind::literal && index.literal == 'length') return { kind: TypeKind::number };
         } else if (container->kind == TypeKind::Tuple) {
-            if (index->hash == hash::const_hash("length")) {
+            if (index->hash == lengthHash) {
                 auto t = allocate(TypeKind::Literal);
-//                t->setLiteral(TypeFlag::NumberLiteral, std::to_string(container->types.size()));
-//                auto t = make_shared<TypeLiteral>("", TypeLiteralType::Number);
-//                t->append(to<TypeTuple>(container)->types.size());
+                t->setDynamicLiteral(TypeFlag::NumberLiteral, std::to_string(refLength((TypeRef *) container->type)));
                 return t;
             }
 
@@ -340,82 +353,82 @@ namespace ts::vm2 {
     }
 
     void handleTemplateLiteral() {
-//        auto types = popFrame();
-//
-//        //short path for `{'asd'}`
-//        if (types.size() == 1 && types[0]->kind == TypeKind::Literal) {
-//            //we can not just change the TypeLiteral->type, we have to create a new one
-////                to<TypeLiteral>(types[0])->type = TypeLiteralType::String;
-//            auto t = types[0];
-//            auto res = make_shared<TypeLiteral>(t->literal, TypeLiteralType::String);
-//            if (t->dynamicString) {
-//                res->dynamicString = new string(*t->dynamicString);
-//            }
-//            push(res);
-//            return;
-//        }
-//
-//        auto result = make_shared<TypeUnion>();
-//        CartesianProduct cartesian;
-//        for (auto &&type: types) {
-//            cartesian.add(type);
-//        }
-//        auto product = cartesian.calculate();
-//
-//        outer:
-//        for (auto &&combination: product) {
-//            auto templateType = make_shared<TypeTemplateLiteral>();
-//            bool hasPlaceholder = false;
-////                let lastLiteral: { kind: TypeKind::literal, literal: string, parent?: Type } | undefined = undefined;
-//            sharedOpt<TypeLiteral> lastLiteral;
-//
-//            //merge a combination of types, e.g. [string, 'abc', '3'] as template literal => `${string}abc3`.
-//            for (auto &&item: combination) {
-//                if (item->kind == TypeKind::Never) {
-//                    //template literals that contain a never like `prefix.${never}` are completely ignored
-//                    goto outer;
-//                }
-//
-//                if (item->kind == TypeKind::Literal) {
-//                    if (lastLiteral) {
-//                        lastLiteral->append(to<TypeLiteral>(item)->text());
-//                    } else {
-//                        lastLiteral = make_shared<TypeLiteral>("", TypeLiteralType::String);
-//                        lastLiteral->append(to<TypeLiteral>(item)->text());
-//                        templateType->types.push_back(lastLiteral);
-//                    }
-//                } else {
-//                    hasPlaceholder = true;
-//                    lastLiteral = nullptr;
-////                        item.parent = template;
-//                    templateType->types.push_back(item);
-//                }
-//            }
-//
-//            if (hasPlaceholder) {
-//                if (templateType->types.size() == 1 && templateType->types[0]->kind == TypeKind::String) {
-////                        templateType->types[0].parent = result;
-//                    result->types.push_back(templateType->types[0]);
-//                } else {
-////                        templateType->parent = result;
-//                    result->types.push_back(templateType);
-//                }
-//            } else if (lastLiteral) {
-////                    lastLiteral.parent = result;
-//                result->types.push_back(lastLiteral);
-//            }
-//        }
-//
+        auto types = popFrame();
+
+        //short path for `{'asd'}`
+        if (types.size() == 1 && types[0]->kind == TypeKind::Literal) {
+            if (types[0]->users == 0 && types[0]->flag & TypeFlag::StringLiteral) {
+                //reuse it
+                push(types[0]);
+            } else {
+                //create new one
+                auto res = allocate(TypeKind::Literal);
+                res->fromLiteral(types[0]);
+                res->flag = TypeFlag::StringLiteral; //convert number to string literal if necessary
+                push(res);
+            }
+            return;
+        }
+
+        CartesianProduct cartesian;
+        for (auto &&type: types) {
+            cartesian.add(type);
+        }
+        auto product = cartesian.calculate();
+
+        auto result = allocate(TypeKind::Union);
+        for (auto &&combination: product) {
+            auto templateType = allocate(TypeKind::TemplateLiteral);
+            bool hasPlaceholder = false;
+//                let lastLiteral: { kind: TypeKind::literal, literal: string, parent?: Type } | undefined = undefined;
+            Type *lastLiteral = nullptr;
+
+            //merge a combination of types, e.g. [string, 'abc', '3'] as template literal => `${string}abc3`.
+            for (auto &&item: combination) {
+                if (item->kind == TypeKind::Never) {
+                    //template literals that contain a never like `prefix.${never}` are completely ignored
+                    goto next;
+                }
+
+                if (item->kind == TypeKind::Literal) {
+                    if (lastLiteral) {
+                        lastLiteral->appendLiteral(item);
+                    } else {
+                        lastLiteral = allocate(TypeKind::Literal);
+                        lastLiteral->setLiteral(TypeFlag::StringLiteral, item->text);
+                        templateType->appendChild(useAsRef(lastLiteral));
+                    }
+                } else {
+                    hasPlaceholder = true;
+                    lastLiteral = nullptr;
+                    templateType->appendChild(useAsRef(item));
+                }
+            }
+
+            if (hasPlaceholder) {
+                // `${string}` -> string
+                if (templateType->singleChild() && templateType->child()->kind == TypeKind::String) {
+                    result->appendChild(useAsRef(templateType->child()));
+                    gc(templateType);
+                } else {
+                    result->appendChild(useAsRef(templateType));
+                }
+            } else if (lastLiteral) {
+                result->appendChild(useAsRef(lastLiteral));
+            }
+            next: void;
+        }
+
 //        auto t = vm::unboxUnion(result);
-////        if (t.kind == TypeKind::union) for (const member of t.types) member.parent = t;
-////        debug("handleTemplateLiteral: {}", stringify(t));
-//        push(t);
+//        if (t.kind == TypeKind::union) for (const member of t.types) member.parent = t;
+//        debug("handleTemplateLiteral: {}", stringify(t));
+        push(result);
     }
 
     inline void mapFrameToChildren(Type *container) {
         auto i = frame->initialSp + frame->variables;
         auto current = (TypeRef *) (container->type = useAsRef(stack[i++]));
-        for (; i<sp; i++) {
+        for (; i < sp; i++) {
             current->next = useAsRef(stack[i]);
             current = current->next;
         }
@@ -483,7 +496,7 @@ namespace ts::vm2 {
                     //the current frame could not only have the return value, but variables and other stuff,
                     //which we don't want. So if size is bigger than 1, we move last stack entry to first
                     // | [T] [T] [R] |
-                    if (frame->size()>1) {
+                    if (frame->size() > 1) {
                         stack[frame->initialSp] = stack[sp - 1];
                     }
                     sp = frame->initialSp + 1;
@@ -562,7 +575,7 @@ namespace ts::vm2 {
                             push(types[0]);
                         } else {
                             auto result = allocate(TypeKind::Union);
-                            TypeRef *current = (TypeRef *)(result->type = useAsRef(types[0]));
+                            TypeRef *current = (TypeRef *) (result->type = useAsRef(types[0]));
                             for_each(++types.begin(), types.end(), [&current](auto v) {
                                 current->next = useAsRef(v);
                                 current = current->next;
@@ -592,18 +605,14 @@ namespace ts::vm2 {
                     const auto varIndex = activeSubroutine->parseUint16();
                     if (frameOffset == 0) {
                         push(stack[frame->initialSp + varIndex]);
-                    } else if (frameOffset == 1) {
-                        push(stack[frames.at(frames.i - 2)->initialSp + varIndex]);
-                    } else if (frameOffset == 2) {
-                        push(stack[frames.at(frames.i - 2)->initialSp + varIndex]);
                     } else {
-                        throw std::runtime_error("frame offset not implement");
+                        push(stack[frames.at(frames.i - frameOffset)->initialSp + varIndex]);
                     }
 //                            debug("load var {}/{}", frameOffset, varIndex);
                     break;
                 }
                 case OP::TypeArgument: {
-                    if (frame->size()<=activeSubroutine->typeArguments) {
+                    if (frame->size() <= activeSubroutine->typeArguments) {
                         auto unknown = allocate(TypeKind::Unknown);
                         unknown->flag |= TypeFlag::UnprovidedArgument;
                         push(unknown);
@@ -613,11 +622,8 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::TypeArgumentDefault: {
-                    auto t = stack[frame->initialSp + activeSubroutine->typeArguments - 1];
-                    //t is always set because TypeArgument ensures that
-                    if (t->flag & TypeFlag::UnprovidedArgument) {
-                        gc(stack[sp]);
-                        sp--; //remove unknown type from stack
+                    if (frame->size() <= activeSubroutine->typeArguments) {
+                        //load default value
                         const auto address = activeSubroutine->parseUint32();
                         if (call(address, 0)) { //the result is pushed on the stack
                             goto start;
@@ -625,7 +631,23 @@ namespace ts::vm2 {
                     } else {
                         activeSubroutine->ip += 4; //jump over address
                     }
+                    activeSubroutine->typeArguments++;
+                    frame->variables++;
                     break;
+
+//                    auto t = stack[frame->initialSp + activeSubroutine->typeArguments - 1];
+//                    //t is always set because TypeArgument ensures that
+//                    if (t->flag & TypeFlag::UnprovidedArgument) {
+//                        //gc(stack[sp - 1]);
+//                        sp--; //remove unknown type from stack
+//                        const auto address = activeSubroutine->parseUint32();
+//                        if (call(address, 0)) { //the result is pushed on the stack
+//                            goto start;
+//                        }
+//                    } else {
+//                        activeSubroutine->ip += 4; //jump over address
+//                    }
+//                    break;
                 }
                 case OP::IndexAccess: {
                     auto right = pop();
@@ -718,13 +740,15 @@ namespace ts::vm2 {
                     }
 
                     item->type = useAsRef(types[0]);
-                    auto current = (TypeRef *) item->type;
-                    for_each(++types.begin(), types.end(), [&current](auto v) {
-                        current->next = useAsRef(v);
-                        current = current->next;
-                    });
-                    current->next = nullptr;
-                    stack[sp++] = item;
+                    if (types.size() > 1) {
+                        auto current = (TypeRef *) item->type;
+                        for_each(++types.begin(), types.end(), [&current](auto v) {
+                            current->next = useAsRef(v);
+                            current = current->next;
+                        });
+                        current->next = nullptr;
+                    }
+                    push(item);
                     break;
                 }
                 case OP::Union: {
@@ -750,31 +774,44 @@ namespace ts::vm2 {
                     } else {
                         item->type = useAsRef(type);
                     }
-                    auto current = (TypeRef *) item->type;
+                    if (types.size() > 1) {
+                        auto current = (TypeRef *) item->type;
+                        //set current to the end of the list
+                        while (current->next) current = current->next;
 
-                    //set current to the end of the list
-                    while (current->next) current = current->next;
-
-                    for_each(++types.begin(), types.end(), [&current](auto v) {
-                        if (v->kind == TypeKind::Union) {
-                            //if type has no owner, we can steal its children
-                            if (v->users == 0) {
-                                current->next = (TypeRef *) v->type;
-                                v->type = nullptr;
-                                //since we stole its children, we want it to GC but without its children. their 'users' count belongs now to us.
-                                gcWithoutChildren(v);
-                                //set current to the end of the list
-                                while (current->next) current = current->next;
+                        for_each(++types.begin(), types.end(), [&current](auto v) {
+                            if (v->kind == TypeKind::Union) {
+                                //if type has no owner, we can steal its children
+                                if (v->users == 0) {
+                                    current->next = (TypeRef *) v->type;
+                                    v->type = nullptr;
+                                    //since we stole its children, we want it to GC but without its children. their 'users' count belongs now to us.
+                                    gcWithoutChildren(v);
+                                    //set current to the end of the list
+                                    while (current->next) current = current->next;
+                                } else {
+                                    throw std::runtime_error("Can not merge used union");
+                                }
                             } else {
-                                throw std::runtime_error("Can not merge used union");
+                                current->next = useAsRef(v);
+                                current = current->next;
                             }
-                        } else {
-                            current->next = useAsRef(v);
-                            current = current->next;
-                        }
-                    });
-                    current->next = nullptr;
+                        });
+                        current->next = nullptr;
+                    }
                     push(item);
+                    break;
+                }
+                case OP::Array: {
+                    auto item = allocate(TypeKind::Array);
+                    item->type = pop();
+                    stack[sp++] = item;
+                    break;
+                }
+                case OP::Rest: {
+                    auto item = allocate(TypeKind::Rest);
+                    item->type = pop();
+                    stack[sp++] = item;
                     break;
                 }
                 case OP::TupleMember: {
@@ -784,21 +821,93 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Tuple: {
-                    auto item = allocate(TypeKind::Tuple);
                     auto types = popFrame();
                     if (types.empty()) {
+                        auto item = allocate(TypeKind::Tuple);
                         item->type = nullptr;
                         push(item);
                         break;
                     }
 
-                    item->type = useAsRef(types[0]);
-                    auto current = (TypeRef *) item->type;
-                    for_each(++types.begin(), types.end(), [&current](auto v) {
-                        current->next = useAsRef(v);
-                        current = current->next;
-                    });
-                    current->next = nullptr;
+                    Type *item;
+                    auto first = types[0];
+                    auto firstType = (Type *) first->type;
+                    if (firstType->kind == TypeKind::Rest) {
+                        //[...T, x]
+                        Type *T = (Type *) firstType->type;
+                        //if type has no owner, we can just use it as the new type
+                        if (T->users == 0) {
+                            item = T;
+                        } else {
+                            item = allocate(TypeKind::Tuple);
+                            if (T->kind == TypeKind::Array) {
+                                //type T = number[];
+                                //type New = [...T, x]; => [...number[], x];
+                                throw std::runtime_error("assigning array rest in tuple not supported");
+                            } else if (T->kind == TypeKind::Tuple) {
+                                //type T = [y, z];
+                                //type New = [...T, x]; => [y, z, x];
+                                TypeRef *newCurrent = nullptr;
+                                auto oldCurrent = (TypeRef *) T->type;
+                                while (oldCurrent) {
+                                    //we reuse the tuple member and increase its `users`.
+                                    auto tupleMember = useAsRef(oldCurrent->type);
+
+                                    if (newCurrent) {
+                                        newCurrent->next = tupleMember;
+                                    } else {
+                                        newCurrent = (TypeRef *) (item->type = tupleMember);
+                                    }
+
+                                    oldCurrent = oldCurrent->next;
+                                }
+                            } else {
+                                debug("Error: [...T] where T is not an array/tuple.");
+                            }
+                        }
+                    } else {
+                        item = allocate(TypeKind::Tuple);
+                        item->type = useAsRef(types[0]);
+                    }
+                    if (types.size() > 1) {
+                        //note item->type could still be null, when T is empty for [...T, 0]
+                        auto current = (TypeRef *) item->type;
+                        //set current to the end of the list
+                        while (current && current->next) current = current->next;
+
+                        for_each(++types.begin(), types.end(), [&current, &item](auto tupleMember) {
+                            auto type = (Type *) tupleMember->type;
+                            if (type->kind == TypeKind::Rest) {
+                                //[x, ...T]
+                                Type *T = (Type *) type->type;
+                                if (T->kind == TypeKind::Array) {
+                                    //type T = number[];
+                                    //type New = [...T, x]; => [...number[], x];
+                                    throw std::runtime_error("assigning array rest in tuple not supported");
+                                } else if (T->kind == TypeKind::Tuple) {
+                                    //type T = [y, z];
+                                    //type New = [...T, x]; => [y, z, x];
+                                    auto oldCurrent = (TypeRef *) T->type;
+                                    while (oldCurrent) {
+                                        //we reuse the tuple member and increase its `users`.
+                                        auto tupleMember = useAsRef(oldCurrent->type);
+                                        current->next = tupleMember;
+
+                                        oldCurrent = oldCurrent->next;
+                                    }
+                                } else {
+                                    debug("Error: [...T] where T is not an array/tuple.");
+                                }
+                            } else {
+                                if (current) {
+                                    current->next = useAsRef(tupleMember);
+                                } else {
+                                    current = (TypeRef *) (item->type = useAsRef(tupleMember));
+                                }
+                            }
+                            current = current->next;
+                        });
+                    }
                     push(item);
                     break;
                 }

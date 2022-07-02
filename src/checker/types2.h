@@ -15,6 +15,8 @@ namespace ts::vm2 {
         Unknown,
         Never,
         Any,
+        Null,
+        Undefined,
         String,
         Number,
         Boolean,
@@ -23,20 +25,21 @@ namespace ts::vm2 {
         ObjectLiteral,
         Union,
         Array,
+        Rest,
         Tuple,
         TupleMember,
         TemplateLiteral,
     };
 
     enum TypeFlag: unsigned int {
-        Readonly = 1<<0,
-        Optional = 1<<1,
-        StringLiteral = 1<<2,
-        NumberLiteral = 1<<3,
-        BooleanLiteral = 1<<4,
-        True = 1<<5,
-        False = 1<<6,
-        UnprovidedArgument = 1<<7,
+        Readonly = 1 << 0,
+        Optional = 1 << 1,
+        StringLiteral = 1 << 2,
+        NumberLiteral = 1 << 3,
+        BooleanLiteral = 1 << 4,
+        True = 1 << 5,
+        False = 1 << 6,
+        UnprovidedArgument = 1 << 7,
     };
 
     struct Type;
@@ -74,7 +77,7 @@ namespace ts::vm2 {
 //            if (extended) {
 //                extended->push_back(type);
 //            } else {
-            if (p>defaultTypesSize) {
+            if (p > defaultTypesSize) {
 //                    createExtended(300);
 //                    extended = new std::vector<Type *>(32);
 //                    extended->insert(extended->begin(), list.begin(), list.end());
@@ -106,7 +109,7 @@ namespace ts::vm2 {
 
     struct TypeRef {
         Type *type;
-        TypeRef *next;
+        TypeRef *next = nullptr;
     };
 
     struct Type {
@@ -117,12 +120,85 @@ namespace ts::vm2 {
         unsigned int flag;
         unsigned int users;
         uint64_t hash;
-        void *type; //either Type* or TypeRef* depending on kind
+        void *type; //either Type* or TypeRef* or string* depending on kind
 
-        void setLiteral(TypeFlag flag, std::string_view value) {
-            text = value;
+        ~Type() {
+            if (kind == TypeKind::Literal && type) delete (string *) type;
+        };
+
+        void fromLiteral(Type *literal) {
+            flag = literal->flag;
+            hash = literal->hash;
+            if (literal->type) {
+                //dynamic value, so copy it
+                setDynamicText(literal->text);
+            } else {
+                //static value, safe reuse of string_view's reference
+                text = literal->text;
+            }
+        }
+
+        /**
+         * Returns true of there is only one child
+         */
+        bool singleChild() {
+            return type && ((TypeRef *) type)->next == nullptr;
+        }
+        /**
+         * Returns true of there is only one child
+         */
+        Type *child() {
+            return type ? ((TypeRef *) type)->type : nullptr;
+        }
+
+        void appendLiteral(Type *literal) {
+            appendText(literal->text);
+        }
+
+        void appendText(string_view value) {
+            if (!type) {
+                setDynamicText(value);
+            } else {
+                ((string *) type)->append(value);
+                text = *(string *) type;
+                hash = hash::runtime_hash(text);
+            }
+        }
+
+        void setDynamicText(string_view value) {
+            if (!type) {
+                type = new string(value);
+            } else {
+                ((string *) type)->clear();
+                ((string *) type)->append(value);
+            }
+            text = *(string *) type;
+            hash = hash::runtime_hash(text);
+        }
+
+        void setDynamicLiteral(TypeFlag flag, string_view value) {
+            setDynamicText(value);
+            setLiteral(flag, *(string *) type);
+        }
+
+        Type *setFlag(TypeFlag flag) {
             this->flag |= flag;
-            hash = hash::runtime_hash(value);
+            return this;
+        }
+
+        Type *setLiteral(TypeFlag flag, string_view value) {
+            this->flag |= flag;
+            text = value;
+            hash = hash::runtime_hash(text);
+            return this;
+        }
+
+        void appendChild(TypeRef *ref) {
+            if (!type) {
+                type = ref;
+            } else {
+                ((TypeRef *) type)->next = ref;
+            }
         }
 
         void readStorage(const string_view &bin, uint32_t offset) {
@@ -161,13 +237,18 @@ namespace ts::vm2 {
             }
             case TypeKind::PropertySignature: {
                 r += string(type->text) + ": ";
-                stringifyType((Type *)type->type, r);
+                stringifyType((Type *) type->type, r);
                 break;
             }
             case TypeKind::ObjectLiteral: {
                 r += "{";
-                auto current = (TypeRef *)type->type;
+                unsigned int i = 0;
+                auto current = (TypeRef *) type->type;
                 while (current) {
+                    if (i++ > 20) {
+                        r += "...";
+                        break;
+                    }
                     stringifyType(current->type, r);
                     current = current->next;
                     r + "; ";
@@ -181,13 +262,28 @@ namespace ts::vm2 {
                     if (type->flag & TypeFlag::Optional) r += "?";
                     r += ": ";
                 }
-                stringifyType((Type *)type->type, r);
+                if (!type->type) {
+                    r += "unknown";
+                } else {
+                    stringifyType((Type *) type->type, r);
+                }
+                break;
+            }
+            case TypeKind::Array: {
+                r += "<";
+                stringifyType((Type *) type->type, r);
+                r += ">";
                 break;
             }
             case TypeKind::Tuple: {
                 r += "[";
-                auto current = (TypeRef *)type->type;
+                auto current = (TypeRef *) type->type;
+                unsigned int i = 0;
                 while (current) {
+                    if (i++ > 20) {
+                        r += "...";
+                        break;
+                    }
                     stringifyType(current->type, r);
                     current = current->next;
                     if (current) r += ", ";
@@ -196,17 +292,40 @@ namespace ts::vm2 {
                 break;
             }
             case TypeKind::Union: {
-                auto current = (TypeRef *)type->type;
+                auto current = (TypeRef *) type->type;
+                unsigned int i = 0;
                 while (current) {
+                    if (i++ > 20) {
+                        r += "...";
+                        break;
+                    }
                     stringifyType(current->type, r);
                     current = current->next;
                     if (current) r += " | ";
                 }
                 break;
             }
+            case TypeKind::TemplateLiteral: {
+                r += "`";
+                auto current = (TypeRef *) type->type;
+                while (current) {
+                    if (current->type->kind != TypeKind::Literal) r += "${";
+                    if (current->type->flag & TypeFlag::StringLiteral) {
+                        r += current->type->text;
+                    } else {
+                        stringifyType(current->type, r);
+                    }
+                    if (current->type->kind != TypeKind::Literal) r += "}";
+                    current = current->next;
+                }
+                r += "`";
+                break;
+            }
             case TypeKind::Literal: {
                 if (type->flag & TypeFlag::StringLiteral) {
-                    r += string("\"").append(type->text).append("\"");
+                    r += "\"";
+                    r += type->text;
+                    r += "\"";
                 } else if (type->flag & TypeFlag::NumberLiteral) {
                     r += type->text;
                 } else if (type->flag & TypeFlag::True) {
@@ -286,7 +405,7 @@ namespace ts::vm2 {
 }
 
 template<>
-struct fmt::formatter<ts::vm2::TypeKind>: formatter<std::string_view> {
+struct fmt::formatter<ts::vm2::TypeKind>: formatter<string_view> {
     template<typename FormatContext>
     auto format(ts::vm2::TypeKind p, FormatContext &ctx) {
         return formatter<string_view>::format(magic_enum::enum_name(p), ctx);
