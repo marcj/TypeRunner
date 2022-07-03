@@ -150,7 +150,7 @@ const var1: a<string> = false;
 TEST(vm2, gcUnion) {
     ts::checker::Program program;
     program.pushOp(OP::Frame);
-    for (auto i = 0; i < 10; i++) {
+    for (auto i = 0; i<10; i++) {
         program.pushOp(OP::StringLiteral);
         program.pushStorage("a" + to_string(i));
     }
@@ -167,7 +167,7 @@ TEST(vm2, gcUnion) {
 TEST(vm2, gcTuple) {
     ts::checker::Program program;
     program.pushOp(OP::Frame);
-    for (auto i = 0; i < 10; i++) {
+    for (auto i = 0; i<10; i++) {
         program.pushOp(OP::String);
         program.pushOp(OP::TupleMember);
     }
@@ -184,7 +184,7 @@ TEST(vm2, gcTuple) {
 TEST(vm2, gcObject) {
     ts::checker::Program program;
     program.pushOp(OP::Frame);
-    for (auto i = 0; i < 10; i++) {
+    for (auto i = 0; i<10; i++) {
         program.pushOp(OP::StringLiteral);
         program.pushStorage("a");
         program.pushOp(OP::StringLiteral);
@@ -238,6 +238,17 @@ const var2: L = "10";
     ts::testBench(code, 1);
 }
 
+TEST(vm2, vm2TemplateLiteralSizeGc) {
+    string code = R"(
+type A = [1];
+type L = `${A['length']}`;
+const var1: L = "1";
+)";
+    ts::test(code, 0);
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, 4); //A|var1 (literal+tupleMember+tuple) + L (literal)
+}
+
 TEST(vm2, vm2TupleMerge) {
     string code = R"(
 type A = [1, 2];
@@ -248,8 +259,7 @@ const var3: A = [1, 2];
 )";
     test(code, 1);
     debug("active {}", ts::vm2::pool.active);
-
-    ts::testBench(code, 1);
+    ts::test(code, 1);
 }
 
 TEST(vm2, vm2Tuple2) {
@@ -259,7 +269,7 @@ const var1: A = [1, 2];
 )";
     test(code, 0);
     ts::vm2::gcFlush();
-    EXPECT_EQ(ts::vm2::pool.active, 1 + (2 * 2));
+    EXPECT_EQ(ts::vm2::pool.active, 1 + (2 + 2));
 }
 
 TEST(vm2, vm2Tuple3) {
@@ -268,9 +278,51 @@ type T = [1];
 type A = [...T, 2];
 const var1: A = [1, 2];
 )";
+    auto module = test(code, 0);
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, (1 + 2) + (1 + 2)); //[1], [1, 2], where "1" in second tuple is shared with first "1" in [1]
+}
+
+TEST(vm2, vm2Tuple30) {
+    string code = R"(
+type T = 1;
+type A = [T, 2];
+const var1: A = [1, 2];
+)";
+    auto module = test(code, 0);
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, 1 + (1 + 2 + 2)); //1, [1, 2]
+}
+
+TEST(vm2, vm2Tuple31) {
+    string code = R"(
+type T = [1];
+type A<B> = [...B, 2];
+const var1: A<T> = [1, 2];
+)";
     test(code, 0);
     ts::vm2::gcFlush();
-    EXPECT_EQ(ts::vm2::pool.active, (1 + 2) + (1 + (2 * 2)));
+    EXPECT_EQ(ts::vm2::pool.active, (1 + 2) + (1 + 2)); //[1], [1, 2], where "1" in second tuple is shared with first "1" in [1]
+}
+
+TEST(vm2, vm2Tuple32) {
+    string code = R"(
+type A<B> = [...B, 2];
+const var1: A<[1]> = [1, 2];
+)";
+    test(code, 0);
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, (1 + 2 + 2)); //[1, 2]
+}
+
+TEST(vm2, vm2Tuple33) {
+    string code = R"(
+type A<B> = [...B, 2];
+const var1: A<[]> = [2];
+)";
+    test(code, 0);
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, (1 + 2)); // [2]
 }
 
 TEST(vm2, vm2Fn1) {
@@ -305,6 +357,86 @@ const var1: F = 'abc';
     EXPECT_EQ(ts::vm2::pool.active, 2);
     ts::vm2::gcFlush();
     EXPECT_EQ(ts::vm2::pool.active, 1);
+}
+
+TEST(vm2, vm2Fn4) {
+    string code = R"(
+type F1 = [0];
+const var1: F1 = [0];
+)";
+    test(code, 0);
+    ts::vm2::gcStackAndFlush();
+    EXPECT_EQ(ts::vm2::pool.active, 3); //[0]
+}
+
+TEST(vm2, vm2Fn4_1) {
+    string code = R"(
+type F1<T> = [0];
+const var1: F1<false> = [0];
+)";
+    test(code, 0);
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, 3); //[0]
+}
+
+TEST(vm2, vm2Fn4_2) {
+    string code = R"(
+type F1<T> = [...T, 0];
+const var1: F1<[]> = [0];
+)";
+    test(code, 0);
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, 3); //[0]
+}
+
+TEST(vm2, vm2Fn5) {
+    //todo: make sure that temporary parameter are not GC inside the callee.
+    // currently `if (T->users == 1) {` is not true since T gets GC in ::Extends before [...T, 0] is reached
+    // the idea is to flag parameter [] as input, so that it doesn't get GC. We can't increase 'users' since that would mean
+    // we have no indicator whether it can be simply stolen in [...T].
+    // question is when is <[]> GC? => always the stack that creates the objects should clear it. So when a Call is done, a Return cleans it up for it after switching to the caller.
+    string code = R"(
+type F1<T> = T extends any ? [...T, 0] : never;
+const var1: F1<[]> = [0];
+)";
+    test(code, 0);
+    ts::vm2::gcFlush();
+    EXPECT_EQ(ts::vm2::pool.active, 3); //[0]
+}
+
+TEST(vm2, vm2Fn7) {
+    string code = R"(
+type F1<T> = [...T, 0];
+type T = [];
+const var1: F1<T> = [0];
+)";
+    test(code, 0);
+    ts::vm2::gcFlush();
+    //a new tuple is generated, but the same amount of active elements is active
+    EXPECT_EQ(ts::vm2::pool.active, 1 + 3); //[] + [0]
+}
+
+TEST(vm2, vm2Complex1) {
+    //todo: crashes with BAD_ACCESS. lag wohl daran, dass nicht alles zurückgesetzt wurde
+    string code = R"(
+type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>;
+const var1: StringToNum<'999', []> = 999;
+//const var2: StringToNum<'999'> = 1002;
+)";
+    //todo: fix reuse of A. We need to mark the argument with a flag though, so we know we can for sure steal its ref and just append it.
+    // Should then be much faster than we currently see.
+    test(code, 0);
+//    testBench(code, 0, 10);
+//    testBench(code, 0, 1);
+//    debug("active {}", ts::vm2::pool.active);
+//    ts::vm2::gcFlush();
+//    debug("active gc {}", ts::vm2::pool.active);
+//    EXPECT_EQ(ts::vm2::pool.active, 1);
+
+//    ts::bench("first", 10, [&] {
+//        module->clear();
+//        run(module);
+//    });
 }
 
 TEST(vm2, vm2Cartesian) {
@@ -342,30 +474,11 @@ TEST(vm2, vm2Cartesian) {
     }
 }
 
-TEST(vm2, vm2Complex1) {
-    //todo: this breaks when T is 4, also memory usage is way too big
-    string code = R"(
-type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>;
-const var1: StringToNum<'1', []> = 1;
-//const var2: StringToNum<'999'> = 1002;
-)";
-    test(code, 0);
-    debug("active {}", ts::vm2::pool.active);
-    ts::vm2::gcFlush();
-    debug("active gc {}", ts::vm2::pool.active);
-//    EXPECT_EQ(ts::vm2::pool.active, (1 + 2) + (1 + (2 * 2)));
-
-//    ts::bench("first", 1000, [&] {
-//        module->clear();
-//        run(module);
-//    });
-}
-
 TEST(vm2, bigUnion) {
     ts::checker::Program program;
 
     program.pushOp(OP::Frame);
-    for (auto i = 0; i < 300; i++) {
+    for (auto i = 0; i<300; i++) {
         program.pushOp(OP::Frame);
         program.pushOp(OP::StringLiteral);
         program.pushStorage((new string("foo"))->append(to_string(i)));
@@ -379,7 +492,7 @@ TEST(vm2, bigUnion) {
 
     program.pushOp(OP::Frame);
     program.pushOp(OP::Frame);
-    for (auto i = 0; i < 300; i++) {
+    for (auto i = 0; i<300; i++) {
         program.pushOp(OP::StringLiteral);
         program.pushStorage((new string("foo"))->append(to_string(i)));
     }

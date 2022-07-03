@@ -434,6 +434,15 @@ namespace ts::checker {
                     }
                     break;
                 }
+                case types::SyntaxKind::AnyKeyword:
+                    program.pushOp(OP::Any, node);
+                    break;
+                case types::SyntaxKind::NullKeyword:
+                    program.pushOp(OP::Null, node);
+                    break;
+                case types::SyntaxKind::UndefinedKeyword:
+                    program.pushOp(OP::Undefined, node);
+                    break;
                 case types::SyntaxKind::NeverKeyword:
                     program.pushOp(OP::Never, node);
                     break;

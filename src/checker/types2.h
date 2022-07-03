@@ -40,6 +40,7 @@ namespace ts::vm2 {
         True = 1 << 5,
         False = 1 << 6,
         UnprovidedArgument = 1 << 7,
+        NoTemporary = 1 << 7, //passed function parameters are marked as NoTemporary so that they don't get GC by the callee OPs.
     };
 
     struct Type;
@@ -128,13 +129,13 @@ namespace ts::vm2 {
 
         void fromLiteral(Type *literal) {
             flag = literal->flag;
-            hash = literal->hash;
             if (literal->type) {
                 //dynamic value, so copy it
                 setDynamicText(literal->text);
             } else {
                 //static value, safe reuse of string_view's reference
                 text = literal->text;
+                hash = literal->hash;
             }
         }
 
@@ -257,13 +258,14 @@ namespace ts::vm2 {
                 break;
             }
             case TypeKind::TupleMember: {
+                if (r.empty()) r += "TupleMember:";
                 if (!type->text.empty()) {
                     r += string(type->text);
                     if (type->flag & TypeFlag::Optional) r += "?";
                     r += ": ";
                 }
                 if (!type->type) {
-                    r += "unknown";
+                    r += "UnknownTupleMember";
                 } else {
                     stringifyType((Type *) type->type, r);
                 }
@@ -273,6 +275,11 @@ namespace ts::vm2 {
                 r += "<";
                 stringifyType((Type *) type->type, r);
                 r += ">";
+                break;
+            }
+            case TypeKind::Rest: {
+                r += "...";
+                stringifyType((Type *) type->type, r);
                 break;
             }
             case TypeKind::Tuple: {

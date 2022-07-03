@@ -28,6 +28,9 @@ namespace ts::vm2 {
      */
     bool extends(Type *left, Type *right) {
         switch (right->kind) {
+            case TypeKind::Any: {
+                return true;
+            }
             case TypeKind::TupleMember: {
                 if (left->kind != TypeKind::TupleMember) return false;
                 //todo: handle optional

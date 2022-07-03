@@ -169,8 +169,14 @@ namespace ts::vm2 {
 //        profiler.clear();
         pool = MemoryPool<Type, poolSize>();
         poolRef = MemoryPool<TypeRef, poolSize>();
+
         gcQueueIdx = 0;
+        gcQueueRefIdx = 0;
         sp = 0;
+        activeSubroutine = activeSubroutines.reset();
+        frame = frames.reset();
+        loops.reset();
+
         prepare(module);
         process();
     }

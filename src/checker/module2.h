@@ -179,7 +179,7 @@ namespace ts::vm2 {
                 }
                 case OP::Subroutine: {
                     unsigned int nameAddress = vm::readUint32(bin, i + 1);
-                    auto name = nameAddress ? vm::readStorage(bin, nameAddress) : "";
+                    auto name = nameAddress ? vm::readStorage(bin, nameAddress + 8) : "";
                     unsigned int address = vm::readUint32(bin, i + 5);
                     i += 8;
                     module->subroutines.push_back(ModuleSubroutine(name, address));

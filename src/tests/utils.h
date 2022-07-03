@@ -14,23 +14,22 @@ namespace ts {
         return bin;
     }
 
-    void test(string code, unsigned int expectedErrors = 0) {
+    shared<vm2::Module> test(string code, unsigned int expectedErrors = 0) {
         auto bin = compile(code);
         auto module = make_shared<vm2::Module>(bin, "app.ts", code);
         vm2::run(module);
         module->printErrors();
         EXPECT_EQ(expectedErrors, module->errors.size());
+        return module;
     }
 
-    void testBench(string code, unsigned int expectedErrors = 0) {
+    void testBench(string code, unsigned int expectedErrors = 0, int iterations = 1000) {
         auto bin = compile(code);
         auto module = make_shared<vm2::Module>(bin, "app.ts", code);
         vm2::run(module);
         module->printErrors();
         EXPECT_EQ(expectedErrors, module->errors.size());
         if (expectedErrors != module->errors.size()) return;
-
-        auto iterations = 1000;
 
         auto warmTime = benchRun(iterations, [&module] {
             module->clear();
