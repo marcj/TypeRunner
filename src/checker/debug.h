@@ -40,14 +40,14 @@ namespace ts::checker {
         unsigned int storageEnd = 0;
         bool newSubRoutine = false;
         DebugBinResult result;
-        if (print) fmt::print("Bin {} bytes: ", bin.size());
+        if (print) std::cout << fmt::format("Bin {} bytes: ", bin.size());
 
         for (unsigned int i = 0; i < end; i++) {
             if (storageEnd) {
                 while (i < storageEnd) {
                     auto size = vm::readUint16(bin, i + 8);
                     auto data = bin.substr(i + 8 + 2, size);
-                    if (print) fmt::print("(Storage ({})\"{}\") ", size, data);
+                    if (print) std::cout << fmt::format("(Storage ({})\"{}\") ", size, data);
                     result.storages.push_back(string(data));
                     i += 8 + 2 + size;
                 }
@@ -60,7 +60,7 @@ namespace ts::checker {
                 unsigned int j = 0;
                 for (auto &&r: result.subroutines) {
                     if (r.address == i) {
-                        if (print) fmt::print("\n&{} {}(): ", j, r.name);
+                        if (print) std::cout << fmt::format("\n&{} {}(): ", j, r.name);
                         result.activeSubroutine = &r;
                         found = true;
                         break;
@@ -68,7 +68,7 @@ namespace ts::checker {
                     j++;
                 }
                 if (!found) {
-                    if (print) fmt::print("\nunknown!(): ");
+                    if (print) std::cout << fmt::format("\nunknown!(): ");
                 }
                 newSubRoutine = false;
             }
@@ -189,7 +189,7 @@ namespace ts::checker {
                 std::cout << "[" << startI << "](" << text << ") ";
             }
         }
-        if (print) fmt::print("\n");
+        if (print) std::cout << "\n";
         return result;
     }
 

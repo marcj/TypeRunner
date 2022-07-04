@@ -251,7 +251,7 @@ namespace ts {
 
     inline void bench(string title, int iterations, const function<void()> &callback) {
         auto took = benchRun(iterations, callback);
-        fmt::print("{} {} iterations took {:.9f}ms, {:.9f}ms per iteration\n", title, iterations, took.count(), took.count()/iterations);
+        std::cout << fmt::format("{} {} iterations took {:.9f}ms, {:.9f}ms per iteration\n", title, iterations, took.count(), took.count()/iterations);
     }
 
     inline void bench(int iterations, const function<void()> &callback) {

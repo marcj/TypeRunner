@@ -19,7 +19,7 @@ namespace ts {
         auto module = make_shared<vm2::Module>(bin, "app.ts", code);
         vm2::run(module);
         module->printErrors();
-        EXPECT_EQ(expectedErrors, module->errors.size());
+        REQUIRE(expectedErrors == module->errors.size());
         return module;
     }
 
@@ -28,7 +28,7 @@ namespace ts {
         auto module = make_shared<vm2::Module>(bin, "app.ts", code);
         vm2::run(module);
         module->printErrors();
-        EXPECT_EQ(expectedErrors, module->errors.size());
+        REQUIRE(expectedErrors == module->errors.size());
         if (expectedErrors != module->errors.size()) return;
 
         auto warmTime = benchRun(iterations, [&module] {
@@ -45,7 +45,7 @@ namespace ts {
             vm2::run(module);
         });
 
-        fmt::print("{} iterations (it): compile {:.9f}ms/it, cold {:.9f}ms/it, warm {:.9f}ms/it", iterations, compileTime.count() / iterations, coldTime.count() / iterations, warmTime.count() / iterations);
+        std::cout << fmt::format("{} iterations (it): compile {:.9f}ms/it, cold {:.9f}ms/it, warm {:.9f}ms/it", iterations, compileTime.count() / iterations, coldTime.count() / iterations, warmTime.count() / iterations);
     }
 
 }

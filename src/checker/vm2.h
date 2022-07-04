@@ -31,7 +31,7 @@ namespace ts::vm2 {
 //        MemoryPool<TypePropertySignature, memoryDefault> propertySignature;
 //    };
 
-    constexpr auto poolSize = sizeof(Type) * 2048;
+    constexpr auto poolSize = 10000;
     inline MemoryPool<Type, poolSize> pool;
     inline MemoryPool<TypeRef, poolSize> poolRef;
     void gcFlush();
@@ -167,8 +167,10 @@ namespace ts::vm2 {
 
     static void run(shared<Module> module) {
 //        profiler.clear();
-        pool = MemoryPool<Type, poolSize>();
-        poolRef = MemoryPool<TypeRef, poolSize>();
+//        pool = MemoryPool<Type, poolSize>();
+//        poolRef = MemoryPool<TypeRef, poolSize>();
+        pool.clear();
+        poolRef.clear();
 
         gcQueueIdx = 0;
         gcQueueRefIdx = 0;
