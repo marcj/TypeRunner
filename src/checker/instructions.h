@@ -56,6 +56,7 @@ namespace ts::instructions {
         Optional,
         Readonly,
         Rest,
+        RestReuse, //in expressions like [...T, x] indicates that T can be stolen instead of copied
 
         Union,
         Intersection,
@@ -124,6 +125,11 @@ namespace ts::instructions {
 
     enum class ErrorCode {
         CannotFind, //e.g. Cannot find name 'abc'
+    };
+
+    //Max 8 bits, used in the bytecode
+    enum SubroutineFlag: unsigned int {
+        Inline = 1 << 0,
     };
 }
 

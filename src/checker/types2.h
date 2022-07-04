@@ -31,6 +31,7 @@ namespace ts::vm2 {
         TemplateLiteral,
     };
 
+    //Used in the vm
     enum TypeFlag: unsigned int {
         Readonly = 1 << 0,
         Optional = 1 << 1,
@@ -39,8 +40,8 @@ namespace ts::vm2 {
         BooleanLiteral = 1 << 4,
         True = 1 << 5,
         False = 1 << 6,
-        UnprovidedArgument = 1 << 7,
-        NoTemporary = 1 << 7, //passed function parameters are marked as NoTemporary so that they don't get GC by the callee OPs.
+        Stored = 1 << 6, //Used somewhere as cache or as value (subroutine->result for example), and thus can not be stolen/modified
+        RestReuse = 1 << 8, //allow to reuse/steal T in ...T
     };
 
     struct Type;
@@ -119,7 +120,7 @@ namespace ts::vm2 {
         string_view text;
         /** see TypeFlag */
         unsigned int flag;
-        unsigned int users;
+        unsigned int refCount;
         uint64_t hash;
         void *type; //either Type* or TypeRef* or string* depending on kind
 

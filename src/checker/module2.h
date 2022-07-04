@@ -16,10 +16,11 @@ namespace ts::vm2 {
     struct ModuleSubroutine {
         string_view name;
         unsigned int address;
+        unsigned int flags;
         bool exported = false;
         Type *result = nullptr;
         Type *narrowed = nullptr; //when control flow analysis sets a new value
-        ModuleSubroutine(string_view name, unsigned int address): name(name), address(address) {}
+        ModuleSubroutine(string_view name, unsigned int address, unsigned int flags): name(name), address(address), flags(flags) {}
     };
 
     struct FoundSourceMap {
@@ -181,13 +182,14 @@ namespace ts::vm2 {
                     unsigned int nameAddress = vm::readUint32(bin, i + 1);
                     auto name = nameAddress ? vm::readStorage(bin, nameAddress + 8) : "";
                     unsigned int address = vm::readUint32(bin, i + 5);
-                    i += 8;
-                    module->subroutines.push_back(ModuleSubroutine(name, address));
+                    unsigned int flags = vm::readUint32(bin, i + 5 + 4);
+                    vm::eatParams(op, &i);
+                    module->subroutines.push_back(ModuleSubroutine(name, address, flags));
                     break;
                 }
                 case OP::Main: {
                     module->mainAddress = vm::readUint32(bin, i + 1);
-                    module->subroutines.push_back(ModuleSubroutine("main", module->mainAddress));
+                    module->subroutines.push_back(ModuleSubroutine("main", module->mainAddress, 0));
                     return;
                 }
             }

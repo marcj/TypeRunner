@@ -14,7 +14,7 @@ namespace ts::vm2 {
 
     // TypeRef is an owning reference
     TypeRef *useAsRef(Type *type) {
-        type->users++;
+        type->refCount++;
         auto t = poolRef.newElement();
         t->type = type;
         return t;
@@ -23,7 +23,7 @@ namespace ts::vm2 {
     Type *allocate(TypeKind kind) {
         auto type = pool.newElement();
         type->kind = kind;
-        type->users = 0;
+        type->refCount = 0;
 //        debug("allocate {}", type->kind);
         return type;
     }
@@ -46,7 +46,7 @@ namespace ts::vm2 {
 
     void gc(Type *type) {
 //        debug("gc users={} {} ref={}", type->users, stringify(type), (void*)type);
-        if (type->users>0) return;
+        if (type->refCount>0) return;
         gcWithoutChildren(type);
 
         switch (type->kind) {
@@ -56,10 +56,11 @@ namespace ts::vm2 {
             case TypeKind::ObjectLiteral: {
                 auto current = (TypeRef *) type->type;
                 while (current) {
-                    current->type->users--;
+                    current->type->refCount--;
+                    auto next = current->next;
                     gc(current);
                     gc(current->type);
-                    current = current->next;
+                    current = next;
                 }
                 break;
             }
@@ -67,7 +68,7 @@ namespace ts::vm2 {
             case TypeKind::Rest:
             case TypeKind::PropertySignature:
             case TypeKind::TupleMember: {
-                ((Type *) type->type)->users--;
+                ((Type *) type->type)->refCount--;
                 gc((Type *) type->type);
                 break;
             }
@@ -75,7 +76,7 @@ namespace ts::vm2 {
     }
 
     inline Type *use(Type *type) {
-        type->users++;
+        type->refCount++;
 //        debug("use users={} {} ref={}", type->users, stringify(type), (void *) type);
         return type;
     }
@@ -93,7 +94,7 @@ namespace ts::vm2 {
 //        debug("gcFlush");
         for (unsigned int i = 0; i<gcQueueIdx; i++) {
             auto type = gcQueue[i];
-            if (type->users) continue;
+            if (type->refCount) continue;
             pool.deleteElement(type);
         }
         gcQueueIdx = 0;
@@ -109,12 +110,12 @@ namespace ts::vm2 {
     void drop(Type *type) {
         if (type == nullptr) return;
 
-        if (type->users == 0) {
+        if (type->refCount == 0) {
             debug("type not used already!");
         }
-        type->users--;
+        type->refCount--;
 //        debug("drop users={} {}  ref={}", type->users, stringify(type), (void *) type);
-        if (type->users == 0) {
+        if (type->refCount == 0) {
             gc(type);
         }
     }
@@ -355,7 +356,7 @@ namespace ts::vm2 {
 
         //short path for `{'asd'}`
         if (types.size() == 1 && types[0]->kind == TypeKind::Literal) {
-            if (types[0]->users == 0 && types[0]->flag & TypeFlag::StringLiteral) {
+            if (types[0]->refCount == 0 && types[0]->flag & TypeFlag::StringLiteral) {
                 //reuse it
                 push(types[0]);
             } else {
@@ -415,8 +416,7 @@ namespace ts::vm2 {
             } else if (lastLiteral) {
                 result->appendChild(useAsRef(lastLiteral));
             }
-            next:
-            void;
+            next:;
         }
 
 //        auto t = vm::unboxUnion(result);
@@ -467,9 +467,9 @@ namespace ts::vm2 {
             debug("Frame {} initialSp={}", i, frame->initialSp);
 
             auto size = top - frame->initialSp;
-            for (unsigned int j = 0; j < size; j++) {
+            for (unsigned int j = 0; j<size; j++) {
                 auto i = top - j - 1;
-                debug("  {}: {} users={} ref={}", i, stringify(stack[i]), stack[i]->users, (void *) stack[i]);
+                debug("  {}: {} users={} ref={}", i, stringify(stack[i]), stack[i]->refCount, (void *) stack[i]);
             }
             top -= size;
 
@@ -546,7 +546,6 @@ namespace ts::vm2 {
                 }
                 case OP::Return: {
                     //gc all parameters
-//                    printStack();
                     for (unsigned int i = 0; i<activeSubroutine->typeArguments; i++) {
                         drop(stack[frame->initialSp + i]);
                     }
@@ -558,9 +557,10 @@ namespace ts::vm2 {
                     }
                     sp = frame->initialSp + 1;
                     frame = frames.pop(); //&frames[--frameIdx];
-                    if (activeSubroutine->typeArguments == 0) {
+                    if (activeSubroutine->typeArguments == 0 && !(activeSubroutine->subroutine->flags & instructions::SubroutineFlag::Inline)) {
 //                        debug("keep type result {}", activeSubroutine->subroutine->name);
                         activeSubroutine->subroutine->result = use(stack[sp - 1]);
+                        activeSubroutine->subroutine->result->flag |= TypeFlag::Stored;
                     }
                     activeSubroutine = activeSubroutines.pop(); //&activeSubroutines[--activeSubroutineIdx];
                     goto start;
@@ -828,7 +828,7 @@ namespace ts::vm2 {
                     auto type = types[0];
                     if (type->kind == TypeKind::Union) {
                         //if type has no owner, we can steal its children
-                        if (type->users == 0) {
+                        if (type->refCount == 0) {
                             item->type = type->type;
                             type->type = nullptr;
                             //since we stole its children, we want it to GC but without its children. their 'users' count belongs now to us.
@@ -847,7 +847,7 @@ namespace ts::vm2 {
                         for_each(++types.begin(), types.end(), [&current](auto v) {
                             if (v->kind == TypeKind::Union) {
                                 //if type has no owner, we can steal its children
-                                if (v->users == 0) {
+                                if (v->refCount == 0) {
                                     current->next = (TypeRef *) v->type;
                                     v->type = nullptr;
                                     //since we stole its children, we want it to GC but without its children. their 'users' count belongs now to us.
@@ -869,6 +869,13 @@ namespace ts::vm2 {
                 }
                 case OP::Array: {
                     auto item = allocate(TypeKind::Array);
+                    item->type = use(pop());
+                    stack[sp++] = item;
+                    break;
+                }
+                case OP::RestReuse: {
+                    auto item = allocate(TypeKind::Rest);
+                    item->flag |= TypeFlag::RestReuse;
                     item->type = use(pop());
                     stack[sp++] = item;
                     break;
@@ -901,7 +908,6 @@ namespace ts::vm2 {
                         //[...T, x]
                         Type *T = (Type *) firstType->type;
                         if (T->kind == TypeKind::Array) {
-                            //if type has no owner, we can just use it as the new type
                             item = allocate(TypeKind::Tuple);
                             //type T = number[];
                             //type New = [...T, x]; => [...number[], x];
@@ -909,11 +915,14 @@ namespace ts::vm2 {
                         } else if (T->kind == TypeKind::Tuple) {
                             //type T = [y, z];
                             //type New = [...T, x]; => [y, z, x];
-                            auto length = refLength((TypeRef *) T->type);
+//                            auto length = refLength((TypeRef *) T->type);
 //                            debug("...T of size {} with {} users *{}", length, T->users, (void *) T);
-                            //check is against 1, because the T is owned by Rest, and Rest owned by TupleMember, and TupleMember by nobody,
+
+                            //if type has no owner, we can just use it as the new type
+                            //T.users is minimum 1, because the T is owned by Rest, and Rest owned by TupleMember, and TupleMember by nobody,
+                            //if T comes from a type argument, it is 2 since argument belongs to the caller.
                             //thus an expression of [...T] yields always T.users >= 1.
-                            if (T->users == 1) {
+                            if (T->refCount == 1 && firstType->flag & TypeFlag::RestReuse && !(firstType->flag & TypeFlag::Stored)) {
                                 item = use(T);
                             } else {
                                 item = allocate(TypeKind::Tuple);
@@ -986,7 +995,6 @@ namespace ts::vm2 {
                                     current = (TypeRef *) (item->type = useAsRef(tupleMember));
                                 }
                             }
-                            current = current->next;
                         });
                     }
                     push(item);

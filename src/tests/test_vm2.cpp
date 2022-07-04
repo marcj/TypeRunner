@@ -81,9 +81,9 @@ const v3: a<string> = 'nope';
     module->printErrors();
 
     EXPECT_EQ(module->errors.size(), 1);
-    //only v1, v2, v3, plus 'yes' : 'no' subroutine cached value should live
+    //only v1, v2, v3 subroutine cached value should live
     ts::vm2::gcStackAndFlush();
-    EXPECT_EQ(ts::vm2::pool.active, 5);
+    EXPECT_EQ(ts::vm2::pool.active, 3); //not 2 or 5, since inline subroutine do not cache
 
     testBench(code, 1);
 }
@@ -111,8 +111,8 @@ const v5: a<true, string> = 'nope';
 }
 
 TEST(vm2, gc) {
-    // The idea of garbage collection is this: Each type has `users` counter.
-    // As soon as another type wants to hold on it, it increases `users`.
+    // The idea of garbage collection is this: Each type has refCount.
+    // As soon as another type wants to hold on it, it increases refCount.
     // This happens automatically once a user pop() from the stack. The stack itself
     // is not an owner. If the user who pop()'d does not want to keep it, a drop(type) is necessary.
     // This schedules it for garbage collection.
@@ -291,7 +291,7 @@ const var1: A = [1, 2];
 )";
     auto module = test(code, 0);
     ts::vm2::gcFlush();
-    EXPECT_EQ(ts::vm2::pool.active, 1 + (1 + 2 + 2)); //1, [1, 2]
+    EXPECT_EQ(ts::vm2::pool.active, (1 + 2 + 2)); //$1, [$1, 2]
 }
 
 TEST(vm2, vm2Tuple31) {
@@ -409,6 +409,7 @@ TEST(vm2, vm2Fn7) {
 type F1<T> = [...T, 0];
 type T = [];
 const var1: F1<T> = [0];
+const var2: T = [];
 )";
     test(code, 0);
     ts::vm2::gcFlush();
@@ -416,17 +417,46 @@ const var1: F1<T> = [0];
     EXPECT_EQ(ts::vm2::pool.active, 1 + 3); //[] + [0]
 }
 
+TEST(vm2, vm2FnArg) {
+    string code = R"(
+type F1<T, K> = [...T, 0];
+type F2<T> = F1<T, []> | T; //T won't be stolen in F1 since refCount++
+const var1: F1<[]> = [0];
+const var2: F2<[]> = [];
+)";
+    test(code, 0);
+    ts::vm2::gcFlush();
+
+    //The idea is that for F1<[]> the [] is refCount=0, and for each argument in `type F1<>` the refCount is increased
+    // and dropped at the end (::Return). This makes sure that [] in F1<[]> does not get stolen in F1.
+    // To support stealing in tail calls, the drop (and frame cleanup) happens before the next function is called.
+    //EXPECT_EQ(ts::vm2::pool.active, 1);
+}
+
+TEST(vm2, vm2BenchOverhead) {
+    ts::bench("nothing", 1000, [&] {
+    });
+}
+
 TEST(vm2, vm2Complex1) {
     //todo: crashes with BAD_ACCESS. lag wohl daran, dass nicht alles zurückgesetzt wurde
     string code = R"(
-type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>;
+type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>; //yes
+//type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [A, ...A, 0]>; //no, A users too many.
+//type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<A, [...A, 0]>; //????, this makes it to 'use' A before the call and [...A, 0] happen
+//type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0, A]>; //no, A used after ...A
+//type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, ...A]>; //no, A used after ...A
+//type StringToNum<T, A> = (`${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>) | A; //no, A used after ...A
 const var1: StringToNum<'999', []> = 999;
 //const var2: StringToNum<'999'> = 1002;
 )";
     //todo: fix reuse of A. We need to mark the argument with a flag though, so we know we can for sure steal its ref and just append it.
     // Should then be much faster than we currently see.
+    //todo we have to fix that A.users keeps increasing
+    //todo: add tail call optimisation
+    //todo: super instruction for `${A['length']}` and A['length']
     test(code, 0);
-//    testBench(code, 0, 10);
+//    testBench(code, 0);
 //    testBench(code, 0, 1);
 //    debug("active {}", ts::vm2::pool.active);
 //    ts::vm2::gcFlush();

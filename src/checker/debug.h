@@ -79,7 +79,7 @@ namespace ts::checker {
             switch (op) {
                 case OP::Call: {
                     params += fmt::format(" &{}[{}]", vm::readUint32(bin, i + 1), vm::readUint16(bin, i + 5));
-                    i += 6;
+                    vm::eatParams(op, &i);
                     break;
                 }
                 case OP::SourceMap: {
@@ -105,7 +105,7 @@ namespace ts::checker {
                     auto address = vm::readUint32(bin, i + 5);
                     string name = nameAddress ? string(vm::readStorage(bin, nameAddress + 8)) : "";
                     params += fmt::format(" {}[{}]", name, address);
-                    i += 8;
+                    vm::eatParams(op, &i);
                     result.subroutines.push_back({.name = name, .address = address});
                     break;
                 }
@@ -113,7 +113,7 @@ namespace ts::checker {
                 case OP::Jump: {
                     auto address = vm::readUint32(bin, i + 1);
                     params += fmt::format(" &{}", address);
-                    i += 4;
+                    vm::eatParams(op, &i);
                     if (op == OP::Jump) {
                         storageEnd = address;
                     } else {
@@ -128,39 +128,39 @@ namespace ts::checker {
                 }
                 case OP::JumpCondition: {
                     params += fmt::format(" &{}:&{}", vm::readUint16(bin, i + 1), vm::readUint16(bin, i + 3));
-                    i += 4;
+                    vm::eatParams(op, &i);
                     break;
                 }
                 case OP::Set:
                 case OP::TypeArgumentDefault:
                 case OP::Distribute: {
                     params += fmt::format(" &{}", vm::readUint32(bin, i + 1));
-                    i += 4;
+                    vm::eatParams(op, &i);
                     break;
                 }
                 case OP::FunctionRef: {
                     params += fmt::format(" &{}", vm::readUint32(bin, i + 1));
-                    i += 4;
+                    vm::eatParams(op, &i);
                     break;
                 }
                 case OP::Instantiate: {
                     params += fmt::format(" {}", vm::readUint16(bin, i + 1));
-                    i += 2;
+                    vm::eatParams(op, &i);
                     break;
                 }
                 case OP::Error: {
                     params += fmt::format(" {}", (instructions::ErrorCode)vm::readUint16(bin, i + 1));
-                    i += 2;
+                    vm::eatParams(op, &i);
                     break;
                 }
                 case OP::CallExpression: {
                     params += fmt::format(" &{}", vm::readUint16(bin, i + 1));
-                    i += 2;
+                    vm::eatParams(op, &i);
                     break;
                 }
                 case OP::Loads: {
                     params += fmt::format(" &{}:{}", vm::readUint16(bin, i + 1), vm::readUint16(bin, i + 3));
-                    i += 4;
+                    vm::eatParams(op, &i);
                     break;
                 }
                 case OP::Parameter:
@@ -169,7 +169,7 @@ namespace ts::checker {
                 case OP::StringLiteral: {
                     auto address = vm::readUint32(bin, i + 1);
                     params += fmt::format(" \"{}\"", vm::readStorage(bin, address + 8));
-                    i += 4;
+                    vm::eatParams(op, &i);
                     break;
                 }
             }

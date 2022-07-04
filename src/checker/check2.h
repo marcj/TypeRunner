@@ -42,16 +42,15 @@ namespace ts::vm2 {
                 switch (left->kind) {
                     case TypeKind::Tuple: {
                         //todo: comparing tuple is much more complex than that
-
                         auto rightCurrent = (TypeRef *) right->type;
                         auto leftCurrent = (TypeRef *) left->type;
                         while (rightCurrent) {
+                            if (rightCurrent && !leftCurrent) return false;
+                            if (!rightCurrent && leftCurrent) return false;
                             if (!extends(leftCurrent->type, rightCurrent->type)) return false;
 
                             rightCurrent = rightCurrent->next;
                             leftCurrent = leftCurrent->next;
-                            if (rightCurrent && !leftCurrent) return false;
-                            if (!rightCurrent && leftCurrent) return false;
                         }
                         return true;
                     }

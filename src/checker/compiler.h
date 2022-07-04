@@ -19,7 +19,7 @@ namespace ts::checker {
         Variable, //const x = true;
         Function, //function x() {}
         Class, //class X {}
-        TypeFunction, //parts of conditional type, mapped type, ..
+        Inline, //parts of conditional type, mapped type, ..
         Type, //type alias, e.g. `foo` in `type foo = string;`
         TypeVariable //template variable, e.g. T in function <T>foo(bar: T);
     };
@@ -38,6 +38,14 @@ namespace ts::checker {
         }
     };
 
+    struct ArgumentUsage {
+        unsigned int lastIp{};
+        unsigned int lastSubroutineIndex{};
+        unsigned int argumentIndex{};
+
+        explicit ArgumentUsage(unsigned int argumentIndex): argumentIndex(argumentIndex) {}
+    };
+
     //A subroutine is a sub program that can be executed by knowing its address.
     //They are used for example for type alias, mapped type, conditional type (for false and true side)
     struct Subroutine {
@@ -46,10 +54,30 @@ namespace ts::checker {
         string_view identifier{};
         unsigned int index{};
         unsigned int nameAddress{};
+        vector<ArgumentUsage> argumentUsages;
         SymbolType type = SymbolType::Type;
 
         void pushSourceMap(unsigned int sourcePos, unsigned int sourceEnd) {
             sourceMap.push(ops.size(), sourcePos, sourceEnd);
+        }
+
+        void registerArgumentUsage() {
+            argumentUsages.emplace_back(argumentUsages.size());
+        }
+
+        ArgumentUsage &getArgumentUsage(unsigned int argumentIndex) {
+            if (argumentUsages.size()<=argumentIndex) {
+                throw std::runtime_error("Unknown argument");
+            }
+            return argumentUsages[argumentIndex];
+        }
+
+        unsigned int getFlags() {
+            unsigned int flags = 0;
+            if (type == SymbolType::Inline) {
+                flags |= instructions::SubroutineFlag::Inline;
+            }
+            return flags;
         }
 
         explicit Subroutine() {
@@ -68,6 +96,7 @@ namespace ts::checker {
         unsigned int pos{};
         unsigned int end{};
         unsigned int declarations = 1;
+        unsigned int lastUsedIP = 0;
         sharedOpt<Subroutine> routine = nullptr;
         shared<Frame> frame = nullptr;
     };
@@ -95,6 +124,166 @@ namespace ts::checker {
         uint32_t symbol; //the index of the symbol in referenced frame, refers directly to x stack entry of that stack frame.
     };
 
+    struct Visit {
+        bool active = true;
+        unsigned int index; //subroutine index
+        unsigned int ip; //subroutine ip
+        unsigned int frameDepth;
+        OP op;
+    };
+
+    inline void visitOps2(vector<shared<Subroutine>> &subroutines, Visit &visit, const function<void(Visit &)> &callback) {
+        const auto ops = subroutines[visit.index]->ops;
+        for (unsigned int i = 0; visit.active && i<ops.size(); i++) {
+            visit.op = (OP) ops[i];
+            switch (visit.op) {
+                case OP::Frame: {
+                    visit.frameDepth++;
+                    break;
+                }
+                case OP::Tuple:
+                case OP::Union:
+                case OP::Intersection:
+                case OP::Class:
+                case OP::ObjectLiteral:
+                case OP::Return: {
+                    visit.frameDepth--;
+                    break;
+                }
+                    //todo: Go deeper for inline functions for distributive and mapped types, too.
+                case OP::JumpCondition: {
+                    //go deeper
+                    const auto leftProgram = vm::readUint16(ops, i + 1);
+                    const auto rightProgram = vm::readUint16(ops, i + 3);
+                    visit.frameDepth++;
+                    visit.index = leftProgram;
+                    visitOps2(subroutines, visit, callback);
+                    visit.index = rightProgram;
+                    visitOps2(subroutines, visit, callback);
+                    visit.frameDepth--;
+                    break;
+                }
+                default: {
+                    visit.ip = i;
+                    callback(visit);
+                }
+            }
+            vm::eatParams(visit.op, &i);
+        }
+    }
+
+    inline void visitOps(vector<shared<Subroutine>> &subroutines, unsigned int index, const function<void(Visit &)> &callback) {
+        auto current = subroutines[index];
+        Visit visit;
+        visit.index = index;
+        visitOps2(subroutines, visit, callback);
+    }
+
+    shared<Subroutine> findOuterTypeFunction(vector<shared<Subroutine>> &subroutines, shared<Subroutine> &subroutine) {
+        shared<Subroutine> typeFunction = subroutine;
+
+        while (typeFunction->type == SymbolType::Inline) {
+            if (typeFunction->index == 0) {
+                debug("No type function found for subroutine");
+                return subroutines[0];
+            }
+            //the actual function is always before the Inline
+            typeFunction = subroutines[typeFunction->index - 1];
+        }
+
+        return typeFunction;
+    }
+
+    inline void optimiseRestReuse(vector<shared<Subroutine>> &subroutines, shared<Subroutine> &subroutine) {
+        for (auto &&variable: subroutine->argumentUsages) {
+            if (!variable.lastIp) continue;
+
+            //check if it was used in ...T, and mark it as RestReuse
+            auto &lastUseSubroutine = subroutines[variable.lastSubroutineIndex];
+            auto variableUserOp = (OP)lastUseSubroutine->ops[variable.lastIp + 1 + 2 + 2];
+            if (variableUserOp == OP::Rest) {
+                lastUseSubroutine->ops[variable.lastIp + 1 + 2 + 2] = OP::RestReuse;
+            }
+        }
+
+//        std::set<Subroutine *> visited;
+//
+//        LastRest lastRest = subroutine->lastRest;
+//
+//        //we support for the moment only
+//        bool startPositionFound = false;
+//        bool startIndex = typeFunction->index;
+//        bool usedAfterRest = false;
+//
+//        //note: if we have a second optimisation that needs a OP forward-pass, we should generalise it and do it only once.
+//        visitOps(subroutines, typeFunction->index, [&lastRest, &startPositionFound, &subroutines, &usedAfterRest, &startIndex](Visit visit) {
+//            if (!startPositionFound && visit.index == startIndex && visit.op == lastRest.ip) {
+//                startPositionFound = true;
+//            }
+//
+//            if (startPositionFound) {
+//                //detect now usage of the lastRest.typeArgument
+//                if (visit.op == OP::Loads) {
+//                    //check if it actually references the right typeArgument
+//                    unsigned int frameOffset = vm::readUint16(subroutines[visit.index]->ops, visit.op + 1);
+//                    unsigned int varIndex = vm::readUint16(subroutines[visit.index]->ops, visit.op + 3);
+//                    if (varIndex == lastRest.typeArgument && frameOffset == visit.frameDepth) {
+//                        usedAfterRest = true;
+//                        visit.active = false;
+//                    }
+//                }
+//            }
+//        });
+//
+//        if (!usedAfterRest) {
+//            //it's safe to mark it as RestReuse
+//            debug("safe to RestReuse!");
+//        }
+    }
+
+//    struct Optimiser {
+//        vector<shared<Subroutine>> *subroutines;
+//
+//        explicit Optimiser(vector<shared<Subroutine>> *subroutines): subroutines(subroutines) {}
+//
+//        void optimise(unsigned int index) {
+//            auto current = (*subroutines)[index];
+//            if (current->optimised) return;
+//
+//            current->optimised = true;
+//
+//            for (unsigned int i = 0; i<current->ops.size(); i++) {
+//                auto op = (OP) current->ops[i];
+////                debug("[{}] optimise OP {}", current->index, op);
+//
+//                switch (op) {
+//                    case OP::Rest: {
+//                        debug("optimise Rest");
+//                        //todo: check if previous is ::Loads
+//                        // determine the identity of the Loads variable
+//                        // and
+//                        break;
+//                    }
+//                    case OP::Call: {
+//                        //go deeper
+//                        auto address = vm::readUint32(current->ops, i + 1);
+//                        optimise(address);
+//                        break;
+//                    }
+//                    case OP::JumpCondition: {
+//                        //go deeper
+//                        const auto leftProgram = vm::readUint16(current->ops, i + 1);
+//                        const auto rightProgram = vm::readUint16(current->ops, i + 3);
+//                        optimise(leftProgram);
+//                        optimise(rightProgram);
+//                        break;
+//                    }
+//                }
+//                vm::eatParams(op, &i);
+//            }
+//        }
+//    };
+
     class Program {
     public:
         vector<unsigned char> ops; //OPs of "main"
@@ -109,6 +298,8 @@ namespace ts::checker {
         //tracks which subroutine is active (end() is), so that pushOp calls are correctly assigned.
         vector<shared<Subroutine>> activeSubroutines;
         vector<shared<Subroutine>> subroutines;
+
+//        Optimiser optimiser{&subroutines};
 
         //implicit is when a OP itself triggers in the VM a new frame, without having explicitly a OP::Frame
         shared<Frame> pushFrame(bool implicit = false) {
@@ -125,13 +316,17 @@ namespace ts::checker {
          */
         unsigned int pushSubroutineNameLess(const shared<Node> &node) {
             auto routine = make_shared<Subroutine>();
-            routine->type = SymbolType::TypeFunction;
+            routine->type = SymbolType::Inline;
             routine->index = subroutines.size();
 
             pushFrame(true); //subroutines have implicit stack frames due to call convention
             subroutines.push_back(routine);
             activeSubroutines.push_back(subroutines.back());
             return routine->index;
+        }
+
+        shared<Subroutine> getOuterTypeFunction() {
+            return findOuterTypeFunction(subroutines, activeSubroutines.empty() ? subroutines[0] : activeSubroutines.back());
         }
 
         /**
@@ -157,6 +352,12 @@ namespace ts::checker {
                 throw runtime_error("Routine is empty");
             }
             subroutine->ops.push_back(OP::Return);
+
+            if (subroutine->type == SymbolType::Type) {
+                //for type functions, we optimise ...T re-usage
+                optimiseRestReuse(subroutines, subroutine);
+            }
+
             activeSubroutines.pop_back();
             return subroutine;
         }
@@ -242,6 +443,18 @@ namespace ts::checker {
         void pushOp(OP op) {
             auto &ops = getOPs();
             ops.push_back(op);
+        }
+
+        unsigned int subroutineIndex() {
+            return activeSubroutines.size() ? activeSubroutines.back()->index : 0;
+        }
+
+        shared<Subroutine> subroutine() {
+            return activeSubroutines.size() ? activeSubroutines.back() : subroutines[0];
+        }
+
+        unsigned int ip() {
+            return getOPs().size();
         }
 
         void pushOp(OP op, const sharedOpt<Node> &node) {
@@ -370,7 +583,7 @@ namespace ts::checker {
             address += 1 + 4 + sourceMapSize; //OP::SourceMap + uint32 size
 
             unsigned int bytecodePosOffset = address;
-            bytecodePosOffset += subroutines.size() * (1 + 4 + 4); //OP::Subroutine + uint32 name address + uint32 routine address
+            bytecodePosOffset += subroutines.size() * (1 + 4 + 4 + 1); //OP::Subroutine + uint32 name address + uint32 routine address + flags
             bytecodePosOffset += 1 + 4; //OP::Main + uint32 address
 
             for (auto &&routine: subroutines) {
@@ -389,13 +602,14 @@ namespace ts::checker {
             }
 
             address += 1 + 4; //OP::Main + uint32 address
-            address += subroutines.size() * (1 + 4 + 4); //OP::Subroutine + uint32 name address + uint32 routine address
+            address += subroutines.size() * (1 + 4 + 4 + 1); //OP::Subroutine + uint32 name address + uint32 routine address + flags
 
             //after the storage data follows the subroutine meta-data.
             for (auto &&routine: subroutines) {
                 bin.push_back(OP::Subroutine);
                 vm::writeUint32(bin, bin.size(), routine->nameAddress);
                 vm::writeUint32(bin, bin.size(), address);
+                bin.push_back(routine->getFlags());
                 address += routine->ops.size();
             }
 
@@ -541,6 +755,10 @@ namespace ts::checker {
                         program.pushError(ErrorCode::CannotFind, n->typeName);
                     } else {
                         if (symbol->type == SymbolType::TypeVariable) {
+                            auto &variableUsage = program.getOuterTypeFunction()->getArgumentUsage(symbol->index);
+                            variableUsage.lastIp = program.ip();
+                            variableUsage.lastSubroutineIndex = program.subroutineIndex();
+
                             program.pushOp(OP::Loads, n->typeName);
                             program.pushSymbolAddress(*symbol);
                         } else {
@@ -616,6 +834,7 @@ namespace ts::checker {
                     } else {
                         program.pushOp(instructions::TypeArgument, n->name);
                     }
+                    program.subroutine()->registerArgumentUsage();
                     //todo constraints
                     break;
                 }
