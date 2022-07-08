@@ -56,6 +56,7 @@ namespace ts::vm {
     using ts::instructions::OP;
     inline void eatParams(OP op, unsigned int *i) {
         switch (op) {
+            case OP::TailCall:
             case OP::Call: {
                 *i += 6;
                 break;
@@ -65,6 +66,7 @@ namespace ts::vm {
                 break;
             }
             case OP::Main:
+            case OP::NJump:
             case OP::Jump: {
                 *i += 4;
                 break;

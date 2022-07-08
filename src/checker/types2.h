@@ -42,6 +42,7 @@ namespace ts::vm2 {
         False = 1 << 6,
         Stored = 1 << 6, //Used somewhere as cache or as value (subroutine->result for example), and thus can not be stolen/modified
         RestReuse = 1 << 8, //allow to reuse/steal T in ...T
+        Deleted = 1 << 9, //for debugging purposes
     };
 
     struct Type;
@@ -119,10 +120,10 @@ namespace ts::vm2 {
         unsigned int ip;
         string_view text;
         /** see TypeFlag */
-        unsigned int flag;
-        unsigned int refCount;
-        uint64_t hash;
-        void *type; //either Type* or TypeRef* or string* depending on kind
+        unsigned int flag = 0;
+        unsigned int refCount = 0;
+        uint64_t hash = 0;
+        void *type = nullptr; //either Type* or TypeRef* or string* depending on kind
 
         ~Type() {
             if (kind == TypeKind::Literal && type) delete (string *) type;
@@ -307,9 +308,9 @@ namespace ts::vm2 {
                         r += "...";
                         break;
                     }
+                    if (current) r += "| ";
                     stringifyType(current->type, r);
                     current = current->next;
-                    if (current) r += " | ";
                 }
                 break;
             }

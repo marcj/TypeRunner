@@ -19,9 +19,10 @@ namespace ts::checker {
         Variable, //const x = true;
         Function, //function x() {}
         Class, //class X {}
-        Inline, //parts of conditional type, mapped type, ..
+        Inline, //subroutines of conditional type, mapped type, .. [deprecated]
         Type, //type alias, e.g. `foo` in `type foo = string;`
-        TypeVariable //template variable, e.g. T in function <T>foo(bar: T);
+        TypeArgument, //template variable, e.g. T in function <T>foo(bar: T);
+        TypeVariable, //type variables in distributive conditional types, mapped types
     };
 
     struct SourceMapEntry {
@@ -46,6 +47,24 @@ namespace ts::checker {
         explicit ArgumentUsage(unsigned int argumentIndex): argumentIndex(argumentIndex) {}
     };
 
+    //aka Branch
+    struct Section {
+        //instruction pointer start and end
+        unsigned int start = 0;
+        unsigned int end = 0;
+        OP lastOp = OP::Noop;
+        unsigned int ops = 0;
+        bool isBlockTailCall;
+
+        bool hasChild = false;
+
+        //next and up section
+        int next = -1;
+        int up = -1;
+
+        explicit Section(unsigned int start, unsigned int up = -1): start(start), up(up) {}
+    };
+
     //A subroutine is a sub program that can be executed by knowing its address.
     //They are used for example for type alias, mapped type, conditional type (for false and true side)
     struct Subroutine {
@@ -56,6 +75,105 @@ namespace ts::checker {
         unsigned int nameAddress{};
         vector<ArgumentUsage> argumentUsages;
         SymbolType type = SymbolType::Type;
+
+        vector<Section> sections;
+        unsigned int activeSection = 0;
+
+        explicit Subroutine() {
+            identifier = "";
+            sections.emplace_back(ip());
+        }
+
+        explicit Subroutine(string_view &identifier): identifier(identifier) {
+            sections.emplace_back(ip());
+        }
+
+        bool isIgnoreNextSectionOP = false;
+        void ignoreNextSectionOP() {
+            isIgnoreNextSectionOP = true;
+        }
+
+        void blockTailCall() {
+            sections[activeSection].isBlockTailCall = true;
+        }
+
+        void pushOp(OP op) {
+            ops.push_back(op);
+
+            if (!isIgnoreNextSectionOP) {
+                sections[activeSection].lastOp = op;
+                sections[activeSection].ops++;
+            }
+
+            isIgnoreNextSectionOP = false;
+        }
+
+        unsigned int ip() {
+            return ops.size();
+        }
+
+        void pushSection() {
+            sections[activeSection].hasChild = true;
+            auto section = sections.emplace_back(ip(), activeSection);
+            activeSection = sections.size() - 1;
+        }
+
+        void end() {
+            sections[activeSection].end = ip();
+        }
+
+        void popSection() {
+            sections.back().end = ip();
+            activeSection = sections.back().up;
+
+            if (sections[activeSection].next == -1) {
+                auto &next = sections.emplace_back(ip());
+                sections[activeSection].next = sections.size() - 1;
+                next.up = sections[activeSection].up;
+                activeSection = sections.size() - 1;
+            }
+        }
+
+        bool ended(Section &section) {
+            return section.next >= 0 ? ended(sections[section.next]) : section.ops == 0;
+        }
+
+        void optimise() {
+            //find all tail sections (sections that end the program when executed)
+            for (auto &&section: sections) {
+                if (section.hasChild) continue;
+                if (section.next >= 0 && !ended(section)) continue;
+
+                Section *current = section.up >= 0 ? &sections[section.up] : nullptr;
+                bool tail = true;
+                while (current) {
+                    if (current->isBlockTailCall) {
+                        tail = false;
+                        break;
+                    }
+                    //go upwards and check if some parent has ->next, if so, it is not a tail section
+                    if (!ended(*current)) {
+                        tail = false;
+                        break;
+                    }
+                    if (current->up >= 0) {
+                        current = &sections[current->up];
+                    } else {
+                        break;
+                    }
+                }
+
+                //debug("Tail {} lastOp={} ops={}", tail, section.lastOp, section.ops);
+
+                if (tail) {
+                    //this section is a tail section, which means it returns the subroutine
+                    if (section.lastOp == OP::Call) {
+                        ops[section.end - 1 - 4 - 2] = OP::TailCall;
+                        //debug("tail call optimised");
+                    }
+                }
+            }
+        }
 
         void pushSourceMap(unsigned int sourcePos, unsigned int sourceEnd) {
             sourceMap.push(ops.size(), sourcePos, sourceEnd);
@@ -74,17 +192,8 @@ namespace ts::checker {
 
         unsigned int getFlags() {
             unsigned int flags = 0;
-            if (type == SymbolType::Inline) {
-                flags |= instructions::SubroutineFlag::Inline;
-            }
             return flags;
         }
-
-        explicit Subroutine() {
-            identifier = "";
-        }
-
-        explicit Subroutine(string_view &identifier): identifier(identifier) {}
     };
 
     struct Frame;
@@ -102,7 +211,7 @@ namespace ts::checker {
     };
 
     struct Frame {
-        const bool conditional = false;
+        bool conditional = false;
         shared<Frame> previous;
         unsigned int id = 0; //in a tree the unique id, needed to resolve symbols during runtime.
         vector<Symbol> symbols{};
@@ -194,52 +303,52 @@ namespace ts::checker {
         return typeFunction;
     }
 
-    inline void optimiseRestReuse(vector<shared<Subroutine>> &subroutines, shared<Subroutine> &subroutine) {
-        for (auto &&variable: subroutine->argumentUsages) {
-            if (!variable.lastIp) continue;
-
-            //check if it was used in ...T, and mark it as RestReuse
-            auto &lastUseSubroutine = subroutines[variable.lastSubroutineIndex];
-            auto variableUserOp = (OP)lastUseSubroutine->ops[variable.lastIp + 1 + 2 + 2];
-            if (variableUserOp == OP::Rest) {
-                lastUseSubroutine->ops[variable.lastIp + 1 + 2 + 2] = OP::RestReuse;
-            }
-        }
-
-//        std::set<Subroutine *> visited;
+//    inline void optimiseRestReuse(vector<shared<Subroutine>> &subroutines, shared<Subroutine> &subroutine) {
+//        for (auto &&variable: subroutine->argumentUsages) {
+//            if (!variable.lastIp) continue;
 //
-//        LastRest lastRest = subroutine->lastRest;
-//
-//        //we support for the moment only
-//        bool startPositionFound = false;
-//        bool startIndex = typeFunction->index;
-//        bool usedAfterRest = false;
-//
-//        //note: if we have a second optimisation that needs a OP forward-pass, we should generalise it and do it only once.
-//        visitOps(subroutines, typeFunction->index, [&lastRest, &startPositionFound, &subroutines, &usedAfterRest, &startIndex](Visit visit) {
-//            if (!startPositionFound && visit.index == startIndex && visit.op == lastRest.ip) {
-//                startPositionFound = true;
+//            //check if it was used in ...T, and mark it as RestReuse
+//            auto &lastUseSubroutine = subroutines[variable.lastSubroutineIndex];
+//            auto variableUserOp = (OP) lastUseSubroutine->ops[variable.lastIp + 1 + 2 + 2];
+//            if (variableUserOp == OP::Rest) {
+//                lastUseSubroutine->ops[variable.lastIp + 1 + 2 + 2] = OP::RestReuse;
 //            }
-//
-//            if (startPositionFound) {
-//                //detect now usage of the lastRest.typeArgument
-//                if (visit.op == OP::Loads) {
-//                    //check if it actually references the right typeArgument
-//                    unsigned int frameOffset = vm::readUint16(subroutines[visit.index]->ops, visit.op + 1);
-//                    unsigned int varIndex = vm::readUint16(subroutines[visit.index]->ops, visit.op + 3);
-//                    if (varIndex == lastRest.typeArgument && frameOffset == visit.frameDepth) {
-//                        usedAfterRest = true;
-//                        visit.active = false;
-//                    }
-//                }
-//            }
-//        });
-//
-//        if (!usedAfterRest) {
-//            //it's safe to mark it as RestReuse
-//            debug("safe to RestReuse!");
 //        }
-    }
+//
+////        std::set<Subroutine *> visited;
+////
+////        LastRest lastRest = subroutine->lastRest;
+////
+////        //we support for the moment only
+////        bool startPositionFound = false;
+////        bool startIndex = typeFunction->index;
+////        bool usedAfterRest = false;
+////
+////        //note: if we have a second optimisation that needs a OP forward-pass, we should generalise it and do it only once.
+////        visitOps(subroutines, typeFunction->index, [&lastRest, &startPositionFound, &subroutines, &usedAfterRest, &startIndex](Visit visit) {
+////            if (!startPositionFound && visit.index == startIndex && visit.op == lastRest.ip) {
+////                startPositionFound = true;
+////            }
+////
+////            if (startPositionFound) {
+////                //detect now usage of the lastRest.typeArgument
+////                if (visit.op == OP::Loads) {
+////                    //check if it actually references the right typeArgument
+////                    unsigned int frameOffset = vm::readUint16(subroutines[visit.index]->ops, visit.op + 1);
+////                    unsigned int varIndex = vm::readUint16(subroutines[visit.index]->ops, visit.op + 3);
+////                    if (varIndex == lastRest.typeArgument && frameOffset == visit.frameDepth) {
+////                        usedAfterRest = true;
+////                        visit.active = false;
+////                    }
+////                }
+////            }
+////        });
+////
+////        if (!usedAfterRest) {
+////            //it's safe to mark it as RestReuse
+////            debug("safe to RestReuse!");
+////        }
+//    }
 
 //    struct Optimiser {
 //        vector<shared<Subroutine>> *subroutines;
@@ -302,6 +411,11 @@ namespace ts::checker {
 //        Optimiser optimiser{&subroutines};
 
         //implicit is when a OP itself triggers in the VM a new frame, without having explicitly a OP::Frame
+        void popFrame() {
+            this->pushOp(OP::FrameEnd);
+            popFrameImplicit();
+        }
+
         shared<Frame> pushFrame(bool implicit = false) {
             if (!implicit) this->pushOp(OP::Frame);
             auto id = frame->id;
@@ -351,12 +465,17 @@ namespace ts::checker {
             if (subroutine->ops.empty()) {
                 throw runtime_error("Routine is empty");
             }
+
+            subroutine->end();
+
+            subroutine->optimise();
+
             subroutine->ops.push_back(OP::Return);
 
-            if (subroutine->type == SymbolType::Type) {
-                //for type functions, we optimise ...T re-usage
-                optimiseRestReuse(subroutines, subroutine);
-            }
+            //if (subroutine->type == SymbolType::Type) {
+            //    //for type functions, we optimise ...T re-usage
+            //    optimiseRestReuse(subroutines, subroutine);
+            //}
 
             activeSubroutines.pop_back();
             return subroutine;
@@ -366,14 +485,15 @@ namespace ts::checker {
             Frame *current = frame.get();
 
             while (true) {
-                for (auto &&s: current->symbols) {
-                    if (s.name == identifier) {
-                        return &s;
+                //we go in reverse to fetch the closest
+                for (auto it = current->symbols.rbegin(); it != current->symbols.rend(); ++it) {
+                    if (it->name == identifier) {
+                        return &*it;
                     }
                 }
                 if (!current->previous) break;
                 current = current->previous.get();
-            };
+            }
 
             return nullptr;
         }
@@ -392,9 +512,9 @@ namespace ts::checker {
          * It sometimes is defined in Program as index to the storage or subroutine and thus is a immediate representation of the address.
          * In this case it will be replaced in build() with the real address in the binary (hence why we need 4 bytes, so space stays constant).
          */
-        void pushAddress(unsigned int address) {
+        void pushAddress(unsigned int address, unsigned int offset = 0) {
             auto &ops = getOPs();
-            vm::writeUint32(ops, ops.size(), address);
+            vm::writeUint32(ops, offset == 0 ? ops.size() : offset, address);
         }
 
         void pushUint32(unsigned int v) {
@@ -402,9 +522,9 @@ namespace ts::checker {
             vm::writeUint32(ops, ops.size(), v);
         }
 
-        void pushUint16(unsigned int v) {
+        void pushUint16(unsigned int v, unsigned int offset = 0) {
             auto &ops = getOPs();
-            vm::writeUint16(ops, ops.size(), v);
+            vm::writeUint16(ops, offset == 0 ? ops.size() : offset, v);
         }
 
         void pushError(ErrorCode code, const shared<Node> &node) {
@@ -440,9 +560,28 @@ namespace ts::checker {
             }
         }
 
+        void ignoreNextSectionOP() {
+            if (activeSubroutines.size()) activeSubroutines.back()->ignoreNextSectionOP();
+        }
+
+        void pushSection() {
+            if (activeSubroutines.size()) activeSubroutines.back()->pushSection();
+        }
+
+        void blockTailCall() {
+            if (activeSubroutines.size()) activeSubroutines.back()->blockTailCall();
+        }
+
+        void popSection() {
+            if (activeSubroutines.size()) activeSubroutines.back()->popSection();
+        }
+
         void pushOp(OP op) {
-            auto &ops = getOPs();
-            ops.push_back(op);
+            if (activeSubroutines.size()) {
+                activeSubroutines.back()->pushOp(op);
+            } else {
+                ops.push_back(op);
+            }
         }
 
         unsigned int subroutineIndex() {
@@ -458,9 +597,8 @@ namespace ts::checker {
         }
 
         void pushOp(OP op, const sharedOpt<Node> &node) {
-            auto &ops = getOPs();
             if (node) pushSourceMap(node);
-            ops.push_back(op);
+            pushOp(op);
         }
 
         //needed for variables
@@ -487,7 +625,7 @@ namespace ts::checker {
             if (!frameToUse) frameToUse = frame;
 
             for (auto &&v: frameToUse->symbols) {
-                if (v.name == name) {
+                if (type != SymbolType::TypeVariable && v.name == name) {
                     v.declarations++;
                     return v;
                 }
@@ -754,10 +892,12 @@ namespace ts::checker {
                         program.pushOp(OP::Never, n->typeName);
                         program.pushError(ErrorCode::CannotFind, n->typeName);
                     } else {
-                        if (symbol->type == SymbolType::TypeVariable) {
-                            auto &variableUsage = program.getOuterTypeFunction()->getArgumentUsage(symbol->index);
-                            variableUsage.lastIp = program.ip();
-                            variableUsage.lastSubroutineIndex = program.subroutineIndex();
+                        if (symbol->type == SymbolType::TypeArgument || symbol->type == SymbolType::TypeVariable) {
+                            if (symbol->type == SymbolType::TypeArgument) {
+                                auto &variableUsage = program.getOuterTypeFunction()->getArgumentUsage(symbol->index);
+                                variableUsage.lastIp = program.ip();
+                                variableUsage.lastSubroutineIndex = program.subroutineIndex();
+                            }
 
                             program.pushOp(OP::Loads, n->typeName);
                             program.pushSymbolAddress(*symbol);
@@ -824,7 +964,7 @@ namespace ts::checker {
                 }
                 case types::SyntaxKind::TypeParameter: {
                     const auto n = to<TypeParameterDeclaration>(node);
-                    auto &symbol = program.pushSymbol(n->name->escapedText, SymbolType::TypeVariable, n);
+                    auto &symbol = program.pushSymbol(n->name->escapedText, SymbolType::TypeArgument, n);
                     if (n->defaultType) {
                         program.pushSubroutineNameLess(n->defaultType);
                         handle(n->defaultType, program);
@@ -921,7 +1061,7 @@ namespace ts::checker {
                         program.pushOp(OP::Never, n);
                         program.pushError(ErrorCode::CannotFind, n);
                     } else {
-                        if (symbol->type == SymbolType::TypeVariable) {
+                        if (symbol->type == SymbolType::TypeArgument || symbol->type == SymbolType::TypeVariable) {
                             program.pushOp(OP::Loads, node);
                             program.pushSymbolAddress(*symbol);
                         } else {
@@ -1084,54 +1224,76 @@ namespace ts::checker {
                 }
                 case types::SyntaxKind::ConditionalType: {
                     const auto n = to<ConditionalTypeNode>(node);
-                    //Depending on whether this a distributive conditional type or not, the whole conditional type has to be moved to its own function
+                    //Depending on whether this a distributive conditional type or not, the whole conditional type has to be moved to its own function,
                     //so it can be executed for each union member.
                     // - the `checkType` is a simple identifier (just `T`, no `[T]`, no `T | x`, no `{a: T}`, etc)
 //                    let distributiveOverIdentifier: Identifier | undefined = isTypeReferenceNode(narrowed.checkType) && isIdentifier(narrowed.checkType.typeName) ? narrowed.checkType.typeName : undefined;
                     sharedOpt<Identifier> distributiveOverIdentifier = isTypeReferenceNode(n->checkType) && isIdentifier(to<TypeReferenceNode>(n->checkType)->typeName) ? to<Identifier>(to<TypeReferenceNode>(n->checkType)->typeName) : nullptr;
 
-                    if (distributiveOverIdentifier) {
-//                        program.pushSymbol(distributiveOverIdentifier->escapedText, SymbolType::TypeVariable, distributiveOverIdentifier->pos);
-//                        handle(n->checkType, program);
-//                        program.pushFrame();
-//                        //first we add to the stack the origin type we distribute over.
-//                        handle(narrowed.checkType, program);
-//
-//                        //since the distributive conditional type is a loop that changes only the found `T`, it is necessary to add that as variable,
-//                        //so call convention can take over.
-//                        program.pushVariable(getIdentifierName(distributiveOverIdentifier));
-//                        program.pushCoRoutine();
-                        program.pushSubroutineNameLess(node);
+                    program.pushSection();
 
-                        //in the subroutine of the conditional type we place a new type variable, which acts as input.
-                        //the `Distribute` OP makes then sure that the current stack entry is used as input
+                    unsigned int distributeJumpIp = 0;
+                    if (distributiveOverIdentifier) {
+                        //program.pushOp(OP::TypeVariable, distributiveOverIdentifier);
+                        handle(n->checkType, program); //LOADS the input type onto the stack. Distribute pops it then.
+
+                        //in Distribute we block tail calls as the section is called multiple times
+                        program.blockTailCall();
+                        auto frame = program.pushFrame(true);
+                        frame->conditional = true;
+
+                        //Distribute crash implicit TypeVariable on the stack and populates it
                         program.pushSymbol(distributiveOverIdentifier->escapedText, SymbolType::TypeVariable, distributiveOverIdentifier);
-                        program.pushOp(instructions::TypeArgument, distributiveOverIdentifier);
+
+                        program.pushOp(OP::Distribute);
+                        distributeJumpIp = program.ip();
+                        program.pushAddress(0);
+                    } else {
+                        auto frame = program.pushFrame();
+                        frame->conditional = true;
                     }
 
                     handle(n->checkType, program);
                     handle(n->extendsType, program);
                     program.pushOp(instructions::Extends, n);
 
-                    auto trueProgram = program.pushSubroutineNameLess(n->trueType);
-                    handle(n->trueType, program);
-                    program.popSubroutine();
-
-                    auto falseProgram = program.pushSubroutineNameLess(n->falseType);
-                    handle(n->falseType, program);
-                    program.popSubroutine();
-
                     program.pushOp(OP::JumpCondition);
-                    //todo increase to 32bit each
-                    program.pushUint16(trueProgram);
-                    program.pushUint16(falseProgram);
+                    auto relativeTo = program.ip();
+                    auto falseJumpAddressIp = program.ip();
+                    program.pushAddress(0); //trueProgram is directly behind it
+
+                    program.pushSection();
+                    handle(n->trueType, program);
+                    program.popSection();
+
+                    program.ignoreNextSectionOP();
+                    program.pushOp(OP::Jump);
+                    auto trueJumpAddressIp = program.ip();
+                    program.pushAddress(0);
+
+                    auto falseProgram = program.ip() + 1;
+                    program.pushSection();
+                    handle(n->falseType, program);
+                    program.popSection();
+                    auto falseEndIp = program.ip();
+
+                    program.pushAddress(falseProgram - relativeTo, falseJumpAddressIp);
+                    program.pushAddress(falseEndIp - trueJumpAddressIp + 1, trueJumpAddressIp);
 
                     if (distributiveOverIdentifier) {
-                        auto routine = program.popSubroutine();
-                        handle(n->checkType, program); //LOADS the input type onto the stack. Distribute pops it then.
-                        program.pushOp(OP::Distribute);
-                        program.pushAddress(routine->index);
+                        //auto routine = program.popSubroutine();
+                        //handle(n->checkType, program); //LOADS the input type onto the stack. Distribute pops it then.
+                        program.pushAddress(falseEndIp - distributeJumpIp + 6, distributeJumpIp);
+                        program.ignoreNextSectionOP();
+                        program.pushOp(OP::NJump);
+                        program.pushAddress(program.ip() - distributeJumpIp);
+                        program.popFrameImplicit();
+                    } else {
+                        program.ignoreNextSectionOP();
+                        program.popFrame();
                     }
+
+                    program.popSection();
 
 //                    debug("ConditionalType {}", !!distributiveOverIdentifier);
                     break;

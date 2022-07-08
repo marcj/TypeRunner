@@ -10,3 +10,6 @@
 [submodule "libs/asmjit"]
 	path = libs/asmjit
 	url = git@github.com:asmjit/asmjit.git
+[submodule "libs/doctest"]
+	path = libs/doctest
+	url = git@github.com:doctest/doctest.git

@@ -258,10 +258,19 @@ namespace ts {
         bench("", iterations, callback);
     }
 
-    const std::string red("\033[0;31m");
-    const std::string green("\033[1;32m");
-    const std::string yellow("\033[1;33m");
-    const std::string cyan("\033[0;36m");
-    const std::string magenta("\033[0;35m");
-    const std::string reset("\033[0m");
+    inline std::string red;
+    inline std::string green;
+    inline std::string yellow;
+    inline std::string cyan;
+    inline std::string magenta;
+    inline std::string reset;
+
+    inline void enableColors() {
+        red = "\033[0;31m";
+        green = "\033[1;32m";
+        yellow = "\033[1;33m";
+        cyan = "\033[0;36m";
+        magenta = "\033[0;35m";
+        reset = "\033[0m";
+    }
 }

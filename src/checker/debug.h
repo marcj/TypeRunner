@@ -39,6 +39,8 @@ namespace ts::checker {
         const auto end = bin.size();
         unsigned int storageEnd = 0;
         bool newSubRoutine = false;
+        bool firstJump = false;
+        bool newLine = false;
         DebugBinResult result;
         if (print) std::cout << fmt::format("Bin {} bytes: ", bin.size());
 
@@ -77,6 +79,7 @@ namespace ts::checker {
             auto op = (OP) bin[i];
 
             switch (op) {
+                case OP::TailCall:
                 case OP::Call: {
                     params += fmt::format(" &{}[{}]", vm::readUint32(bin, i + 1), vm::readUint16(bin, i + 5));
                     vm::eatParams(op, &i);
@@ -109,13 +112,23 @@ namespace ts::checker {
                     result.subroutines.push_back({.name = name, .address = address});
                     break;
                 }
+                case OP::NJump: {
+                    auto address = vm::readUint32(bin, i + 1);
+
+                    params += fmt::format(" [{}]", startI - address);
+                    vm::eatParams(op, &i);
+                    newLine = true;
+                    break;
+                }
                 case OP::Main:
                 case OP::Jump: {
                     auto address = vm::readUint32(bin, i + 1);
-                    params += fmt::format(" &{}", address);
+                    params += fmt::format(" [{}]", startI + address);
                     vm::eatParams(op, &i);
                     if (op == OP::Jump) {
-                        storageEnd = address;
+                        if (!firstJump) storageEnd = address;
+                        if (firstJump) newLine = true;
+                        firstJump = true;
                     } else {
                         result.subroutines.push_back({.name = "main", .address = address});
                         newSubRoutine = true;
@@ -126,14 +139,15 @@ namespace ts::checker {
                     newSubRoutine = true;
                     break;
                 }
+                case OP::Distribute:
                 case OP::JumpCondition: {
-                    params += fmt::format(" &{}:&{}", vm::readUint16(bin, i + 1), vm::readUint16(bin, i + 3));
+                    params += fmt::format(" [{}]", startI + vm::readUint32(bin, i + 1));
                     vm::eatParams(op, &i);
+                    newLine = true;
                     break;
                 }
                 case OP::Set:
-                case OP::TypeArgumentDefault:
-                case OP::Distribute: {
+                case OP::TypeArgumentDefault: {
                     params += fmt::format(" &{}", vm::readUint32(bin, i + 1));
                     vm::eatParams(op, &i);
                     break;
@@ -187,6 +201,8 @@ namespace ts::checker {
             }
             if (print) {
                 std::cout << "[" << startI << "](" << text << ") ";
+                if (newLine) std::cout << "\n";
+                newLine = false;
             }
         }
         if (print) std::cout << "\n";

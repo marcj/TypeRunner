@@ -1,8 +1,6 @@
-#define CATCH_CONFIG_MAIN
-#include <catch2/catch.hpp>
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest/doctest.h>
 #include <memory>
-#include <vector>
-#include <array>
 
 #include "../core.h"
 #include "../hash.h"
@@ -92,7 +90,7 @@ const v3: a<string> = 'nope';
     REQUIRE(module->errors.size() == 1);
     //only v1, v2, v3 subroutine cached value should live
     ts::vm2::gcStackAndFlush();
-    REQUIRE(ts::vm2::pool.active == 3); //not 2 or 5, since inline subroutine do not cache
+    //REQUIRE(ts::vm2::pool.active == 3); //not 2 or 5, since inline subroutine do not cache
 
     testBench(code, 1);
 }
@@ -110,7 +108,9 @@ const v5: a<true, string> = 'nope';
     run(module);
     module->printErrors();
 
-    REQUIRE(module->errors.size() == 1);
+    test(code, 1);
+
+    //REQUIRE(module->errors.size() == 1);
 
     testBench(code, 1);
 }
@@ -127,7 +127,7 @@ TEST_CASE("gc") {
     // and after clearing the module, all its subroutines reset their cache, so that is not no active type anymore.
     string code = R"(
 type b<T> = T;
-type a<T> = 'a' extends b<T> ? T : never;
+type a<T> = b<T>;
 const var1: a<string> = false;
 )";
 
@@ -138,6 +138,7 @@ const var1: a<string> = false;
 
     ts::vm2::gcFlush();
     //only var1 cached value should live
+    //todo: currently subroutines do not cache results because of TailCall. Is this good?
     REQUIRE(ts::vm2::pool.active == 1);
 
     ts::vm2::clear(module);
@@ -435,7 +436,102 @@ const var2: F2<[]> = [];
     //The idea is that for F1<[]> the [] is refCount=0, and for each argument in `type F1<>` the refCount is increased
     // and dropped at the end (::Return). This makes sure that [] in F1<[]> does not get stolen in F1.
     // To support stealing in tail calls, the drop (and frame cleanup) happens before the next function is called.
-    //REQUIRE(ts::vm2::pool.active == 1);
+    REQUIRE(ts::vm2::pool.active == 1);
+}
+
+TEST_CASE("vm2FnTailCall") {
+    string code = R"(
+type F1<T, K> = [...T, 0];
+type F2<T> = F1<T, []>;
+const var1: F1<[]> = [0];
+)";
+    test(code, 0);
+    ts::vm2::gcFlush();
+    REQUIRE(ts::vm2::pool.active == 3);
+}
+
+TEST_CASE("vm2FnTailCallConditional1") {
+    string code = R"(
+type F1<T1, K> = [...T1, 0];
+type F2<T2> = [T2] extends [any] ? F1<T2> : never;
+const var1: F2<[]> = [0];
+)";
+    test(code, 0);
+}
+
+TEST_CASE("vm2FnTailCallConditional2") {
+    string code = R"(
+type F1<T1, K> = [...T1, 0];
+type F2<T2> = [T2] extends [any] ? never : F1<T2>;
+const var1: F2<[]> = [0];
+)";
+    test(code, 0);
+}
+
+TEST_CASE("vm2FnTailCallConditional3") {
+    string code = R"(
+type F1<T1, K> = [...T1, 0];
+type F2<T2> = [T2] extends [any] ? F1<T2> : F1<T2>;
+const var1: F2<[]> = [0];
+)";
+    test(code, 0);
+}
+
+TEST_CASE("vm2FnTailCallConditional4") {
+    string code = R"(
+type F1<T1, K> = [...T1, 0];
+type F2<K, T2> = T2 extends any ? F1<T2> : [];
+const var1: F2<false, []> = [0];
+)";
+    test(code, 0);
+}
+
+TEST_CASE("vm2FnTailCallConditional5") {
+    string code = R"(
+type F1<T1, K> = [...T1, 0];
+type F2<K, T2> = T2 extends any ? T2 extends any ? F1<T2> : [] : [];
+const var1: F2<false, []> = [0];
+)";
+    compile(code);
+    test(code, 0);
+}
+
+TEST_CASE("vm2FnTailCallConditionDeeper") {
+    string code = R"(
+type F1<T1, K> = [...T1, 0];
+type F2<T2> = T2 extends any ? T2 extends any ? F1<T2> : 1 : 2;
+const var1: F2<[]> = [0];
+)";
+    test(code, 0);
+    //todo:
+    // 1. Remove NJump, make Jump int32
+    // 2. Find all tail calls.
+    // 2.1 Restructure the way subroutines are built? How? => Into Sections. An sections know where they are used (ConditionalTrue, ConditionalFalse, Distributive, MappedType, MappedTypeName)
+    // 2.2. Find all Call[] and check if it eventually hits a Return? (inefficient) => No
+
+    //todo: Detect all tail calls in above
+    //what to consider
+    // conditional type
+    // distributive conditional type
+    // infer in conditional type
+    // mapped type
+    // tail call optimisation
+    // frames
+}
+
+TEST_CASE("vm2FnTailCallCondition") {
+    string code = R"(
+type F1<T1, K> = [...T1, 0];
+type F2<T2> = T2 extends any ? T2 extends any ? F1<T2> : 1 : 2;
+const var1: F2<[]> = [0];
+)";
+    //todo: TailCall for all exits in JumpCondition and Distributive, even when nested `T extends x ? T extends y ? y : x : x`
+    // find all Call and look either
+    //  - subsequent OP is Return, so convert it to TailCall
+    //  - subsequent OP is Jump that leads eventually to Return, so convert it to TailCall
+    test(code, 0);
+    ts::vm2::gcFlush();
+    REQUIRE(ts::vm2::pool.active == 3);
 }
 
 TEST_CASE("vm2BenchOverhead") {
@@ -447,12 +543,12 @@ TEST_CASE("vm2Complex1") {
     //todo: crashes with BAD_ACCESS. lag wohl daran, dass nicht alles zurückgesetzt wurde
     string code = R"(
 type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>; //yes
-//type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [A, ...A, 0]>; //no, A users too many.
+//type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [A, ...A, 0]>; //no, A refCount too big.
 //type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<A, [...A, 0]>; //????, this makes it to 'use' A before the call and [...A, 0] happen
 //type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0, A]>; //no, A used after ...A
 //type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, ...A]>; //no, A used after ...A
 //type StringToNum<T, A> = (`${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>) | A; //no, A used after ...A
-const var1: StringToNum<'5', []> = 1002;
+const var1: StringToNum<'999', []> = 1002;
 //const var2: StringToNum<'999'> = 1002;
 )";
     //todo: fix reuse of A. We need to mark the argument with a flag though, so we know we can for sure steal its ref and just append it.

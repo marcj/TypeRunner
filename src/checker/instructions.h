@@ -92,6 +92,7 @@ namespace ts::instructions {
         TypeArgumentDefault, //one parameter with the address of the subroutine of the default value
 
         TypeArgumentConstraint, //expects an entry on the stack
+        TypeVariable,
 
 
         TemplateLiteral,
@@ -115,12 +116,14 @@ namespace ts::instructions {
         Error,
 
         Frame, //creates a new stack frame
+        FrameEnd,
         Return,
-
+        NJump, //negative jump
 
         Subroutine,
         Distribute, //calls a subroutine for each union member. one parameter (address to subroutine)
-        Call //call a subroutine and push the result on the stack
+        Call, //call a subroutine and push the result on the stack
+        TailCall,
     };
 
     enum class ErrorCode {
@@ -129,7 +132,6 @@ namespace ts::instructions {
 
     //Max 8 bits, used in the bytecode
     enum SubroutineFlag: unsigned int {
-        Inline = 1 << 0,
     };
 }
 

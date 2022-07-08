@@ -41,11 +41,15 @@ namespace ts::vm2 {
             //garbage collect now
             gcFlush();
         }
+        if (type->flag & TypeFlag::Deleted) {
+            throw std::runtime_error("Type already deleted");
+        }
+        type->flag |= TypeFlag::Deleted;
         gcQueue[gcQueueIdx++] = type;
     }
 
     void gc(Type *type) {
-//        debug("gc users={} {} ref={}", type->users, stringify(type), (void*)type);
+        //debug("gc refCount={} {} ref={}", type->refCount, stringify(type), (void *) type);
         if (type->refCount>0) return;
         gcWithoutChildren(type);
 
@@ -151,9 +155,20 @@ namespace ts::vm2 {
         return stack[--sp];
     }
 
+    inline void popFrameWithoutGC() {
+        sp = frame->initialSp;
+        frame = frames.pop();
+    }
+
     inline std::span<Type *> popFrame() {
         auto start = frame->initialSp + frame->variables;
         std::span<Type *> sub{stack.data() + start, sp - start};
+        if (frame->variables>0) {
+            //we need to GC all variables
+            for (unsigned int i = 0; i<frame->variables; i++) {
+                gc(stack[frame->initialSp + i]);
+            }
+        }
         sp = frame->initialSp;
         frame = frames.pop(); //&frames[--frameIdx];
         return sub;
@@ -189,12 +204,71 @@ namespace ts::vm2 {
         auto next = frames.push(); ///&frames[frameIdx++];
         //important to reset necessary stuff, since we reuse
         next->initialSp = sp;
+        next->depth = frame->depth + 1;
 //        debug("pushFrame {}", sp);
         next->variables = 0;
         frame = next;
     }
 
     //Returns true if it actually jumped to another subroutine, false if it just pushed its cached type.
+    inline bool tailCall(unsigned int address, unsigned int arguments) {
+        auto routine = activeSubroutine->module->getSubroutine(address);
+        if (routine->narrowed) {
+            push(routine->narrowed);
+            return false;
+        }
+        if (routine->result && arguments == 0) {
+            push(routine->result);
+            return false;
+        }
+
+        //first make sure all arguments get refCount++ so they won't be GC in next step
+        for (unsigned int i = 0; i<arguments; i++) {
+            use(stack[sp - i - 1]);
+        }
+
+        //remove all open frames
+        while (frame->depth>0) {
+            for (unsigned int i = 0; i<frame->variables; i++) {
+                drop(stack[frame->initialSp + i]);
+            }
+            frame = frames.pop();
+        }
+
+        //stack could look like that:
+        // | [T] [T] [V] [P1] [P2] [TailCall] |
+        // T=TypeArgument, V=TypeVariable, but we do not need anything of that, so we GC that. P indicates argument for the call.
+        for (unsigned int i = 0; i<frame->variables; i++) {
+            drop(stack[frame->initialSp + i]);
+        }
+
+        //stack could look like that:
+        // | [T] [T] [V] [P1] [P2] [TailCall] |
+        //in this case we have to move P1 and P2 at the beginning
+        // | [P1] [P2]
+        // T, T, and V were already dropped above.
+        if (frame->variables) {
+            for (unsigned int i = 0; i<arguments; i++) {
+                stack[frame->initialSp + arguments - 1 - i] = stack[sp - i - 1];
+            }
+        }
+
+        //we want to reuse the same frame, so reset it
+        frame->variables = 0;
+        sp = frame->initialSp + arguments;
+
+        //jump to the new address
+        activeSubroutine->ip = routine->address;
+        activeSubroutine->module = activeSubroutine->module;
+        activeSubroutine->subroutine = routine;
+        activeSubroutine->depth = activeSubroutine->depth + 1;
+        activeSubroutine->typeArguments = 0;
+
+        //debug("[{}] TailCall", activeSubroutine->ip - 4 - 2);
+        //printStack();
+        return true;
+    }
+
     inline bool call(unsigned int address, unsigned int arguments) {
         auto routine = activeSubroutine->module->getSubroutine(address);
         if (routine->narrowed) {
@@ -218,13 +292,16 @@ namespace ts::vm2 {
         activeSubroutine = nextActiveSubroutine;
 
         auto nextFrame = frames.push(); //&frames[++frameIdx];
+        nextFrame->depth = 0;
         //important to reset necessary stuff, since we reuse
-        nextFrame->initialSp = sp;
-        nextFrame->variables = 0;
-        if (arguments) {
-            //we move x arguments from the old stack frame to the new one
-            nextFrame->initialSp -= arguments;
+
+        // | (initialSp) [P1] [P1] (sp) |
+
+        nextFrame->initialSp = sp - arguments; //we move x arguments from the old stack frame to the new one
+        for (unsigned int i = 0; i<arguments; i++) {
+            use(stack[frame->initialSp + i]);
         }
+        nextFrame->variables = 0;
         frame = nextFrame;
         return true;
     }
@@ -464,7 +541,7 @@ namespace ts::vm2 {
         auto top = sp;
         for (int i = frames.i; i>=0; i--) {
             auto frame = frames.at(i);
-            debug("Frame {} initialSp={}", i, frame->initialSp);
+            debug("Frame {} depth={} variables={} initialSp={}", i, frame->depth, frame->variables, frame->initialSp);
 
             auto size = top - frame->initialSp;
             for (unsigned int j = 0; j<size; j++) {
@@ -495,7 +572,7 @@ namespace ts::vm2 {
         start:
         auto &bin = activeSubroutine->module->bin;
         while (true) {
-//            debug("[{}] OP {} {}", activeSubroutine->depth, activeSubroutine->ip, (OP) bin[activeSubroutine->ip]);
+            //debug("[{}] OP {} {}", activeSubroutine->depth, activeSubroutine->ip, (OP) bin[activeSubroutine->ip]);
             switch ((OP) bin[activeSubroutine->ip]) {
                 case OP::Halt: {
 //                    activeSubroutine = activeSubroutines.reset();
@@ -521,6 +598,18 @@ namespace ts::vm2 {
                     stack[sp++] = allocate(TypeKind::Null);
                     break;
                 }
+                case OP::FrameEnd: {
+                    if (frame->size()>frame->variables) {
+                        //there is a return value on the stack, which we need to preserve
+                        auto ret = pop();
+                        popFrame();
+                        push(ret);
+                    } else {
+                        //throw away the whole stack
+                        popFrame();
+                    }
+                    break;
+                }
                 case OP::Frame: {
                     pushFrame();
                     break;
@@ -528,7 +617,7 @@ namespace ts::vm2 {
                 case OP::Assign: {
                     auto rvalue = pop();
                     auto lvalue = pop();
-                    debug("assign {} = {}", stringify(rvalue), stringify(lvalue));
+                    //debug("assign {} = {}", stringify(rvalue), stringify(lvalue));
                     if (!extends(lvalue, rvalue)) {
 //                        auto error = stack.errorMessage();
 //                        error.ip = ip;
@@ -545,9 +634,23 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Return: {
+                    //while (frame->depth > 0) {
+                    //    for (unsigned int i = 0; i<frame->variables; i++) {
+                    //        drop(stack[frame->initialSp + i]);
+                    //    }
+                    //    frame = frames.pop();
+                    //}
+
+                    //printStack();
                     //gc all parameters
-                    for (unsigned int i = 0; i<activeSubroutine->typeArguments; i++) {
-                        drop(stack[frame->initialSp + i]);
+                    for (unsigned int i = 0; i<frame->variables; i++) {
+                        if (stack[frame->initialSp + i] != stack[sp - 1]) {
+                            //only if the parameter is not at the same time the return value
+                            drop(stack[frame->initialSp + i]);
+                        } else {
+                            //we decrease refCount for return value though, to remove ownership. The callee is responsible to clean it up now
+                            stack[frame->initialSp + i]->refCount--;
+                        }
                     }
                     //the current frame could not only have the return value, but variables and other stuff,
                     //which we don't want. So if size is bigger than 1, we move last stack entry to first
@@ -557,7 +660,7 @@ namespace ts::vm2 {
                     }
                     sp = frame->initialSp + 1;
                     frame = frames.pop(); //&frames[--frameIdx];
-                    if (activeSubroutine->typeArguments == 0 && !(activeSubroutine->subroutine->flags & instructions::SubroutineFlag::Inline)) {
+                    if (activeSubroutine->typeArguments == 0) {
 //                        debug("keep type result {}", activeSubroutine->subroutine->name);
                         activeSubroutine->subroutine->result = use(stack[sp - 1]);
                         activeSubroutine->subroutine->result->flag |= TypeFlag::Stored;
@@ -565,6 +668,21 @@ namespace ts::vm2 {
                     activeSubroutine = activeSubroutines.pop(); //&activeSubroutines[--activeSubroutineIdx];
                     goto start;
                     break;
+                }
+                case OP::TailCall: {
+                    const auto address = activeSubroutine->parseUint32();
+                    const auto arguments = activeSubroutine->parseUint16();
+                    //if (activeSubroutine->flag & ActiveSubroutineFlag::BlockTailCall) {
+                    //    if (call(address, arguments)) {
+                    //        goto start;
+                    //    }
+                    //    break;
+                    //} else {
+                    if (tailCall(address, arguments)) {
+                        goto start;
+                    }
+                    break;
+                    //}
                 }
                 case OP::Call: {
                     const auto address = activeSubroutine->parseUint32();
@@ -574,14 +692,24 @@ namespace ts::vm2 {
                     }
                     break;
                 }
+                case OP::NJump: {
+                    const auto address = activeSubroutine->parseUint32();
+                    activeSubroutine->ip -= address + 4; //decrease by uint32 too
+                    goto start;
+                }
+                case OP::Jump: {
+                    const auto address = activeSubroutine->parseUint32();
+                    activeSubroutine->ip += address - 4;
+                    goto start;
+                }
                 case OP::JumpCondition: {
                     auto condition = pop();
-                    const auto leftProgram = activeSubroutine->parseUint16();
-                    const auto rightProgram = activeSubroutine->parseUint16();
-//                            debug("{} ? {} : {}", stringify(condition), leftProgram, rightProgram);
+                    const auto rightProgram = activeSubroutine->parseUint32();
                     auto valid = isConditionTruthy(condition);
+                    //debug("JumpCondition {}", valid);
                     gc(condition);
-                    if (call(valid ? leftProgram : rightProgram, 0)) {
+                    if (!valid) {
+                        activeSubroutine->ip += rightProgram - 4;
                         goto start;
                     }
                     break;
@@ -589,7 +717,7 @@ namespace ts::vm2 {
                 case OP::Extends: {
                     auto right = pop();
                     auto left = pop();
-//                    debug("{} extends {} => {}", stringify(left), stringify(right), extends(left, right));
+                    //debug("{} extends {} => {}", stringify(left), stringify(right), extends(left, right));
                     const auto valid = extends(left, right);
                     auto item = allocate(TypeKind::Literal);
                     item->flag |= TypeFlag::BooleanLiteral;
@@ -604,28 +732,54 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Distribute: {
+                    //if there is OP::Distribute, then there was always before this OP
+                    // a OP::Loads to push the type on the stack.
+                    //printStack();
                     if (!frame->loop) {
-                        auto type = pop();
-                        if (type->kind == TypeKind::Union) {
-                            pushFrame();
-                            frame->loop = loops.push(); // new LoopHelper(type);
-                            frame->loop->set((TypeRef *) type->type);
-                        } else {
-                            push(type);
-                            const auto loopProgram = vm::readUint32(bin, activeSubroutine->ip + 1);
-                            //jump over parameter
-                            activeSubroutine->ip += 4;
-                            if (call(loopProgram, 1)) {
-                                goto start;
-                            }
+                        if (frame->flags & FrameFlag::InSingleDistribute) {
+                            //this frame is a Distribute frame already, but frame->loop is empty,
+                            //which means the type on the stack was not a union. We jump thus directly to the end now.
+                            const auto loopEnd = vm::readUint32(bin, activeSubroutine->ip + 1);
+                            activeSubroutine->ip += loopEnd - 1;
+                            //in case of non-union the parameter in this frame should not be GC.
+                            //why? because we do not own it, so GC would lead to removal when refCount=0
+                            auto res = stack[sp - 1];
+                            popFrameWithoutGC();
+                            stack[sp++] = res;
                             break;
+                        }
+
+                        auto type = stack[sp - 1];
+                        pushFrame();
+                        //we treat the top of the stack as variable for the next frame
+                        frame->initialSp--;
+                        frame->variables++;
+                        //type->refCount++;
+
+                        if (type->kind == TypeKind::Union) {
+                            //if it's a union, we use the OP:Load slot
+                            frame->loop = loops.push(); // new LoopHelper(type);
+                            frame->loop->set(sp - 1, (TypeRef *) type->type);
+                        } else {
+                            frame->flags |= FrameFlag::InSingleDistribute;
+                            // If this is a non-union,
+                            // we create a frame and shift it one to the left to consume the type
+                            // all subsequent Loads 0:0 then reference it correctly.
+                            stack[sp - 1] = type;
+                            //jump over parameter, right to the distribute section
+                            activeSubroutine->ip += 1 + 4;
+                            goto start;
                         }
                     }
 
                     auto next = frame->loop->next();
                     if (!next) {
                         //done
+                        //printStack();
+                        loops.pop();
+                        frame->loop = nullptr;
                         auto types = popFrame();
+                        //pop TypeVariable
                         if (types.empty()) {
                             push(allocate(TypeKind::Never));
                         } else if (types.size() == 1) {
@@ -640,20 +794,12 @@ namespace ts::vm2 {
                             current->next = nullptr;
                             push(result);
                         }
-                        loops.pop();
-                        frame->loop = nullptr;
-                        //jump over parameter
-                        activeSubroutine->ip += 4;
+                        const auto loopEnd = vm::readUint32(bin, activeSubroutine->ip + 1);
+                        activeSubroutine->ip += loopEnd - 1;
                     } else {
-                        //next
-                        const auto loopProgram = vm::readUint32(bin, activeSubroutine->ip + 1);
-                        push(next);
-//                        debug("distribute jump {}", activeSubroutine->ip);
-                        activeSubroutine->ip--; //we jump back if the loop is not done, so that this section is executed again when the following call() is done
-                        if (call(loopProgram, 1)) {
-                            goto start;
-                        }
-                        break;
+                        //jump over parameter, right to the distribute section
+                        activeSubroutine->ip += 1 + 4;
+                        goto start;
                     }
                     break;
                 }
@@ -668,13 +814,19 @@ namespace ts::vm2 {
 //                            debug("load var {}/{}", frameOffset, varIndex);
                     break;
                 }
+                case OP::TypeVariable: {
+                    //all variables will be dropped at the end of the subroutine
+                    push(use(allocate(TypeKind::Unknown)));
+                    frame->variables++;
+                    break;
+                }
                 case OP::TypeArgument: {
                     if (frame->size()<=activeSubroutine->typeArguments) {
-                        auto unknown = allocate(TypeKind::Unknown);
-                        use(unknown);
-                        push(unknown);
+                        //all variables will be dropped at the end of the subroutine
+                        push(use(allocate(TypeKind::Unknown)));
                     } else {
-                        use(stack[frame->initialSp + activeSubroutine->typeArguments]);
+                        //for provided argument we do not increase refCount, because it's the caller's job
+                        //use(stack[frame->initialSp + activeSubroutine->typeArguments]);
                     }
                     activeSubroutine->typeArguments++;
                     frame->variables++;
@@ -690,7 +842,9 @@ namespace ts::vm2 {
                             goto start;
                         }
                     } else {
-                        use(stack[frame->initialSp + activeSubroutine->typeArguments]);
+                        //for provided argument we do not increase refCount, because it's the caller's job
+                        //use(stack[frame->initialSp + activeSubroutine->typeArguments]);
+
                         activeSubroutine->ip += 4; //jump over address
 
                         activeSubroutine->typeArguments++;
@@ -818,6 +972,7 @@ namespace ts::vm2 {
                 }
                 case OP::Union: {
                     auto item = allocate(TypeKind::Union);
+                    //printStack();
                     auto types = popFrame();
                     if (types.empty()) {
                         item->type = nullptr;
@@ -916,7 +1071,7 @@ namespace ts::vm2 {
                             //type T = [y, z];
                             //type New = [...T, x]; => [y, z, x];
                             auto length = refLength((TypeRef *) T->type);
-                            debug("...T of size {} with refCount={} *{}", length, T->refCount, (void *) T);
+                            //debug("...T of size {} with refCount={} *{}", length, T->refCount, (void *) T);
 
                             //if type has no owner, we can just use it as the new type
                             //T.users is minimum 1, because the T is owned by Rest, and Rest owned by TupleMember, and TupleMember by nobody,

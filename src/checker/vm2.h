@@ -36,6 +36,10 @@ namespace ts::vm2 {
     inline MemoryPool<TypeRef, poolSize> poolRef;
     void gcFlush();
     void gcRefFlush();
+    void printStack();
+
+    enum ActiveSubroutineFlag {
+    };
 
     /**
      * For each active subroutine this object is created.
@@ -48,6 +52,9 @@ namespace ts::vm2 {
         unsigned int ip = 0; //current instruction pointer
 //        unsigned int index = 0;
         unsigned int depth = 0;
+
+        unsigned int flag = 0;
+
 //        bool active = true;
 
         unsigned int typeArguments = 0;
@@ -80,29 +87,36 @@ namespace ts::vm2 {
 
     struct LoopHelper {
         TypeRef *current;
+        unsigned int var1 = 0;
 
-        explicit LoopHelper() {
-        }
-
-        explicit LoopHelper(TypeRef *typeRef) {
-            set(typeRef);
-        }
-
-        void set(TypeRef *typeRef) {
+        void set(unsigned int var1, TypeRef *typeRef) {
+            this->var1 = var1;
             current = typeRef;
         }
 
-        Type *next() {
-            if (!current) return nullptr;
-            auto t = current->type;
+        bool next() {
+            if (!current) return false;
+            stack[var1] = current->type;
             current = current->next;
-            return t;
+            return true;
         }
+    };
+
+    enum FrameFlag: uint8_t {
+        InSingleDistribute = 1 << 0
     };
 
     struct Frame {
         unsigned int initialSp = 0; //initial stack pointer
-        unsigned int variables = 0; //the amount of registered variable slots on the stack. will be subtracted when doing popFrame()
+        //the amount of registered variable slots on the stack. will be subtracted when doing popFrame()
+        //type arguments of type functions and variables like for mapped types
+        unsigned int variables = 0;
+
+        //for every ActiveSubroutine this starts from 0 and increases within the subroutine.
+        //important to know which frame should be removed when TailCall/Return
+        unsigned int depth;
+
+        uint8_t flags = 0;
         LoopHelper *loop = nullptr;
 
         unsigned int size() {
@@ -125,11 +139,16 @@ namespace ts::vm2 {
         }
 
         T *push() {
-            if (i >= Size) throw std::runtime_error("Stack overflow");
+            if (i>=Size) {
+                throw std::runtime_error("Stack overflow");
+            }
             return &values[++i];
         }
 
         T *pop() {
+            if (i == 0) {
+                throw std::runtime_error("Popped out of stack");
+            }
             return &values[--i];
         }
     };
@@ -259,7 +278,7 @@ namespace ts::vm2 {
                 }
                 result.push_back(row);
 
-                for (unsigned int i = stack.size() - 1; i >= 0; i--) {
+                for (unsigned int i = stack.size() - 1; i>=0; i--) {
                     auto active = next(stack[i]);
                     //when that i stack is active, continue in main loop
                     if (active) goto outer;

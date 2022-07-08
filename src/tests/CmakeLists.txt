@@ -49,15 +49,15 @@ project(Tests)
 ##link_libraries(typescript)
 
 
-Include(FetchContent)
-
-FetchContent_Declare(
-        Catch2
-        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG v2.13.9 # or a later release
-)
-
-FetchContent_MakeAvailable(Catch2)
+#Include(FetchContent)
+#
+#FetchContent_Declare(
+#        Catch2
+#        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+#        GIT_TAG v2.13.9 # or a later release
+#)
+#
+#FetchContent_MakeAvailable(Catch2)
 
 file(GLOB TESTS test*.cpp)
 
@@ -67,14 +67,12 @@ file(GLOB TESTS test*.cpp)
 foreach (file ${TESTS})
     get_filename_component(name ${file} NAME_WE)
     MESSAGE("Test found typescript_${name}.")
-    MESSAGE("Catch2_SOURCE_DIR ${Catch2_SOURCE_DIR}")
     add_executable(typescript_${name} ${file})
 
     #    target_link_libraries(typescript_${name} PUBLIC Tracy::TracyClient)
 
     #    target_link_libraries(typescript_${name} gtest_main)
-    target_include_directories(typescript_${name} PUBLIC ${Catch2_SOURCE_DIR}/single_include)
-    target_link_libraries(typescript_${name} PRIVATE Catch2::Catch2 typescript )
+    target_link_libraries(typescript_${name} PRIVATE doctest typescript)
 #    target_link_libraries(typescript_${name} typescript)
     #    target_link_libraries(typescript_${name} PRIVATE Catch2::Catch2WithMain)
     #    target_link_libraries(typescript_${name} PRIVATE typescript)

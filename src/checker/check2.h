@@ -44,6 +44,9 @@ namespace ts::vm2 {
                         //todo: comparing tuple is much more complex than that
                         auto rightCurrent = (TypeRef *) right->type;
                         auto leftCurrent = (TypeRef *) left->type;
+                        if (rightCurrent && !leftCurrent) return false;
+                        if (!rightCurrent && leftCurrent) return false;
+
                         while (rightCurrent) {
                             if (rightCurrent && !leftCurrent) return false;
                             if (!rightCurrent && leftCurrent) return false;

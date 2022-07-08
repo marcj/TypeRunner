@@ -15,6 +15,7 @@ list(APPEND CMAKE_MODULE_PATH libs)
 #add_definitions(-DTRACY_ENABLE)
 #include_directories(libs/tracy/)
 
+add_subdirectory(libs/doctest)
 add_subdirectory(libs/tracy)
 add_subdirectory(libs/fmt)
 
