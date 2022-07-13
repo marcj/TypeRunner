@@ -6,6 +6,7 @@ namespace ts::instructions {
     enum OP {
         Noop,
         Jump, //arbitrary jump, used at the beginning to jump over storage-data (storage-data's addresses are constant)
+        FrameReturnJump,
         Halt,
         SourceMap, //one parameter (size uint32). all subsequent bytes withing the given size is a map op:pos:end, each uint32
         Main, //marks end of meta-data section (subroutine metadata + storage data). has one parameter that points to the actual main code.
@@ -118,7 +119,6 @@ namespace ts::instructions {
         Frame, //creates a new stack frame
         FrameEnd,
         Return,
-        NJump, //negative jump
 
         Subroutine,
         Distribute, //calls a subroutine for each union member. one parameter (address to subroutine)

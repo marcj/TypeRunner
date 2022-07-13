@@ -115,7 +115,7 @@ namespace ts::vm2 {
         if (type == nullptr) return;
 
         if (type->refCount == 0) {
-            debug("type not used already!");
+            debug("type {} not used already!", stringify(type));
         }
         type->refCount--;
 //        debug("drop users={} {}  ref={}", type->users, stringify(type), (void *) type);
@@ -249,7 +249,7 @@ namespace ts::vm2 {
         // T, T, and V were already dropped above.
         if (frame->variables) {
             for (unsigned int i = 0; i<arguments; i++) {
-                stack[frame->initialSp + arguments - 1 - i] = stack[sp - i - 1];
+                stack[frame->initialSp + i] = stack[frame->initialSp + frame->variables + i];
             }
         }
 
@@ -572,7 +572,7 @@ namespace ts::vm2 {
         start:
         auto &bin = activeSubroutine->module->bin;
         while (true) {
-            //debug("[{}] OP {} {}", activeSubroutine->depth, activeSubroutine->ip, (OP) bin[activeSubroutine->ip]);
+            //debug("[{}:{}] OP {} {}", activeSubroutine->depth, frame->depth, activeSubroutine->ip, (OP) bin[activeSubroutine->ip]);
             switch ((OP) bin[activeSubroutine->ip]) {
                 case OP::Halt: {
 //                    activeSubroutine = activeSubroutines.reset();
@@ -692,13 +692,24 @@ namespace ts::vm2 {
                     }
                     break;
                 }
-                case OP::NJump: {
-                    const auto address = activeSubroutine->parseUint32();
-                    activeSubroutine->ip -= address + 4; //decrease by uint32 too
+                case OP::FrameReturnJump: {
+                    if (frame->size()>frame->variables) {
+                        //there is a return value on the stack, which we need to preserve
+                        auto ret = pop();
+                        popFrame();
+                        push(ret);
+                    } else {
+                        //throw away the whole stack
+                        popFrame();
+                    }
+                    const auto address = activeSubroutine->parseInt32();
+                    //debug("FrameEndJump to {} ({})", activeSubroutine->ip + address - 4, address);
+                    activeSubroutine->ip += address - 4; //decrease by uint32 too
                     goto start;
                 }
                 case OP::Jump: {
-                    const auto address = activeSubroutine->parseUint32();
+                    const auto address = activeSubroutine->parseInt32();
+                    //debug("Jump to {} ({})", activeSubroutine->ip + address - 4, address);
                     activeSubroutine->ip += address - 4;
                     goto start;
                 }
@@ -736,6 +747,8 @@ namespace ts::vm2 {
                     // a OP::Loads to push the type on the stack.
                     //printStack();
                     if (!frame->loop) {
+                        //todo: this does not work in a nested Distribute (T extends X ? T extends Y ?  1 :  0 : 0)
+                        // since frame references the outer Distribute
                         if (frame->flags & FrameFlag::InSingleDistribute) {
                             //this frame is a Distribute frame already, but frame->loop is empty,
                             //which means the type on the stack was not a union. We jump thus directly to the end now.
@@ -806,12 +819,14 @@ namespace ts::vm2 {
                 case OP::Loads: {
                     const auto frameOffset = activeSubroutine->parseUint16();
                     const auto varIndex = activeSubroutine->parseUint16();
-                    if (frameOffset == 0) {
-                        push(stack[frame->initialSp + varIndex]);
-                    } else {
-                        push(stack[frames.at(frames.i - frameOffset)->initialSp + varIndex]);
-                    }
-//                            debug("load var {}/{}", frameOffset, varIndex);
+                    auto index = frames.at(frames.i - frameOffset)->initialSp + varIndex;
+                    push(stack[index]);
+                    //debug("Loads {}:{} -> {}", frameOffset, varIndex, stringify(stack[index]));
+                    //if (frameOffset == 0) {
+                    //    push(stack[frame->initialSp + varIndex]);
+                    //} else {
+                    //    push(stack[frames.at(frames.i - frameOffset)->initialSp + varIndex]);
+                    //}
                     break;
                 }
                 case OP::TypeVariable: {
@@ -1070,14 +1085,14 @@ namespace ts::vm2 {
                         } else if (T->kind == TypeKind::Tuple) {
                             //type T = [y, z];
                             //type New = [...T, x]; => [y, z, x];
-                            auto length = refLength((TypeRef *) T->type);
+                            //auto length = refLength((TypeRef *) T->type);
                             //debug("...T of size {} with refCount={} *{}", length, T->refCount, (void *) T);
 
                             //if type has no owner, we can just use it as the new type
                             //T.users is minimum 1, because the T is owned by Rest, and Rest owned by TupleMember, and TupleMember by nobody,
                             //if T comes from a type argument, it is 2 since argument belongs to the caller.
                             //thus an expression of [...T] yields always T.users >= 1.
-                            if (T->refCount == 2 && firstType->flag & TypeFlag::RestReuse && !(firstType->flag & TypeFlag::Stored)) {
+                            if (true) {//T->refCount == 2 && firstType->flag & TypeFlag::RestReuse && !(firstType->flag & TypeFlag::Stored)) {
                                 item = use(T);
                             } else {
                                 item = allocate(TypeKind::Tuple);

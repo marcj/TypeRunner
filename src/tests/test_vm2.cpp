@@ -90,7 +90,7 @@ const v3: a<string> = 'nope';
     REQUIRE(module->errors.size() == 1);
     //only v1, v2, v3 subroutine cached value should live
     ts::vm2::gcStackAndFlush();
-    //REQUIRE(ts::vm2::pool.active == 3); //not 2 or 5, since inline subroutine do not cache
+    REQUIRE(ts::vm2::pool.active == 3);
 
     testBench(code, 1);
 }
@@ -109,8 +109,6 @@ const v5: a<true, string> = 'nope';
     module->printErrors();
 
     test(code, 1);
-
-    //REQUIRE(module->errors.size() == 1);
 
     testBench(code, 1);
 }
@@ -426,9 +424,9 @@ const var2: T = [];
 TEST_CASE("vm2FnArg") {
     string code = R"(
 type F1<T, K> = [...T, 0];
-type F2<T> = F1<T, []> | T; //T won't be stolen in F1 since refCount++
+type F2<T> = F1<T, false>
 const var1: F1<[]> = [0];
-const var2: F2<[]> = [];
+const var2: F2<[]> = [0];
 )";
     test(code, 0);
     ts::vm2::gcFlush();
@@ -436,7 +434,7 @@ const var2: F2<[]> = [];
     //The idea is that for F1<[]> the [] is refCount=0, and for each argument in `type F1<>` the refCount is increased
     // and dropped at the end (::Return). This makes sure that [] in F1<[]> does not get stolen in F1.
     // To support stealing in tail calls, the drop (and frame cleanup) happens before the next function is called.
-    REQUIRE(ts::vm2::pool.active == 1);
+    REQUIRE(ts::vm2::pool.active == 3 + 3); //two tuples
 }
 
 TEST_CASE("vm2FnTailCall") {
@@ -465,7 +463,7 @@ type F1<T1, K> = [...T1, 0];
 type F2<T2> = [T2] extends [any] ? never : F1<T2>;
 const var1: F2<[]> = [0];
 )";
-    test(code, 0);
+    test(code, 1);
 }
 
 TEST_CASE("vm2FnTailCallConditional3") {
@@ -489,10 +487,10 @@ const var1: F2<false, []> = [0];
 TEST_CASE("vm2FnTailCallConditional5") {
     string code = R"(
 type F1<T1, K> = [...T1, 0];
-type F2<K, T2> = T2 extends any ? T2 extends any ? F1<T2> : [] : [];
+type F2<K, T2> = T2 extends any ? T2 extends any ? [0] : 1 : 2;
 const var1: F2<false, []> = [0];
 )";
-    compile(code);
+    //compile(code);
     test(code, 0);
 }
 
@@ -557,7 +555,7 @@ const var1: StringToNum<'999', []> = 1002;
     //todo: add tail call optimisation
     //todo: super instruction for `${A['length']}` and A['length']
     test(code, 1);
-    //testBench(code, 1);
+    testBench(code, 1);
 //    testBench(code, 0, 1);
 //    debug("active {}", ts::vm2::pool.active);
 //    ts::vm2::gcFlush();

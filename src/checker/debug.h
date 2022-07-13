@@ -112,27 +112,22 @@ namespace ts::checker {
                     result.subroutines.push_back({.name = name, .address = address});
                     break;
                 }
-                case OP::NJump: {
-                    auto address = vm::readUint32(bin, i + 1);
-
-                    params += fmt::format(" [{}]", startI - address);
+                case OP::FrameReturnJump:
+                case OP::Jump: {
+                    auto address = vm::readInt32(bin, i + 1);
+                    params += fmt::format(" [{}, +{}]", startI + address, address);
                     vm::eatParams(op, &i);
-                    newLine = true;
+                    if (!firstJump) storageEnd = address;
+                    if (firstJump) newLine = true;
+                    firstJump = true;
                     break;
                 }
-                case OP::Main:
-                case OP::Jump: {
+                case OP::Main: {
                     auto address = vm::readUint32(bin, i + 1);
-                    params += fmt::format(" [{}]", startI + address);
+                    params += fmt::format(" [{}, +{}]", startI + address, address);
                     vm::eatParams(op, &i);
-                    if (op == OP::Jump) {
-                        if (!firstJump) storageEnd = address;
-                        if (firstJump) newLine = true;
-                        firstJump = true;
-                    } else {
-                        result.subroutines.push_back({.name = "main", .address = address});
-                        newSubRoutine = true;
-                    }
+                    result.subroutines.push_back({.name = "main", .address = address});
+                    newSubRoutine = true;
                     break;
                 }
                 case OP::Return: {

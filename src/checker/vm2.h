@@ -67,6 +67,12 @@ namespace ts::vm2 {
             return val;
         }
 
+        int32_t parseInt32() {
+            auto val = vm::readInt32(module->bin, ip + 1);
+            ip += 4;
+            return val;
+        }
+
         uint16_t parseUint16() {
             auto val = vm::readUint16(module->bin, ip + 1);
             ip += 2;

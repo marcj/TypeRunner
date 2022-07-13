@@ -25,9 +25,18 @@ namespace ts::vm {
         return *(uint32_t *) (bin.begin() + offset);
     }
 
+    inline int32_t readInt32(const string_view &bin, unsigned int offset) {
+        return *(int32_t *) (bin.begin() + offset);
+    }
+
     inline void writeUint32(vector<unsigned char> &bin, unsigned int offset, uint32_t value) {
         if (offset + 4>bin.size()) bin.resize(bin.size() + 4);
         *(uint32_t *) (bin.data() + offset) = value;
+    }
+
+    inline void writeInt32(vector<unsigned char> &bin, unsigned int offset, int32_t value) {
+        if (offset + 4>bin.size()) bin.resize(bin.size() + 4);
+        *(int32_t *) (bin.data() + offset) = value;
     }
 
     inline void writeUint64(vector<unsigned char> &bin, unsigned int offset, uint64_t value) {
@@ -66,7 +75,7 @@ namespace ts::vm {
                 break;
             }
             case OP::Main:
-            case OP::NJump:
+            case OP::FrameReturnJump:
             case OP::Jump: {
                 *i += 4;
                 break;

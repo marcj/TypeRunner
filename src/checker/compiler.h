@@ -142,6 +142,7 @@ namespace ts::checker {
             //find all tail sections (sections that end the program when executed)
             for (auto &&section: sections) {
                 if (section.hasChild) continue;
+                if (section.isBlockTailCall) continue;
                 if (section.next >= 0 && !ended(section)) continue;
 
                 Section *current = section.up >= 0 ? &sections[section.up] : nullptr;
@@ -515,6 +516,11 @@ namespace ts::checker {
         void pushAddress(unsigned int address, unsigned int offset = 0) {
             auto &ops = getOPs();
             vm::writeUint32(ops, offset == 0 ? ops.size() : offset, address);
+        }
+
+        void pushInt32Address(int32_t address, unsigned int offset = 0) {
+            auto &ops = getOPs();
+            vm::writeInt32(ops, offset == 0 ? ops.size() : offset, address);
         }
 
         void pushUint32(unsigned int v) {
@@ -930,6 +936,11 @@ namespace ts::checker {
                     } else {
                         //populate routine
                         program.pushSubroutine(n->name->escapedText);
+                        //in symbol subroutines we block TailCalls because want to store the result on the routine
+                        //but only if it has no typeParameters
+                        if (!n->typeParameters || n->typeParameters->length() == 0) {
+                            program.blockTailCall();
+                        }
 
                         if (n->typeParameters) {
                             for (auto &&p: n->typeParameters->list) {
@@ -1240,7 +1251,6 @@ namespace ts::checker {
                         //in Distribute we block tail calls as the section is called multiple times
                         program.blockTailCall();
                         auto frame = program.pushFrame(true);
-                        frame->conditional = true;
 
                         //Distribute crash implicit TypeVariable on the stack and populates it
                         program.pushSymbol(distributiveOverIdentifier->escapedText, SymbolType::TypeVariable, distributiveOverIdentifier);
@@ -1248,10 +1258,10 @@ namespace ts::checker {
                         program.pushOp(OP::Distribute);
                         distributeJumpIp = program.ip();
                         program.pushAddress(0);
-                    } else {
-                        auto frame = program.pushFrame();
-                        frame->conditional = true;
                     }
+
+                    auto frame = program.pushFrame();
+                    frame->conditional = true;
 
                     handle(n->checkType, program);
                     handle(n->extendsType, program);
@@ -1277,16 +1287,16 @@ namespace ts::checker {
                     program.popSection();
                     auto falseEndIp = program.ip();
 
-                    program.pushAddress(falseProgram - relativeTo, falseJumpAddressIp);
-                    program.pushAddress(falseEndIp - trueJumpAddressIp + 1, trueJumpAddressIp);
+                    program.pushInt32Address(falseProgram - relativeTo, falseJumpAddressIp);
+                    program.pushInt32Address(falseEndIp - trueJumpAddressIp + 1, trueJumpAddressIp);
 
                     if (distributiveOverIdentifier) {
                         //auto routine = program.popSubroutine();
                         //handle(n->checkType, program); //LOADS the input type onto the stack. Distribute pops it then.
                         program.pushAddress(falseEndIp - distributeJumpIp + 6, distributeJumpIp);
                         program.ignoreNextSectionOP();
-                        program.pushOp(OP::NJump);
-                        program.pushAddress(program.ip() - distributeJumpIp);
+                        program.pushOp(OP::FrameReturnJump);
+                        program.pushInt32Address(-(program.ip() - distributeJumpIp));
                         program.popFrameImplicit();
                     } else {
                         program.ignoreNextSectionOP();
@@ -1396,6 +1406,9 @@ namespace ts::checker {
                         } else {
                             if (n->type) {
                                 const auto subroutineIndex = program.pushSubroutine(id->escapedText);
+                                //in symbol subroutines we block TailCalls because want to store the result on the routine
+                                program.blockTailCall();
+
 //                                program.pushSourceMap(id);
                                 handle(n->type, program);
                                 program.popSubroutine();
