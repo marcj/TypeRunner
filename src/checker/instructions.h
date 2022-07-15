@@ -99,6 +99,7 @@ namespace ts::instructions {
         TemplateLiteral,
 
         IndexAccess,
+        Length,
         KeyOf,
         Infer,
         TypeOf,

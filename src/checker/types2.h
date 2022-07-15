@@ -123,6 +123,7 @@ namespace ts::vm2 {
         unsigned int flag = 0;
         unsigned int refCount = 0;
         uint64_t hash = 0;
+        unsigned int size = 0;
         void *type = nullptr; //either Type* or TypeRef* or string* depending on kind
 
         ~Type() {

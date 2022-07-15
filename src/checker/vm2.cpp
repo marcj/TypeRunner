@@ -338,7 +338,7 @@ namespace ts::vm2 {
         } else if (container->kind == TypeKind::Tuple) {
             if (index->hash == lengthHash) {
                 auto t = allocate(TypeKind::Literal);
-                t->setDynamicLiteral(TypeFlag::NumberLiteral, std::to_string(refLength((TypeRef *) container->type)));
+                t->setDynamicLiteral(TypeFlag::NumberLiteral, std::to_string(container->size));
                 return t;
             }
 
@@ -881,6 +881,22 @@ namespace ts::vm2 {
 //                    }
 //                    break;
                 }
+                case OP::Length: {
+                    auto container = pop();
+                    auto t = allocate(TypeKind::Literal);
+                    switch (container->kind) {
+                        case TypeKind::Tuple: {
+                            t->setDynamicLiteral(TypeFlag::NumberLiteral, std::to_string(container->size));
+                            break;
+                        }
+                        default: {
+                            t->setLiteral(TypeFlag::NumberLiteral, "0");
+                            break;
+                        }
+                    }
+                    push(t);
+                    break;
+                }
                 case OP::IndexAccess: {
                     auto right = pop();
                     auto left = pop();
@@ -1086,14 +1102,15 @@ namespace ts::vm2 {
                             //type T = [y, z];
                             //type New = [...T, x]; => [y, z, x];
                             //auto length = refLength((TypeRef *) T->type);
-                            //debug("...T of size {} with refCount={} *{}", length, T->refCount, (void *) T);
+                            //debug("...T of size {} with refCount={} *{}", T->size, T->refCount, (void *) T);
 
                             //if type has no owner, we can just use it as the new type
                             //T.users is minimum 1, because the T is owned by Rest, and Rest owned by TupleMember, and TupleMember by nobody,
                             //if T comes from a type argument, it is 2 since argument belongs to the caller.
                             //thus an expression of [...T] yields always T.users >= 1.
-                            if (true) {//T->refCount == 2 && firstType->flag & TypeFlag::RestReuse && !(firstType->flag & TypeFlag::Stored)) {
-                                item = use(T);
+                            if (T->refCount == 2 && firstType->flag & TypeFlag::RestReuse && !(firstType->flag & TypeFlag::Stored)) {
+                                item = T;
+                                //item = use(T);
                             } else {
                                 item = allocate(TypeKind::Tuple);
                                 TypeRef *newCurrent = nullptr;
@@ -1102,6 +1119,7 @@ namespace ts::vm2 {
                                     //we reuse the tuple member and increase its `users`.
                                     auto tupleMember = useAsRef(oldCurrent->type);
 
+                                    item->size++;
                                     if (newCurrent) {
                                         newCurrent->next = tupleMember;
                                         newCurrent = newCurrent->next;
@@ -1124,6 +1142,7 @@ namespace ts::vm2 {
                     } else {
                         item = allocate(TypeKind::Tuple);
                         item->type = useAsRef(types[0]);
+                        item->size = 1;
                     }
 
                     if (types.size()>1) {
@@ -1150,7 +1169,7 @@ namespace ts::vm2 {
                                         auto tupleMember = useAsRef(oldCurrent->type);
                                         current->next = tupleMember;
                                         current = current->next;
-
+                                        item->size++;
                                         oldCurrent = oldCurrent->next;
                                     }
                                 } else {
@@ -1159,6 +1178,7 @@ namespace ts::vm2 {
                                 //drop Rest operator, since it was consumed now, so its resources is freed
                                 gc(tupleMember);
                             } else {
+                                item->size++;
                                 if (current) {
                                     current->next = useAsRef(tupleMember);
                                     current = current->next;

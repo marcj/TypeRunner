@@ -47,6 +47,27 @@ namespace ts::checker {
         explicit ArgumentUsage(unsigned int argumentIndex): argumentIndex(argumentIndex) {}
     };
 
+    struct TypeArgumentUsage {
+        unsigned int symbolIndex;
+        unsigned int ip;
+
+        explicit TypeArgumentUsage(unsigned int symbolIndex, unsigned int ip): symbolIndex(symbolIndex), ip(ip) {}
+    };
+
+    struct Frame;
+    struct Subroutine;
+
+    struct Symbol {
+        string name;
+        SymbolType type = SymbolType::Type;
+        unsigned int index{}; //symbol index of the current frame
+        unsigned int pos{};
+        unsigned int end{};
+        unsigned int declarations = 1;
+        sharedOpt<Subroutine> routine = nullptr;
+        shared<Frame> frame = nullptr;
+    };
+
     //aka Branch
     struct Section {
         //instruction pointer start and end
@@ -57,12 +78,24 @@ namespace ts::checker {
         bool isBlockTailCall;
 
         bool hasChild = false;
+        vector<TypeArgumentUsage> typeArgumentUsages;
 
         //next and up section
         int next = -1;
         int up = -1;
 
         explicit Section(unsigned int start, unsigned int up = -1): start(start), up(up) {}
+
+        void registerTypeArgumentUsage(Symbol *symbol, unsigned int ip) {
+            for (auto &&usage: typeArgumentUsages) {
+                if (usage.symbolIndex == symbol->index) {
+                    usage.symbolIndex = ip;
+                    return;
+                }
+            }
+            typeArgumentUsages.emplace_back(symbol->index, ip);
+        }
+
     };
 
     //A subroutine is a sub program that can be executed by knowing its address.
@@ -73,11 +106,14 @@ namespace ts::checker {
         string_view identifier{};
         unsigned int index{};
         unsigned int nameAddress{};
-        vector<ArgumentUsage> argumentUsages;
         SymbolType type = SymbolType::Type;
 
         vector<Section> sections;
         unsigned int activeSection = 0;
+
+        void registerTypeArgumentUsage(Symbol *symbol) {
+            sections[activeSection].registerTypeArgumentUsage(symbol, ip());
+        }
 
         explicit Subroutine() {
             identifier = "";
@@ -135,7 +171,7 @@ namespace ts::checker {
         }
 
         bool ended(Section &section) {
-            return section.next >= 0 ? ended(sections[section.next]) : section.ops == 0;
+            return section.next>=0 ? ended(sections[section.next]) : section.ops == 0;
         }
 
         void optimise() {
@@ -143,9 +179,9 @@ namespace ts::checker {
             for (auto &&section: sections) {
                 if (section.hasChild) continue;
                 if (section.isBlockTailCall) continue;
-                if (section.next >= 0 && !ended(section)) continue;
+                if (section.next>=0 && !ended(section)) continue;
 
-                Section *current = section.up >= 0 ? &sections[section.up] : nullptr;
+                Section *current = section.up>=0 ? &sections[section.up] : nullptr;
                 bool tail = true;
                 while (current) {
                     if (current->isBlockTailCall) {
@@ -157,7 +193,7 @@ namespace ts::checker {
                         tail = false;
                         break;
                     }
-                    if (current->up >= 0) {
+                    if (current->up>=0) {
                         current = &sections[current->up];
                     } else {
                         break;
@@ -172,6 +208,13 @@ namespace ts::checker {
                         ops[section.end - 1 - 4 - 2] = OP::TailCall;
                         //debug("tail call optimised");
                     }
+
+                    for (auto &&usage: section.typeArgumentUsages) {
+                        auto op = ops[usage.ip];
+                        if (op == OP::Rest) {
+                            ops[usage.ip] = OP::RestReuse;
+                        }
+                    }
                 }
             }
         }
@@ -180,35 +223,21 @@ namespace ts::checker {
             sourceMap.push(ops.size(), sourcePos, sourceEnd);
         }
 
-        void registerArgumentUsage() {
-            argumentUsages.emplace_back(argumentUsages.size());
-        }
-
-        ArgumentUsage &getArgumentUsage(unsigned int argumentIndex) {
-            if (argumentUsages.size()<=argumentIndex) {
-                throw std::runtime_error("Unknown argument");
-            }
-            return argumentUsages[argumentIndex];
-        }
+        //void registerArgumentUsage() {
+        //    argumentUsages.emplace_back(argumentUsages.size());
+        //}
+        //
+        //ArgumentUsage &getArgumentUsage(unsigned int argumentIndex) {
+        //    if (argumentUsages.size()<=argumentIndex) {
+        //        throw std::runtime_error("Unknown argument");
+        //    }
+        //    return argumentUsages[argumentIndex];
+        //}
 
         unsigned int getFlags() {
             unsigned int flags = 0;
             return flags;
         }
-    };
-
-    struct Frame;
-
-    struct Symbol {
-        string name;
-        SymbolType type = SymbolType::Type;
-        unsigned int index{}; //symbol index of the current frame
-        unsigned int pos{};
-        unsigned int end{};
-        unsigned int declarations = 1;
-        unsigned int lastUsedIP = 0;
-        sharedOpt<Subroutine> routine = nullptr;
-        shared<Frame> frame = nullptr;
     };
 
     struct Frame {
@@ -289,20 +318,20 @@ namespace ts::checker {
         visitOps2(subroutines, visit, callback);
     }
 
-    shared<Subroutine> findOuterTypeFunction(vector<shared<Subroutine>> &subroutines, shared<Subroutine> &subroutine) {
-        shared<Subroutine> typeFunction = subroutine;
-
-        while (typeFunction->type == SymbolType::Inline) {
-            if (typeFunction->index == 0) {
-                debug("No type function found for subroutine");
-                return subroutines[0];
-            }
-            //the actual function is always before the Inline
-            typeFunction = subroutines[typeFunction->index - 1];
-        }
-
-        return typeFunction;
-    }
+    //shared<Subroutine> findOuterTypeFunction(vector<shared<Subroutine>> &subroutines, shared<Subroutine> &subroutine) {
+    //    shared<Subroutine> typeFunction = subroutine;
+    //
+    //    while (typeFunction->type == SymbolType::Inline) {
+    //        if (typeFunction->index == 0) {
+    //            debug("No type function found for subroutine");
+    //            return subroutines[0];
+    //        }
+    //        //the actual function is always before the Inline
+    //        typeFunction = subroutines[typeFunction->index - 1];
+    //    }
+    //
+    //    return typeFunction;
+    //}
 
 //    inline void optimiseRestReuse(vector<shared<Subroutine>> &subroutines, shared<Subroutine> &subroutine) {
 //        for (auto &&variable: subroutine->argumentUsages) {
@@ -440,8 +469,13 @@ namespace ts::checker {
             return routine->index;
         }
 
-        shared<Subroutine> getOuterTypeFunction() {
-            return findOuterTypeFunction(subroutines, activeSubroutines.empty() ? subroutines[0] : activeSubroutines.back());
+        //shared<Subroutine> getOuterTypeFunction() {
+        //    return findOuterTypeFunction(subroutines, activeSubroutines.empty() ? subroutines[0] : activeSubroutines.back());
+        //}
+
+        void registerTypeArgumentUsage(Symbol *symbol) {
+            if (activeSubroutines.empty()) return;
+            activeSubroutines.back()->registerTypeArgumentUsage(symbol);
         }
 
         /**
@@ -786,69 +820,79 @@ namespace ts::checker {
 
         void handle(const shared<Node> &node, Program &program) {
             switch (node->kind) {
-                case types::SyntaxKind::SourceFile: {
+                case SyntaxKind::SourceFile: {
                     for (auto &&statement: to<SourceFile>(node)->statements->list) {
                         handle(statement, program);
                     }
                     break;
                 }
-                case types::SyntaxKind::AnyKeyword:
+                case SyntaxKind::AnyKeyword:
                     program.pushOp(OP::Any, node);
                     break;
-                case types::SyntaxKind::NullKeyword:
+                case SyntaxKind::NullKeyword:
                     program.pushOp(OP::Null, node);
                     break;
-                case types::SyntaxKind::UndefinedKeyword:
+                case SyntaxKind::UndefinedKeyword:
                     program.pushOp(OP::Undefined, node);
                     break;
-                case types::SyntaxKind::NeverKeyword:
+                case SyntaxKind::NeverKeyword:
                     program.pushOp(OP::Never, node);
                     break;
-                case types::SyntaxKind::BooleanKeyword:
+                case SyntaxKind::BooleanKeyword:
                     program.pushOp(OP::Boolean, node);
                     break;
-                case types::SyntaxKind::StringKeyword:
+                case SyntaxKind::StringKeyword:
                     program.pushOp(OP::String, node);
                     break;
-                case types::SyntaxKind::NumberKeyword:
+                case SyntaxKind::NumberKeyword:
                     program.pushOp(OP::Number, node);
                     break;
-                case types::SyntaxKind::BigIntLiteral:
+                case SyntaxKind::BigIntLiteral:
                     program.pushOp(OP::BigIntLiteral, node);
                     program.pushStorage(to<BigIntLiteral>(node)->text);
                     break;
-                case types::SyntaxKind::NumericLiteral:
+                case SyntaxKind::NumericLiteral:
                     program.pushOp(OP::NumberLiteral, node);
                     program.pushStorage(to<NumericLiteral>(node)->text);
                     break;
-                case types::SyntaxKind::StringLiteral:
+                case SyntaxKind::StringLiteral:
                     program.pushOp(OP::StringLiteral, node);
                     program.pushStorage(to<StringLiteral>(node)->text);
                     break;
-                case types::SyntaxKind::TrueKeyword:
+                case SyntaxKind::TrueKeyword:
                     program.pushOp(OP::True, node);
                     break;
-                case types::SyntaxKind::FalseKeyword:
+                case SyntaxKind::FalseKeyword:
                     program.pushOp(OP::False, node);
                     break;
-                case types::SyntaxKind::IndexedAccessType: {
+                case SyntaxKind::IndexedAccessType: {
                     const auto n = to<IndexedAccessTypeNode>(node);
+                    auto literal = to<LiteralTypeNode>(n->indexType);
+
+                    if (literal) {
+                        auto stringLiteral = to<StringLiteral>(literal->literal);
+                        if (stringLiteral && stringLiteral->text == "length") {
+                            handle(n->objectType, program);
+                            program.pushOp(OP::Length, node);
+                            break;
+                        }
+                    }
 
                     handle(n->objectType, program);
                     handle(n->indexType, program);
                     program.pushOp(OP::IndexAccess, node);
                     break;
                 }
-                case types::SyntaxKind::LiteralType: {
+                case SyntaxKind::LiteralType: {
                     const auto n = to<LiteralTypeNode>(node);
                     handle(n->literal, program);
                     break;
                 }
-                case types::SyntaxKind::TemplateLiteralType: {
+                case SyntaxKind::TemplateLiteralType: {
                     auto t = to<TemplateLiteralTypeNode>(node);
 
                     program.pushFrame();
-                    if (t->head->rawText && *t->head->rawText != "") {
+                    if (t->head->rawText && !t->head->rawText->empty()) {
                         program.pushOp(OP::StringLiteral, t->head);
                         program.pushStorage(*t->head->rawText);
                     }
@@ -858,12 +902,12 @@ namespace ts::checker {
                         handle(to<TemplateLiteralTypeSpan>(span)->type, program);
 
                         if (auto a = to<TemplateMiddle>(span->literal)) {
-                            if (a->rawText && *a->rawText != "") {
+                            if (a->rawText && !a->rawText->empty()) {
                                 program.pushOp(OP::StringLiteral, sub);
                                 program.pushStorage(a->rawText ? *a->rawText : "");
                             }
                         } else if (auto a = to<TemplateTail>(span->literal)) {
-                            if (a->rawText && *a->rawText != "") {
+                            if (a->rawText && !a->rawText->empty()) {
                                 program.pushOp(OP::StringLiteral, a);
                                 program.pushStorage(a->rawText ? *a->rawText : "");
                             }
@@ -875,7 +919,7 @@ namespace ts::checker {
 
                     break;
                 }
-                case types::SyntaxKind::UnionType: {
+                case SyntaxKind::UnionType: {
                     const auto n = to<UnionTypeNode>(node);
                     program.pushFrame();
 
@@ -887,7 +931,7 @@ namespace ts::checker {
                     program.popFrameImplicit();
                     break;
                 }
-                case types::SyntaxKind::TypeReference: {
+                case SyntaxKind::TypeReference: {
                     //todo: search in symbol table and get address
 //                    debug("type reference {}", to<TypeReferenceNode>(node)->typeName->to<Identifier>().escapedText);
 //                    program.pushOp(OP::Number);
@@ -899,14 +943,11 @@ namespace ts::checker {
                         program.pushError(ErrorCode::CannotFind, n->typeName);
                     } else {
                         if (symbol->type == SymbolType::TypeArgument || symbol->type == SymbolType::TypeVariable) {
-                            if (symbol->type == SymbolType::TypeArgument) {
-                                auto &variableUsage = program.getOuterTypeFunction()->getArgumentUsage(symbol->index);
-                                variableUsage.lastIp = program.ip();
-                                variableUsage.lastSubroutineIndex = program.subroutineIndex();
-                            }
-
                             program.pushOp(OP::Loads, n->typeName);
                             program.pushSymbolAddress(*symbol);
+                            if (symbol->type == SymbolType::TypeArgument) {
+                                program.registerTypeArgumentUsage(symbol);
+                            }
                         } else {
                             if (n->typeArguments) {
                                 for (auto &&p: n->typeArguments->list) {
@@ -927,7 +968,7 @@ namespace ts::checker {
                     }
                     break;
                 }
-                case types::SyntaxKind::TypeAliasDeclaration: {
+                case SyntaxKind::TypeAliasDeclaration: {
                     const auto n = to<TypeAliasDeclaration>(node);
 
                     auto &symbol = program.pushSymbolForRoutine(n->name->escapedText, SymbolType::Type, n); //move this to earlier symbol-scan round
@@ -953,7 +994,7 @@ namespace ts::checker {
                     }
                     break;
                 }
-                case types::SyntaxKind::Parameter: {
+                case SyntaxKind::Parameter: {
                     const auto n = to<ParameterDeclaration>(node);
                     if (n->type) {
                         handle(n->type, program);
@@ -973,7 +1014,7 @@ namespace ts::checker {
                     }
                     break;
                 }
-                case types::SyntaxKind::TypeParameter: {
+                case SyntaxKind::TypeParameter: {
                     const auto n = to<TypeParameterDeclaration>(node);
                     auto &symbol = program.pushSymbol(n->name->escapedText, SymbolType::TypeArgument, n);
                     if (n->defaultType) {
@@ -985,11 +1026,10 @@ namespace ts::checker {
                     } else {
                         program.pushOp(instructions::TypeArgument, n->name);
                     }
-                    program.subroutine()->registerArgumentUsage();
                     //todo constraints
                     break;
                 }
-                case types::SyntaxKind::FunctionDeclaration: {
+                case SyntaxKind::FunctionDeclaration: {
                     const auto n = to<FunctionDeclaration>(node);
                     if (const auto id = to<Identifier>(n->name)) {
                         auto &symbol = program.pushSymbolForRoutine(id->escapedText, SymbolType::Function, id); //move this to earlier symbol-scan round
@@ -1065,7 +1105,7 @@ namespace ts::checker {
 
                     break;
                 }
-                case types::SyntaxKind::Identifier: {
+                case SyntaxKind::Identifier: {
                     const auto n = to<Identifier>(node);
                     auto symbol = program.findSymbol(n->escapedText);
                     if (!symbol) {
@@ -1095,7 +1135,7 @@ namespace ts::checker {
                     }
                     break;
                 }
-                case types::SyntaxKind::PropertyAssignment: {
+                case SyntaxKind::PropertyAssignment: {
                     const auto n = to<PropertyAssignment>(node);
                     if (n->initializer) {
                         handle(n->initializer, program);
@@ -1113,7 +1153,7 @@ namespace ts::checker {
                     if (hasModifier(n, SyntaxKind::ReadonlyKeyword)) program.pushOp(OP::Readonly);
                     break;
                 }
-                case types::SyntaxKind::PropertySignature: {
+                case SyntaxKind::PropertySignature: {
                     const auto n = to<PropertySignature>(node);
                     if (n->type) {
                         handle(n->type, program);
@@ -1131,7 +1171,7 @@ namespace ts::checker {
                     if (hasModifier(n, SyntaxKind::ReadonlyKeyword)) program.pushOp(OP::Readonly);
                     break;
                 }
-                case types::SyntaxKind::InterfaceDeclaration: {
+                case SyntaxKind::InterfaceDeclaration: {
                     const auto n = to<InterfaceDeclaration>(node);
                     program.pushFrame();
 
@@ -1155,7 +1195,7 @@ namespace ts::checker {
                     program.popFrameImplicit();
                     break;
                 }
-                case types::SyntaxKind::TypeLiteral: {
+                case SyntaxKind::TypeLiteral: {
                     const auto n = to<TypeLiteralNode>(node);
                     program.pushFrame();
 
@@ -1167,12 +1207,12 @@ namespace ts::checker {
                     program.popFrameImplicit();
                     break;
                 }
-                case types::SyntaxKind::ParenthesizedExpression: {
+                case SyntaxKind::ParenthesizedExpression: {
                     const auto n = to<ParenthesizedExpression>(node);
                     handle(n->expression, program);
                     break;
                 }
-                case types::SyntaxKind::ExpressionWithTypeArguments: {
+                case SyntaxKind::ExpressionWithTypeArguments: {
                     const auto n = to<ExpressionWithTypeArguments>(node);
                     auto typeArgumentsCount = n->typeArguments ? n->typeArguments->length() : 0;
                     if (n->typeArguments) {
@@ -1187,7 +1227,7 @@ namespace ts::checker {
                     }
                     break;
                 }
-                case types::SyntaxKind::ObjectLiteralExpression: {
+                case SyntaxKind::ObjectLiteralExpression: {
                     const auto n = to<ObjectLiteralExpression>(node);
                     program.pushFrame();
                     for (auto &&sub: n->properties->list) handle(sub, program);
@@ -1195,7 +1235,7 @@ namespace ts::checker {
                     program.popFrameImplicit();
                     break;
                 }
-                case types::SyntaxKind::CallExpression: {
+                case SyntaxKind::CallExpression: {
                     const auto n = to<CallExpression>(node);
                     auto typeArgumentsCount = n->typeArguments ? n->typeArguments->length() : 0;
                     if (n->typeArguments) {
@@ -1217,12 +1257,12 @@ namespace ts::checker {
 
                     break;
                 }
-                case types::SyntaxKind::ExpressionStatement: {
+                case SyntaxKind::ExpressionStatement: {
                     const auto n = to<ExpressionStatement>(node);
                     handle(n->expression, program);
                     break;
                 }
-                case types::SyntaxKind::ConditionalExpression: {
+                case SyntaxKind::ConditionalExpression: {
                     const auto n = to<ConditionalExpression>(node);
                     //it seems TS does not care about the condition. the result is always a union of false/true branch.
                     //we could improve that though to make sure that const-expressions are handled
@@ -1233,7 +1273,7 @@ namespace ts::checker {
                     program.popFrameImplicit();
                     break;
                 }
-                case types::SyntaxKind::ConditionalType: {
+                case SyntaxKind::ConditionalType: {
                     const auto n = to<ConditionalTypeNode>(node);
                     //Depending on whether this a distributive conditional type or not, the whole conditional type has to be moved to its own function,
                     //so it can be executed for each union member.
@@ -1308,21 +1348,25 @@ namespace ts::checker {
 //                    debug("ConditionalType {}", !!distributiveOverIdentifier);
                     break;
                 }
-                case types::SyntaxKind::ParenthesizedType: {
+                case SyntaxKind::ParenthesizedType: {
                     handle(to<ParenthesizedTypeNode>(node)->type, program);
                     break;
                 }
-                case types::SyntaxKind::RestType: {
-                    handle(to<RestTypeNode>(node)->type, program);
+                case SyntaxKind::RestType: {
+                    auto n = to<RestTypeNode>(node);
+                    handle(n->type, program);
+                    if (n->type->kind == SyntaxKind::TypeReference) {
+                        //we need to know which symbol is referenced
+                    }
                     program.pushOp(OP::Rest, node);
                     break;
                 }
-//                case types::SyntaxKind::OptionalType: {
+//                case SyntaxKind::OptionalType: {
 //
 //                    break;
 //                }
                     //value inference
-                case types::SyntaxKind::ArrayLiteralExpression: {
+                case SyntaxKind::ArrayLiteralExpression: {
                     program.pushFrame();
                     for (auto &&v: to<ArrayLiteralExpression>(node)->elements->list) {
                         handle(v, program);
@@ -1333,19 +1377,21 @@ namespace ts::checker {
                     //todo: handle `as const`, widen if not const
                     break;
                 }
-                case types::SyntaxKind::ArrayType: {
+                case SyntaxKind::ArrayType: {
                     auto n = to<ArrayTypeNode>(node);
                     handle(n->elementType, program);
                     program.pushOp(OP::Array, node);
                     break;
                 }
-                case types::SyntaxKind::TupleType: {
+                case SyntaxKind::TupleType: {
                     program.pushFrame();
                     auto n = to<TupleTypeNode>(node);
                     for (auto &&e: n->elements->list) {
                         if (auto tm = to<NamedTupleMember>(e)) {
                             handle(tm->type, program);
-                            if (tm->dotDotDotToken) program.pushOp(OP::Rest);
+                            if (tm->dotDotDotToken) {
+                                program.pushOp(OP::Rest);
+                            }
                             program.pushOp(OP::TupleMember, tm);
                             if (tm->questionToken) program.pushOp(OP::Optional);
                         } else if (auto ot = to<OptionalTypeNode>(e)) {
@@ -1361,13 +1407,13 @@ namespace ts::checker {
                     program.popFrameImplicit();
                     break;
                 }
-                case types::SyntaxKind::BinaryExpression: {
+                case SyntaxKind::BinaryExpression: {
                     //e.g. `var = ''`, `foo.bar = 1`
                     auto n = to<BinaryExpression>(node);
                     switch (n->operatorToken->kind) {
-                        case types::SyntaxKind::EqualsToken: {
+                        case SyntaxKind::EqualsToken: {
 
-                            if (n->left->kind == types::SyntaxKind::Identifier) {
+                            if (n->left->kind == SyntaxKind::Identifier) {
                                 const auto name = to<Identifier>(n->left)->escapedText;
                                 auto symbol = program.findSymbol(name);
                                 if (!symbol) {
@@ -1391,13 +1437,13 @@ namespace ts::checker {
                     }
                     break;
                 }
-                case types::SyntaxKind::VariableStatement: {
+                case SyntaxKind::VariableStatement: {
                     for (auto &&s: to<VariableStatement>(node)->declarationList->declarations->list) {
                         handle(s, program);
                     }
                     break;
                 }
-                case types::SyntaxKind::VariableDeclaration: {
+                case SyntaxKind::VariableDeclaration: {
                     const auto n = to<VariableDeclaration>(node);
                     if (const auto id = to<Identifier>(n->name)) {
                         auto &symbol = program.pushSymbolForRoutine(id->escapedText, SymbolType::Variable, id); //move this to earlier symbol-scan round
