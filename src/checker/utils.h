@@ -74,8 +74,9 @@ namespace ts::vm {
                 *i += 4 + 4 + 1;
                 break;
             }
-            case OP::Main:
-            case OP::FrameReturnJump:
+            case OP::Main: {
+                break;
+            }
             case OP::Jump: {
                 *i += 4;
                 break;
@@ -84,9 +85,12 @@ namespace ts::vm {
                 *i += 4;
                 break;
             }
-            case OP::Set:
-            case OP::TypeArgumentDefault:
             case OP::Distribute: {
+                *i += 2 + 4;
+                break;
+            }
+            case OP::Set:
+            case OP::TypeArgumentDefault: {
                 *i += 4;
                 break;
             }
@@ -102,12 +106,17 @@ namespace ts::vm {
                 *i += 2;
                 break;
             }
+            case OP::Union:
+            case OP::Tuple:
+            case OP::TemplateLiteral:
+            case OP::ObjectLiteral:
+            case OP::Slots:
             case OP::CallExpression: {
                 *i += 2;
                 break;
             }
             case OP::Loads: {
-                *i += 4;
+                *i += 2;
                 break;
             }
             case OP::Parameter:

@@ -67,6 +67,10 @@ namespace ts::vm2 {
             return val;
         }
 
+        bool isMain() {
+            return !subroutine;
+        }
+
         int32_t parseInt32() {
             auto val = vm::readInt32(module->bin, ip + 1);
             ip += 4;
@@ -93,7 +97,10 @@ namespace ts::vm2 {
 
     struct LoopHelper {
         TypeRef *current;
+        unsigned int ip = 0;
+        unsigned int startSP = 0;
         unsigned int var1 = 0;
+        LoopHelper *previous = nullptr;
 
         void set(unsigned int var1, TypeRef *typeRef) {
             this->var1 = var1;
@@ -109,7 +116,7 @@ namespace ts::vm2 {
     };
 
     enum FrameFlag: uint8_t {
-        InSingleDistribute = 1 << 0
+        //InSingleDistribute = 1<<0
     };
 
     struct Frame {
@@ -125,8 +132,18 @@ namespace ts::vm2 {
         uint8_t flags = 0;
         LoopHelper *loop = nullptr;
 
+        LoopHelper *createLoop(unsigned int var1, TypeRef *type);
+        LoopHelper *createEmptyLoop();
+
+        void popLoop();
+
         unsigned int size() {
             return sp - initialSp;
+        }
+
+        std::span<Type *> pop(unsigned int size) {
+            sp -= size;
+            return {stack.data() + sp, size};
         }
     };
 

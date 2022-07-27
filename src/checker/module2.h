@@ -64,7 +64,6 @@ namespace ts::vm2 {
         const string code = ""; //for diagnostic messages only
 
         vector<ModuleSubroutine> subroutines;
-        unsigned int mainAddress;
         unsigned int sourceMapAddress;
         unsigned int sourceMapAddressEnd;
 
@@ -188,8 +187,6 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Main: {
-                    module->mainAddress = vm::readUint32(bin, i + 1);
-                    module->subroutines.push_back(ModuleSubroutine("main", module->mainAddress, 0));
                     return;
                 }
             }

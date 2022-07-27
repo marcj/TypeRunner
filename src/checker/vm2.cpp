@@ -8,7 +8,7 @@ namespace ts::vm2 {
     void prepare(shared<Module> &module) {
         parseHeader(module);
         activeSubroutine->module = module.get();
-        activeSubroutine->ip = module->mainAddress;
+        activeSubroutine->ip = module->subroutines[0].address; //first is main
         activeSubroutine->depth = 0;
     }
 
@@ -115,7 +115,8 @@ namespace ts::vm2 {
         if (type == nullptr) return;
 
         if (type->refCount == 0) {
-            debug("type {} not used already!", stringify(type));
+            //debug("type {} not used already!", stringify(type));
+            return;
         }
         type->refCount--;
 //        debug("drop users={} {}  ref={}", type->users, stringify(type), (void *) type);
@@ -156,31 +157,24 @@ namespace ts::vm2 {
     }
 
     inline void popFrameWithoutGC() {
-        sp = frame->initialSp;
-        frame = frames.pop();
+        throw std::runtime_error("deprecated");
+        //sp = frame->initialSp;
+        //frame = frames.pop();
     }
 
     inline std::span<Type *> popFrame() {
-        auto start = frame->initialSp + frame->variables;
-        std::span<Type *> sub{stack.data() + start, sp - start};
-        if (frame->variables>0) {
-            //we need to GC all variables
-            for (unsigned int i = 0; i<frame->variables; i++) {
-                gc(stack[frame->initialSp + i]);
-            }
-        }
-        sp = frame->initialSp;
-        frame = frames.pop(); //&frames[--frameIdx];
-        return sub;
-    }
-
-    inline void moveFrame(std::vector<Type *> to) {
-        auto start = frame->initialSp + frame->variables;
-//        std::span<Type *> sub{stack.data() + start, frame->sp - start};
-        to.insert(to.begin(), stack.begin() + start, stack.begin() + sp - start);
-
-        frame = frames.pop(); //&frames[--frameIdx];
-        sp = frame->initialSp;
+        throw std::runtime_error("deprecated");
+        //auto start = frame->initialSp + frame->variables;
+        //std::span<Type *> sub{stack.data() + start, sp - start};
+        //if (frame->variables>0) {
+        //    //we need to GC all variables
+        //    for (unsigned int i = 0; i<frame->variables; i++) {
+        //        gc(stack[frame->initialSp + i]);
+        //    }
+        //}
+        //sp = frame->initialSp;
+        //frame = frames.pop(); //&frames[--frameIdx];
+        //return sub;
     }
 
     inline void report(DiagnosticMessage message) {
@@ -429,7 +423,8 @@ namespace ts::vm2 {
     }
 
     void handleTemplateLiteral() {
-        auto types = popFrame();
+        auto size = activeSubroutine->parseUint16();
+        auto types = frame->pop(size);
 
         //short path for `{'asd'}`
         if (types.size() == 1 && types[0]->kind == TypeKind::Literal) {
@@ -634,6 +629,8 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Return: {
+                    if (activeSubroutine->isMain()) return;
+
                     //while (frame->depth > 0) {
                     //    for (unsigned int i = 0; i<frame->variables; i++) {
                     //        drop(stack[frame->initialSp + i]);
@@ -658,6 +655,7 @@ namespace ts::vm2 {
                     if (frame->size()>1) {
                         stack[frame->initialSp] = stack[sp - 1];
                     }
+
                     sp = frame->initialSp + 1;
                     frame = frames.pop(); //&frames[--frameIdx];
                     if (activeSubroutine->typeArguments == 0) {
@@ -692,21 +690,21 @@ namespace ts::vm2 {
                     }
                     break;
                 }
-                case OP::FrameReturnJump: {
-                    if (frame->size()>frame->variables) {
-                        //there is a return value on the stack, which we need to preserve
-                        auto ret = pop();
-                        popFrame();
-                        push(ret);
-                    } else {
-                        //throw away the whole stack
-                        popFrame();
-                    }
-                    const auto address = activeSubroutine->parseInt32();
-                    //debug("FrameEndJump to {} ({})", activeSubroutine->ip + address - 4, address);
-                    activeSubroutine->ip += address - 4; //decrease by uint32 too
-                    goto start;
-                }
+                    //case OP::FrameReturnJump: {
+                    //    if (frame->size()>frame->variables) {
+                    //        //there is a return value on the stack, which we need to preserve
+                    //        auto ret = pop();
+                    //        popFrame();
+                    //        push(ret);
+                    //    } else {
+                    //        //throw away the whole stack
+                    //        popFrame();
+                    //    }
+                    //    const auto address = activeSubroutine->parseInt32();
+                    //    //debug("FrameEndJump to {} ({})", activeSubroutine->ip + address - 4, address);
+                    //    activeSubroutine->ip += address - 4; //decrease by uint32 too
+                    //    goto start;
+                    //}
                 case OP::Jump: {
                     const auto address = activeSubroutine->parseInt32();
                     //debug("Jump to {} ({})", activeSubroutine->ip + address - 4, address);
@@ -743,43 +741,18 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Distribute: {
+                    auto slot = activeSubroutine->parseUint16();
                     //if there is OP::Distribute, then there was always before this OP
-                    // a OP::Loads to push the type on the stack.
-                    //printStack();
-                    if (!frame->loop) {
-                        //todo: this does not work in a nested Distribute (T extends X ? T extends Y ?  1 :  0 : 0)
-                        // since frame references the outer Distribute
-                        if (frame->flags & FrameFlag::InSingleDistribute) {
-                            //this frame is a Distribute frame already, but frame->loop is empty,
-                            //which means the type on the stack was not a union. We jump thus directly to the end now.
-                            const auto loopEnd = vm::readUint32(bin, activeSubroutine->ip + 1);
-                            activeSubroutine->ip += loopEnd - 1;
-                            //in case of non-union the parameter in this frame should not be GC.
-                            //why? because we do not own it, so GC would lead to removal when refCount=0
-                            auto res = stack[sp - 1];
-                            popFrameWithoutGC();
-                            stack[sp++] = res;
-                            break;
-                        }
-
-                        auto type = stack[sp - 1];
-                        pushFrame();
-                        //we treat the top of the stack as variable for the next frame
-                        frame->initialSp--;
-                        frame->variables++;
-                        //type->refCount++;
-
+                    //a OP::Loads to push the type on the stack.
+                    if (!frame->loop || frame->loop->ip != activeSubroutine->ip) {
+                        //no loop for this distribute created yet
+                        auto type = pop();
                         if (type->kind == TypeKind::Union) {
-                            //if it's a union, we use the OP:Load slot
-                            frame->loop = loops.push(); // new LoopHelper(type);
-                            frame->loop->set(sp - 1, (TypeRef *) type->type);
+                            frame->createLoop(frame->initialSp + slot, (TypeRef *) type->type);
                         } else {
-                            frame->flags |= FrameFlag::InSingleDistribute;
-                            // If this is a non-union,
-                            // we create a frame and shift it one to the left to consume the type
-                            // all subsequent Loads 0:0 then reference it correctly.
-                            stack[sp - 1] = type;
-                            //jump over parameter, right to the distribute section
+                            frame->createEmptyLoop();
+                            stack[frame->initialSp + slot] = type;
+                            //jump over parameters, right to the distribute section
                             activeSubroutine->ip += 1 + 4;
                             goto start;
                         }
@@ -789,10 +762,8 @@ namespace ts::vm2 {
                     if (!next) {
                         //done
                         //printStack();
-                        loops.pop();
-                        frame->loop = nullptr;
-                        auto types = popFrame();
-                        //pop TypeVariable
+                        auto types = frame->pop(sp - frame->loop->startSP);
+                        frame->popLoop();
                         if (types.empty()) {
                             push(allocate(TypeKind::Never));
                         } else if (types.size() == 1) {
@@ -808,19 +779,17 @@ namespace ts::vm2 {
                             push(result);
                         }
                         const auto loopEnd = vm::readUint32(bin, activeSubroutine->ip + 1);
-                        activeSubroutine->ip += loopEnd - 1;
+                        activeSubroutine->ip += loopEnd - 1 - 2;
                     } else {
-                        //jump over parameter, right to the distribute section
+                        //jump over parameters, right to the distribute section
                         activeSubroutine->ip += 1 + 4;
                         goto start;
                     }
                     break;
                 }
                 case OP::Loads: {
-                    const auto frameOffset = activeSubroutine->parseUint16();
                     const auto varIndex = activeSubroutine->parseUint16();
-                    auto index = frames.at(frames.i - frameOffset)->initialSp + varIndex;
-                    push(stack[index]);
+                    push(stack[frame->initialSp + varIndex]);
                     //debug("Loads {}:{} -> {}", frameOffset, varIndex, stringify(stack[index]));
                     //if (frameOffset == 0) {
                     //    push(stack[frame->initialSp + varIndex]);
@@ -829,10 +798,10 @@ namespace ts::vm2 {
                     //}
                     break;
                 }
-                case OP::TypeVariable: {
-                    //all variables will be dropped at the end of the subroutine
-                    push(use(allocate(TypeKind::Unknown)));
-                    frame->variables++;
+                case OP::Slots: {
+                    auto size = activeSubroutine->parseUint16();
+                    frame->variables += size;
+                    sp += size;
                     break;
                 }
                 case OP::TypeArgument: {
@@ -981,14 +950,15 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::ObjectLiteral: {
+                    const auto size = activeSubroutine->parseUint16();
                     auto item = allocate(TypeKind::ObjectLiteral);
-                    auto types = popFrame();
-                    if (types.empty()) {
+                    if (!size) {
                         item->type = nullptr;
                         push(item);
                         break;
                     }
 
+                    auto types = frame->pop(size);
                     item->type = useAsRef(types[0]);
                     if (types.size()>1) {
                         auto current = (TypeRef *) item->type;
@@ -1002,30 +972,31 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Union: {
+                    const auto size = activeSubroutine->parseUint16();
                     auto item = allocate(TypeKind::Union);
                     //printStack();
-                    auto types = popFrame();
-                    if (types.empty()) {
+                    if (!size) {
                         item->type = nullptr;
                         push(item);
                         break;
                     }
+                    auto types = frame->pop(size);
+                    auto first = types[0];
 
-                    auto type = types[0];
-                    if (type->kind == TypeKind::Union) {
+                    if (first->kind == TypeKind::Union) {
                         //if type has no owner, we can steal its children
-                        if (type->refCount == 0) {
-                            item->type = type->type;
-                            type->type = nullptr;
+                        if (first->refCount == 0) {
+                            item->type = first->type;
+                            first->type = nullptr;
                             //since we stole its children, we want it to GC but without its children. their 'users' count belongs now to us.
-                            gc(type);
+                            gc(first);
                         } else {
                             throw std::runtime_error("Can not merge used union");
                         }
                     } else {
-                        item->type = useAsRef(type);
+                        item->type = useAsRef(first);
                     }
-                    if (types.size()>1) {
+                    if (size>1) {
                         auto current = (TypeRef *) item->type;
                         //set current to the end of the list
                         while (current->next) current = current->next;
@@ -1079,14 +1050,15 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Tuple: {
-                    auto types = popFrame();
-                    if (types.empty()) {
+                    const auto size = activeSubroutine->parseUint16();
+                    if (size == 0) {
                         auto item = allocate(TypeKind::Tuple);
                         item->type = nullptr;
                         push(item);
                         break;
                     }
 
+                    auto types = frame->pop(size);
                     Type *item;
                     auto firstTupleMember = types[0];
                     auto firstType = (Type *) firstTupleMember->type;
@@ -1192,10 +1164,32 @@ namespace ts::vm2 {
                     break;
                 }
                 default: {
-                    debug("OP {} not handled!", (OP) bin[activeSubroutine->ip]);
+                    debug("[{}] OP {} not handled!", activeSubroutine->ip, (OP) bin[activeSubroutine->ip]);
                 }
             }
             activeSubroutine->ip++;
         }
+    }
+
+    LoopHelper *Frame::createLoop(unsigned int var1, TypeRef *type) {
+        auto newLoop = loops.push();
+        newLoop->set(var1, type);
+        newLoop->ip = activeSubroutine->ip;
+        newLoop->startSP = sp;
+        newLoop->previous = loop;
+        return loop = newLoop;
+    }
+
+    LoopHelper *Frame::createEmptyLoop() {
+        auto newLoop = loops.push();
+        newLoop->ip = activeSubroutine->ip;
+        newLoop->startSP = sp;
+        newLoop->previous = loop;
+        return loop = newLoop;
+    }
+
+    void Frame::popLoop() {
+        loop = loop->previous;
+        loops.pop();
     }
 };

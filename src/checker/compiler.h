@@ -19,10 +19,10 @@ namespace ts::checker {
         Variable, //const x = true;
         Function, //function x() {}
         Class, //class X {}
-        Inline, //subroutines of conditional type, mapped type, .. [deprecated]
+        Inline, //subroutines of type argument defaults
         Type, //type alias, e.g. `foo` in `type foo = string;`
         TypeArgument, //template variable, e.g. T in function <T>foo(bar: T);
-        TypeVariable, //type variables in distributive conditional types, mapped types
+        TypeVariable, //type variables in distributive conditional types, mapped types, reserve a stack entry
     };
 
     struct SourceMapEntry {
@@ -54,18 +54,17 @@ namespace ts::checker {
         explicit TypeArgumentUsage(unsigned int symbolIndex, unsigned int ip): symbolIndex(symbolIndex), ip(ip) {}
     };
 
-    struct Frame;
     struct Subroutine;
 
     struct Symbol {
         string name;
+        bool active = true; //will be switched to false when it goes out of scope
         SymbolType type = SymbolType::Type;
         unsigned int index{}; //symbol index of the current frame
         unsigned int pos{};
         unsigned int end{};
         unsigned int declarations = 1;
         sharedOpt<Subroutine> routine = nullptr;
-        shared<Frame> frame = nullptr;
     };
 
     //aka Branch
@@ -95,18 +94,21 @@ namespace ts::checker {
             }
             typeArgumentUsages.emplace_back(symbol->index, ip);
         }
-
     };
 
     //A subroutine is a sub program that can be executed by knowing its address.
     //They are used for example for type alias, mapped type, conditional type (for false and true side)
     struct Subroutine {
         vector<unsigned char> ops; //OPs, and its parameters
+        unsigned int lastOpIp;
         SourceMap sourceMap;
         string_view identifier{};
         unsigned int index{};
+        unsigned int slots{};
+        unsigned int slotIP{};
         unsigned int nameAddress{};
         SymbolType type = SymbolType::Type;
+        vector<Symbol> symbols{};
 
         vector<Section> sections;
         unsigned int activeSection = 0;
@@ -134,6 +136,7 @@ namespace ts::checker {
         }
 
         void pushOp(OP op) {
+            lastOpIp = ops.size();
             ops.push_back(op);
 
             if (!isIgnoreNextSectionOP) {
@@ -238,17 +241,6 @@ namespace ts::checker {
             unsigned int flags = 0;
             return flags;
         }
-    };
-
-    struct Frame {
-        bool conditional = false;
-        shared<Frame> previous;
-        unsigned int id = 0; //in a tree the unique id, needed to resolve symbols during runtime.
-        vector<Symbol> symbols{};
-
-        Frame() = default;
-
-        Frame(shared<Frame> previous): previous(std::move(previous)) {}
     };
 
     struct StorageItem {
@@ -425,45 +417,28 @@ namespace ts::checker {
 
     class Program {
     public:
-        vector<unsigned char> ops; //OPs of "main"
-        SourceMap sourceMap; //SourceMap of "main"
-
         vector<string_view> storage; //all kind of literals, as strings
         unordered_map<uint64_t, reference_wrapper<StorageItem>> storageMap; //used to deduplicated storage entries
 
         unsigned int storageIndex{};
-        shared<Frame> frame = make_shared<Frame>();
 
         //tracks which subroutine is active (end() is), so that pushOp calls are correctly assigned.
         vector<shared<Subroutine>> activeSubroutines;
         vector<shared<Subroutine>> subroutines;
 
-//        Optimiser optimiser{&subroutines};
-
-        //implicit is when a OP itself triggers in the VM a new frame, without having explicitly a OP::Frame
-        void popFrame() {
-            this->pushOp(OP::FrameEnd);
-            popFrameImplicit();
-        }
-
-        shared<Frame> pushFrame(bool implicit = false) {
-            if (!implicit) this->pushOp(OP::Frame);
-            auto id = frame->id;
-            frame = make_shared<Frame>(frame);
-            frame->id = id + 1;
-            return frame;
+        Program() {
+            pushSubroutineNameLess(); //main
         }
 
         /**
          * Creates a new nameless subroutine, used for example in mapped-type, conditional type
          * @return
          */
-        unsigned int pushSubroutineNameLess(const shared<Node> &node) {
+        unsigned int pushSubroutineNameLess() {
             auto routine = make_shared<Subroutine>();
             routine->type = SymbolType::Inline;
             routine->index = subroutines.size();
 
-            pushFrame(true); //subroutines have implicit stack frames due to call convention
             subroutines.push_back(routine);
             activeSubroutines.push_back(subroutines.back());
             return routine->index;
@@ -481,159 +456,133 @@ namespace ts::checker {
         /**
          * Push the subroutine from the symbol as active. This means it will now be populated with OPs.
          */
-        unsigned int pushSubroutine(string_view name) {
+        unsigned int pushSubroutine(Symbol &symbol) {
             //find subroutine
-            for (auto &&s: frame->symbols) {
-                if (s.name == name) {
-                    pushFrame(true); //subroutines have implicit stack frames due to call convention
-                    activeSubroutines.push_back(s.routine);
-                    return s.routine->index;
-                }
-            }
-            throw runtime_error(fmt::format("no symbol found for {}", name));
+            if (!symbol.routine) throw runtime_error(fmt::format("symbol has no routine {}", symbol.name));
+            activeSubroutines.push_back(symbol.routine);
+            return symbol.routine->index;
         }
 
         shared<Subroutine> popSubroutine() {
             if (activeSubroutines.empty()) throw runtime_error("No active subroutine found");
-            popFrameImplicit();
             auto subroutine = activeSubroutines.back();
             if (subroutine->ops.empty()) {
                 throw runtime_error("Routine is empty");
             }
 
+            for (auto &&symbol: subroutine->symbols) {
+                if (symbol.type == SymbolType::TypeVariable) {
+
+                }
+            }
             subroutine->end();
-
             subroutine->optimise();
-
             subroutine->ops.push_back(OP::Return);
-
-            //if (subroutine->type == SymbolType::Type) {
-            //    //for type functions, we optimise ...T re-usage
-            //    optimiseRestReuse(subroutines, subroutine);
-            //}
 
             activeSubroutines.pop_back();
             return subroutine;
         }
 
-        Symbol *findSymbol(const string_view &identifier) {
-            Frame *current = frame.get();
+        shared<Subroutine> &currentSubroutine() {
+            return activeSubroutines.back();
+        }
 
-            while (true) {
+        Symbol *findSymbol(const string_view &identifier) {
+            for (auto subroutine = activeSubroutines.rbegin(); subroutine != activeSubroutines.rend(); ++subroutine) {
+                auto symbols = (*subroutine)->symbols;
                 //we go in reverse to fetch the closest
-                for (auto it = current->symbols.rbegin(); it != current->symbols.rend(); ++it) {
-                    if (it->name == identifier) {
+                for (auto it = symbols.rbegin(); it != symbols.rend(); ++it) {
+                    if (it->active && it->name == identifier) {
                         return &*it;
                     }
                 }
-                if (!current->previous) break;
-                current = current->previous.get();
             }
 
             return nullptr;
         }
 
         /**
-         * Remove stack without doing it as OP in the VM. Some other command calls popFrame() already, which makes popFrameImplicit() an implicit popFrame.
-         * e.g. union, class, etc. all call VM::popFrame(). the current CompilerProgram needs to be aware of that, which this function is for.
-         */
-        void popFrameImplicit() {
-            if (frame->previous) frame = frame->previous;
-        }
-
-        /**
          * The address is always written using 4 bytes.
          *
          * It sometimes is defined in Program as index to the storage or subroutine and thus is a immediate representation of the address.
-         * In this case it will be replaced in build() with the real address in the binary (hence why we need 4 bytes, so space stays constant).
+         * In this case it will be replaced in build with the real address in the binary (hence why we need 4 bytes, so space stays constant).
          */
         void pushAddress(unsigned int address, unsigned int offset = 0) {
-            auto &ops = getOPs();
+            auto &ops = activeSubroutines.back()->ops;
             vm::writeUint32(ops, offset == 0 ? ops.size() : offset, address);
         }
 
         void pushInt32Address(int32_t address, unsigned int offset = 0) {
-            auto &ops = getOPs();
+            auto &ops = activeSubroutines.back()->ops;
             vm::writeInt32(ops, offset == 0 ? ops.size() : offset, address);
         }
 
         void pushUint32(unsigned int v) {
-            auto &ops = getOPs();
+            auto &ops = activeSubroutines.back()->ops;
             vm::writeUint32(ops, ops.size(), v);
         }
 
         void pushUint16(unsigned int v, unsigned int offset = 0) {
-            auto &ops = getOPs();
+            auto &ops = activeSubroutines.back()->ops;
             vm::writeUint16(ops, offset == 0 ? ops.size() : offset, v);
         }
 
+        shared<Subroutine> mainSubroutine() {
+            return subroutines[0];
+        }
+
         void pushError(ErrorCode code, const shared<Node> &node) {
+            auto main = mainSubroutine();
             //errors need to be part of main
-            sourceMap.push(0, node->pos, node->end);
-            ops.push_back(OP::Error);
-            vm::writeUint16(ops, ops.size(), (unsigned int) code);
+            main->sourceMap.push(0, node->pos, node->end);
+            main->ops.push_back(OP::Error);
+            vm::writeUint16(main->ops, main->ops.size(), (unsigned int) code);
         }
 
         void pushSymbolAddress(Symbol &symbol) {
-            auto &ops = getOPs();
-            unsigned int frameOffset = 0;
-            auto current = frame;
-            while (current) {
-                if (current == symbol.frame) break;
-                frameOffset++;
-                current = current->previous;
-            }
-            vm::writeUint16(ops, ops.size(), frameOffset);
-            vm::writeUint16(ops, ops.size(), symbol.index);
-        }
-
-        vector<unsigned char> &getOPs() {
-            if (activeSubroutines.size()) return activeSubroutines.back()->ops;
-            return ops;
+            vm::writeUint16(currentSubroutine()->ops, currentSubroutine()->ops.size(), symbol.index);
         }
 
         void pushSourceMap(const shared<Node> &node) {
-            if (activeSubroutines.size()) {
-                activeSubroutines.back()->pushSourceMap(node->pos, node->end);
-            } else {
-                sourceMap.push(ops.size(), node->pos, node->end);
-            }
+            activeSubroutines.back()->pushSourceMap(node->pos, node->end);
         }
 
         void ignoreNextSectionOP() {
-            if (activeSubroutines.size()) activeSubroutines.back()->ignoreNextSectionOP();
+            activeSubroutines.back()->ignoreNextSectionOP();
         }
 
         void pushSection() {
-            if (activeSubroutines.size()) activeSubroutines.back()->pushSection();
+            activeSubroutines.back()->pushSection();
         }
 
         void blockTailCall() {
-            if (activeSubroutines.size()) activeSubroutines.back()->blockTailCall();
+            activeSubroutines.back()->blockTailCall();
         }
 
         void popSection() {
-            if (activeSubroutines.size()) activeSubroutines.back()->popSection();
+            activeSubroutines.back()->popSection();
+        }
+
+        void pushSlots() {
+            currentSubroutine()->slotIP = ip();
+            pushOp(OP::Slots);
+            pushUint16(0); //will be changed in program build
         }
 
         void pushOp(OP op) {
-            if (activeSubroutines.size()) {
-                activeSubroutines.back()->pushOp(op);
-            } else {
-                ops.push_back(op);
-            }
+            activeSubroutines.back()->pushOp(op);
         }
 
         unsigned int subroutineIndex() {
-            return activeSubroutines.size() ? activeSubroutines.back()->index : 0;
+            return activeSubroutines.back()->index;
         }
 
-        shared<Subroutine> subroutine() {
-            return activeSubroutines.size() ? activeSubroutines.back() : subroutines[0];
+        unsigned int lastOpIp() {
+            return activeSubroutines.back()->lastOpIp;
         }
 
         unsigned int ip() {
-            return getOPs().size();
+            return activeSubroutines.back()->ops.size();
         }
 
         void pushOp(OP op, const sharedOpt<Node> &node) {
@@ -652,6 +601,17 @@ namespace ts::checker {
 //            }
 //        }
 
+        unsigned int createSymbolCheckout() {
+            return currentSubroutine()->symbols.size();
+        }
+
+        void restoreSymbolCheckout(unsigned int checkpoint) {
+            auto symbols = currentSubroutine()->symbols;
+            for (; checkpoint<symbols.size(); checkpoint++) {
+                symbols[checkpoint].active = false;
+            }
+        }
+
         /**
          * A symbol could be type alias, function expression, var type declaration.
          * Each represents a type expression and gets its own subroutine. The subroutine
@@ -661,37 +621,28 @@ namespace ts::checker {
          * Symbols will be created first before a body is extracted. This makes sure all
          * symbols are known before their reference is used.
          */
-        Symbol &pushSymbol(string_view name, SymbolType type, const shared<Node> &node, sharedOpt<Frame> frameToUse = nullptr) {
-            if (!frameToUse) frameToUse = frame;
-
-            for (auto &&v: frameToUse->symbols) {
+        Symbol &pushSymbol(string_view name, SymbolType type, const shared<Node> &node) {
+            auto subroutine = currentSubroutine();
+            for (auto &&v: subroutine->symbols) {
                 if (type != SymbolType::TypeVariable && v.name == name) {
                     v.declarations++;
                     return v;
                 }
             }
 
-//            Symbol symbol{
-//                    .name = name,
-//                    .type = type,
-//                    .index = (unsigned int) frameToUse->symbols.size(),
-//                    .pos = pos,
-//                    .routine = nullptr,
-//                    .frame = frameToUse,
-//            };
             Symbol symbol;
             symbol.name = string(name);
             symbol.type = type;
-            symbol.index = (unsigned int) frameToUse->symbols.size();
+            symbol.index = currentSubroutine()->symbols.size();
             symbol.pos = node->pos;
             symbol.end = node->end;
-            symbol.frame = frameToUse;
-            frameToUse->symbols.push_back(std::move(symbol));
-            return frameToUse->symbols.back();
+            if (type == SymbolType::TypeVariable) subroutine->slots++;
+            subroutine->symbols.push_back(std::move(symbol));
+            return subroutine->symbols.back();
         }
 
-        Symbol &pushSymbolForRoutine(string_view name, SymbolType type, const shared<Node> &node, shared<Frame> frameToUse = nullptr) {
-            auto &symbol = pushSymbol(name, type, node, frameToUse);
+        Symbol &pushSymbolForRoutine(string_view name, SymbolType type, const shared<Node> &node) {
+            auto &symbol = pushSymbol(name, type, node);
             if (symbol.routine) return symbol;
 
             auto routine = make_shared<Subroutine>(name);
@@ -753,7 +704,6 @@ namespace ts::checker {
             for (auto &&routine: subroutines) {
                 sourceMapSize += routine->sourceMap.map.size() * (4 * 3);
             }
-            sourceMapSize += sourceMap.map.size() * (4 * 3);
 
             //write sourcemap
             bin.push_back(OP::SourceMap);
@@ -762,7 +712,7 @@ namespace ts::checker {
 
             unsigned int bytecodePosOffset = address;
             bytecodePosOffset += subroutines.size() * (1 + 4 + 4 + 1); //OP::Subroutine + uint32 name address + uint32 routine address + flags
-            bytecodePosOffset += 1 + 4; //OP::Main + uint32 address
+            bytecodePosOffset += 1; //OP::Main
 
             for (auto &&routine: subroutines) {
                 for (auto &&map: routine->sourceMap.map) {
@@ -773,13 +723,7 @@ namespace ts::checker {
                 bytecodePosOffset += routine->ops.size();
             }
 
-            for (auto &&map: sourceMap.map) {
-                vm::writeUint32(bin, bin.size(), bytecodePosOffset + map.bytecodePos);
-                vm::writeUint32(bin, bin.size(), map.sourcePos);
-                vm::writeUint32(bin, bin.size(), map.sourceEnd);
-            }
-
-            address += 1 + 4; //OP::Main + uint32 address
+            address += 1; //OP::Main
             address += subroutines.size() * (1 + 4 + 4 + 1); //OP::Subroutine + uint32 name address + uint32 routine address + flags
 
             //after the storage data follows the subroutine meta-data.
@@ -794,15 +738,13 @@ namespace ts::checker {
             //after subroutine meta-data follows the actual subroutine code, which we jump over.
             //this marks the end of the header.
             bin.push_back(OP::Main);
-            vm::writeUint32(bin, bin.size(), address);
 
             for (auto &&routine: subroutines) {
+                if (routine->slots) {
+                    vm::writeUint16(routine->ops, routine->slotIP + 1, routine->slots);
+                }
                 bin.insert(bin.end(), routine->ops.begin(), routine->ops.end());
             }
-
-            //now the main code is added
-            bin.insert(bin.end(), ops.begin(), ops.end());
-            bin.push_back(OP::Halt);
 
             return string(bin.begin(), bin.end());
         }
@@ -814,6 +756,8 @@ namespace ts::checker {
             Program program;
 
             handle(file, program);
+
+            program.popSubroutine(); //main
 
             return std::move(program);
         }
@@ -891,23 +835,27 @@ namespace ts::checker {
                 case SyntaxKind::TemplateLiteralType: {
                     auto t = to<TemplateLiteralTypeNode>(node);
 
-                    program.pushFrame();
+                    unsigned int size = 0;
                     if (t->head->rawText && !t->head->rawText->empty()) {
+                        size++;
                         program.pushOp(OP::StringLiteral, t->head);
                         program.pushStorage(*t->head->rawText);
                     }
 
                     for (auto &&sub: t->templateSpans->list) {
                         auto span = to<TemplateLiteralTypeSpan>(sub);
+                        size++;
                         handle(to<TemplateLiteralTypeSpan>(span)->type, program);
 
                         if (auto a = to<TemplateMiddle>(span->literal)) {
                             if (a->rawText && !a->rawText->empty()) {
+                                size++;
                                 program.pushOp(OP::StringLiteral, sub);
                                 program.pushStorage(a->rawText ? *a->rawText : "");
                             }
                         } else if (auto a = to<TemplateTail>(span->literal)) {
                             if (a->rawText && !a->rawText->empty()) {
+                                size++;
                                 program.pushOp(OP::StringLiteral, a);
                                 program.pushStorage(a->rawText ? *a->rawText : "");
                             }
@@ -915,20 +863,20 @@ namespace ts::checker {
                     }
 
                     program.pushOp(OP::TemplateLiteral, node);
-                    program.popFrameImplicit();
+                    program.pushUint16(size);
 
                     break;
                 }
                 case SyntaxKind::UnionType: {
                     const auto n = to<UnionTypeNode>(node);
-                    program.pushFrame();
-
+                    unsigned int size = 0;
                     for (auto &&s: n->types->list) {
+                        size++;
                         handle(s, program);
                     }
 
                     program.pushOp(OP::Union, node);
-                    program.popFrameImplicit();
+                    program.pushUint16(size);
                     break;
                 }
                 case SyntaxKind::TypeReference: {
@@ -976,7 +924,7 @@ namespace ts::checker {
                         //todo: for functions/variable embed an error that symbol was declared twice in the same scope
                     } else {
                         //populate routine
-                        program.pushSubroutine(n->name->escapedText);
+                        program.pushSubroutine(symbol);
                         //in symbol subroutines we block TailCalls because want to store the result on the routine
                         //but only if it has no typeParameters
                         if (!n->typeParameters || n->typeParameters->length() == 0) {
@@ -988,6 +936,7 @@ namespace ts::checker {
                                 handle(p, program);
                             }
                         }
+                        program.pushSlots();
 
                         handle(n->type, program);
                         program.popSubroutine();
@@ -1017,8 +966,10 @@ namespace ts::checker {
                 case SyntaxKind::TypeParameter: {
                     const auto n = to<TypeParameterDeclaration>(node);
                     auto &symbol = program.pushSymbol(n->name->escapedText, SymbolType::TypeArgument, n);
+                    auto subroutine = program.currentSubroutine();
                     if (n->defaultType) {
-                        program.pushSubroutineNameLess(n->defaultType);
+                        program.pushSubroutineNameLess();
+                        program.pushSlots();
                         handle(n->defaultType, program);
                         auto routine = program.popSubroutine();
                         program.pushOp(instructions::TypeArgumentDefault, n->name);
@@ -1037,31 +988,16 @@ namespace ts::checker {
                             //todo: embed error since function is declared twice
                         } else {
                             if (n->typeParameters) {
-                                program.pushSubroutine(id->escapedText);
+                                program.pushSubroutine(symbol);
                                 //when there are type parameters, FunctionDeclaration returns a FunctionRef
                                 //which indicates the VM that the function needs to be instantiated first.
 
-                                auto subroutineIndex = program.pushSubroutineNameLess(n);
+                                auto subroutineIndex = program.pushSubroutineNameLess();
 
                                 for (auto &&param: n->typeParameters->list) {
                                     handle(param, program);
                                 }
-
-                                //<T>(v: T)
-                                //<T extends string>(v: T)
-
-                                //<T>(k: {v: T}, v: T), ({v: ''}, v: 2) => T=string
-                                //<T extends string>(k: {v: T}, v: T), ({v: ''}, v: 2) => T=''
-                                //<T, K extends {v: T}>(k: K, v: T), ({v: ''}, v: 2) => T=number
-
-                                //try to infer type parameters from passed function parameters
-                                for (auto &&param: n->typeParameters->list) {
-                                }
-
-                                //todo
-                                //after types are inferred, apply default if still empty
-
-                                //after types are set, apply constraint check
+                                program.pushSlots();
 
                                 for (auto &&param: n->parameters->list) {
                                     handle(param, program);
@@ -1069,7 +1005,7 @@ namespace ts::checker {
                                 if (n->type) {
                                     handle(n->type, program);
                                 } else {
-                                    //todo: Infer from body
+                                    //todo: Infer from body, put into own subroutine so it is cached
                                     program.pushOp(OP::Unknown);
                                     if (n->body) {
                                     } else {
@@ -1082,7 +1018,9 @@ namespace ts::checker {
                                 program.pushAddress(subroutineIndex);
                                 program.popSubroutine();
                             } else {
-                                program.pushSubroutine(id->escapedText);
+                                program.pushSubroutine(symbol);
+                                program.pushSlots();
+
                                 for (auto &&param: n->parameters->list) {
                                     handle(param, program);
                                 }
@@ -1173,7 +1111,7 @@ namespace ts::checker {
                 }
                 case SyntaxKind::InterfaceDeclaration: {
                     const auto n = to<InterfaceDeclaration>(node);
-                    program.pushFrame();
+                    unsigned int size = 0;
 
                     //first all extend expressions
                     if (n->heritageClauses) {
@@ -1181,6 +1119,7 @@ namespace ts::checker {
                             auto heritage = to<HeritageClause>(node);
                             if (heritage->token == SyntaxKind::ExtendsKeyword) {
                                 for (auto &&extendType: heritage->types->list) {
+                                    size++;
                                     handle(extendType, program);
                                 }
                             }
@@ -1188,23 +1127,25 @@ namespace ts::checker {
                     }
 
                     for (auto &&member: n->members->list) {
+                        size++;
                         handle(member, program);
                     }
 
                     program.pushOp(OP::ObjectLiteral, n->name);
-                    program.popFrameImplicit();
+                    program.pushUint16(size);
                     break;
                 }
                 case SyntaxKind::TypeLiteral: {
                     const auto n = to<TypeLiteralNode>(node);
-                    program.pushFrame();
+                    unsigned int size = 0;
 
                     for (auto &&member: n->members->list) {
+                        size++;
                         handle(member, program);
                     }
 
                     program.pushOp(OP::ObjectLiteral, node);
-                    program.popFrameImplicit();
+                    program.pushUint16(size);
                     break;
                 }
                 case SyntaxKind::ParenthesizedExpression: {
@@ -1229,10 +1170,13 @@ namespace ts::checker {
                 }
                 case SyntaxKind::ObjectLiteralExpression: {
                     const auto n = to<ObjectLiteralExpression>(node);
-                    program.pushFrame();
-                    for (auto &&sub: n->properties->list) handle(sub, program);
+                    unsigned int size = 0;
+                    for (auto &&sub: n->properties->list) {
+                        size++;
+                        handle(sub, program);
+                    }
                     program.pushOp(OP::ObjectLiteral, node);
-                    program.popFrameImplicit();
+                    program.pushUint16(size);
                     break;
                 }
                 case SyntaxKind::CallExpression: {
@@ -1266,11 +1210,10 @@ namespace ts::checker {
                     const auto n = to<ConditionalExpression>(node);
                     //it seems TS does not care about the condition. the result is always a union of false/true branch.
                     //we could improve that though to make sure that const-expressions are handled
-                    program.pushFrame();
                     handle(n->whenFalse, program);
                     handle(n->whenTrue, program);
                     program.pushOp(OP::Union, node);
-                    program.popFrameImplicit();
+                    program.pushUint16(2);
                     break;
                 }
                 case SyntaxKind::ConditionalType: {
@@ -1282,27 +1225,28 @@ namespace ts::checker {
                     sharedOpt<Identifier> distributiveOverIdentifier = isTypeReferenceNode(n->checkType) && isIdentifier(to<TypeReferenceNode>(n->checkType)->typeName) ? to<Identifier>(to<TypeReferenceNode>(n->checkType)->typeName) : nullptr;
 
                     program.pushSection();
+                    auto symbolCheckpoint = program.createSymbolCheckout();
 
                     unsigned int distributeJumpIp = 0;
                     if (distributiveOverIdentifier) {
                         //program.pushOp(OP::TypeVariable, distributiveOverIdentifier);
-                        handle(n->checkType, program); //LOADS the input type onto the stack. Distribute pops it then.
+                        handle(n->checkType, program); //LOADS the input type onto the stack. Distribute pops it.
 
                         //in Distribute we block tail calls as the section is called multiple times
                         program.blockTailCall();
-                        auto frame = program.pushFrame(true);
 
-                        //Distribute crash implicit TypeVariable on the stack and populates it
-                        program.pushSymbol(distributiveOverIdentifier->escapedText, SymbolType::TypeVariable, distributiveOverIdentifier);
+                        //Distribute creates implicit TypeVariable on the stack and populates it
+                        //todo: we have to move it to the beginning of the subroutine
+                        auto symbol = program.pushSymbol(distributiveOverIdentifier->escapedText, SymbolType::TypeVariable, distributiveOverIdentifier);
 
                         program.pushOp(OP::Distribute);
                         distributeJumpIp = program.ip();
+                        program.pushUint16(symbol.index);
                         program.pushAddress(0);
                     }
 
-                    auto frame = program.pushFrame();
-                    frame->conditional = true;
-
+                    auto symbolInferCheckpoint = program.createSymbolCheckout();
+                    //checkType and trueType share symbols (from infer)
                     handle(n->checkType, program);
                     handle(n->extendsType, program);
                     program.pushOp(instructions::Extends, n);
@@ -1314,6 +1258,7 @@ namespace ts::checker {
 
                     program.pushSection();
                     handle(n->trueType, program);
+                    program.restoreSymbolCheckout(symbolInferCheckpoint);
                     program.popSection();
 
                     program.ignoreNextSectionOP();
@@ -1331,19 +1276,18 @@ namespace ts::checker {
                     program.pushInt32Address(falseEndIp - trueJumpAddressIp + 1, trueJumpAddressIp);
 
                     if (distributiveOverIdentifier) {
-                        //auto routine = program.popSubroutine();
-                        //handle(n->checkType, program); //LOADS the input type onto the stack. Distribute pops it then.
-                        program.pushAddress(falseEndIp - distributeJumpIp + 6, distributeJumpIp);
+                        //change the address from OP::Distribute to jump to the end of all its expressions
+                        program.pushAddress(falseEndIp - distributeJumpIp + 6, distributeJumpIp + 2);
+
                         program.ignoreNextSectionOP();
-                        program.pushOp(OP::FrameReturnJump);
+                        program.pushOp(OP::Jump);
                         program.pushInt32Address(-(program.ip() - distributeJumpIp));
-                        program.popFrameImplicit();
                     } else {
                         program.ignoreNextSectionOP();
-                        program.popFrame();
                     }
 
                     program.popSection();
+                    program.restoreSymbolCheckout(symbolCheckpoint);
 
 //                    debug("ConditionalType {}", !!distributiveOverIdentifier);
                     break;
@@ -1367,13 +1311,14 @@ namespace ts::checker {
 //                }
                     //value inference
                 case SyntaxKind::ArrayLiteralExpression: {
-                    program.pushFrame();
+                    unsigned int size = 0;
                     for (auto &&v: to<ArrayLiteralExpression>(node)->elements->list) {
+                        size++;
                         handle(v, program);
                         program.pushOp(OP::TupleMember, v);
                     }
                     program.pushOp(OP::Tuple, node);
-                    program.popFrameImplicit();
+                    program.pushUint16(size);
                     //todo: handle `as const`, widen if not const
                     break;
                 }
@@ -1384,10 +1329,11 @@ namespace ts::checker {
                     break;
                 }
                 case SyntaxKind::TupleType: {
-                    program.pushFrame();
+                    unsigned int size = 0;
                     auto n = to<TupleTypeNode>(node);
                     for (auto &&e: n->elements->list) {
                         if (auto tm = to<NamedTupleMember>(e)) {
+                            size++;
                             handle(tm->type, program);
                             if (tm->dotDotDotToken) {
                                 program.pushOp(OP::Rest);
@@ -1395,16 +1341,18 @@ namespace ts::checker {
                             program.pushOp(OP::TupleMember, tm);
                             if (tm->questionToken) program.pushOp(OP::Optional);
                         } else if (auto ot = to<OptionalTypeNode>(e)) {
+                            size++;
                             handle(ot->type, program);
                             program.pushOp(OP::TupleMember, ot);
                             program.pushOp(OP::Optional);
                         } else {
+                            size++;
                             handle(e, program);
                             program.pushOp(OP::TupleMember, e);
                         }
                     }
                     program.pushOp(OP::Tuple, node);
-                    program.popFrameImplicit();
+                    program.pushUint16(size);
                     break;
                 }
                 case SyntaxKind::BinaryExpression: {
@@ -1451,9 +1399,10 @@ namespace ts::checker {
                             //todo: embed error since variable is declared twice
                         } else {
                             if (n->type) {
-                                const auto subroutineIndex = program.pushSubroutine(id->escapedText);
+                                const auto subroutineIndex = program.pushSubroutine(symbol);
                                 //in symbol subroutines we block TailCalls because want to store the result on the routine
                                 program.blockTailCall();
+                                program.pushSlots();
 
 //                                program.pushSourceMap(id);
                                 handle(n->type, program);
@@ -1466,7 +1415,8 @@ namespace ts::checker {
                                     program.pushOp(OP::Assign, n->name);
                                 }
                             } else {
-                                auto subroutineIndex = program.pushSubroutine(id->escapedText);
+                                auto subroutineIndex = program.pushSubroutine(symbol);
+                                program.pushSlots();
 
                                 if (n->initializer) {
                                     handle(n->initializer, program);

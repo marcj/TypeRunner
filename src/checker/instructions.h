@@ -6,10 +6,9 @@ namespace ts::instructions {
     enum OP {
         Noop,
         Jump, //arbitrary jump, used at the beginning to jump over storage-data (storage-data's addresses are constant)
-        FrameReturnJump,
         Halt,
         SourceMap, //one parameter (size uint32). all subsequent bytes withing the given size is a map op:pos:end, each uint32
-        Main, //marks end of meta-data section (subroutine metadata + storage data). has one parameter that points to the actual main code.
+        Main, //marks end of meta-data section (subroutine metadata + storage data). after this the body section with all subroutine ops follow.
 
         Never,
         Any,
@@ -70,14 +69,21 @@ namespace ts::instructions {
         Instantiate, //instantiates a type on the stack (FunctionRef for example), ExpressionWithTypeArguments
 
         /**
-         * Stack parameter. For each JS variable, JS function, as well as type variables (mapped-type variable for example).
+         * Reserved new stack entries to be used as type variables.
          *
-         * Parameters:
-         *  1. address on initial stack frame, which should contain its name as a string.
-         *  3. modifier: const
-         *  2. position in source code. necessary to determine if a reference is made to a const symbol before it was defined.
+         * 1 parameter indicating how many stack entries will be reserved.
          */
-        Var,
+        Slots,
+
+        ///**
+        // * Stack parameter. For each JS variable, JS function, as well as type variables (mapped-type variable for example).
+        // *
+        // * Parameters:
+        // *  1. address on initial stack frame, which should contain its name as a string.
+        // *  3. modifier: const
+        // *  2. position in source code. necessary to determine if a reference is made to a const symbol before it was defined.
+        // */
+        //Var,
 
         /**
          * Makes sure that in the current variable slot is a type placed if nothing was provided as parameter.
@@ -93,8 +99,6 @@ namespace ts::instructions {
         TypeArgumentDefault, //one parameter with the address of the subroutine of the default value
 
         TypeArgumentConstraint, //expects an entry on the stack
-        TypeVariable,
-
 
         TemplateLiteral,
 

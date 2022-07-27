@@ -40,11 +40,9 @@ const v2: number = 123;
     //only v1, v2
     REQUIRE(ts::vm2::pool.active == 2);
 
-    ts::bench("first", 1000, [&] {
-        module->clear();
-        run(module);
-    });
+    testBench(code, 0);
 }
+
 TEST_CASE("vm2TwoTests") {
     test(R"(
 const v1: string = "abc";
@@ -97,7 +95,7 @@ const v3: a<string> = 'nope';
 
 TEST_CASE("vm2Base22") {
     string code = R"(
-type a<K, T> = K | (T extends string ? 'yes': 'no');
+type a<K, T> = K | (T extends string ? 'yes' : 'no');
 const v1: a<true, number> = 'no';
 const v2: a<true, string> = 'yes';
 const v3: a<true, string> = true;
@@ -153,12 +151,12 @@ const var1: a<string> = false;
 
 TEST_CASE("gcUnion") {
     ts::checker::Program program;
-    program.pushOp(OP::Frame);
     for (auto i = 0; i<10; i++) {
         program.pushOp(OP::StringLiteral);
         program.pushStorage("a" + to_string(i));
     }
     program.pushOp(OP::Union);
+    program.pushUint16(10);
     program.pushOp(OP::Halt);
 
     auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
@@ -176,6 +174,7 @@ TEST_CASE("gcTuple") {
         program.pushOp(OP::TupleMember);
     }
     program.pushOp(OP::Tuple);
+    program.pushUint16(10);
     program.pushOp(OP::Halt);
 
     auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
@@ -196,6 +195,7 @@ TEST_CASE("gcObject") {
         program.pushOp(OP::PropertySignature);
     }
     program.pushOp(OP::ObjectLiteral);
+    program.pushUint16(10);
     program.pushOp(OP::Halt);
 
     auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
@@ -229,6 +229,7 @@ type L = `a${string}`;
 const var1: L = 'abc';
 const var2: L = 'bbc';
 )";
+    //not implemented yet
     ts::testBench(code, 1);
 }
 
@@ -538,7 +539,6 @@ TEST_CASE("vm2BenchOverhead") {
 }
 
 TEST_CASE("vm2Complex1") {
-    //todo: crashes with BAD_ACCESS. lag wohl daran, dass nicht alles zurückgesetzt wurde
     string code = R"(
 type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>; //yes
 //type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [A, ...A, 0]>; //no, A refCount too big.
@@ -549,12 +549,8 @@ type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<
 const var1: StringToNum<'999', []> = 1002;
 //const var2: StringToNum<'999'> = 1002;
 )";
-    //todo: fix reuse of A. We need to mark the argument with a flag though, so we know we can for sure steal its ref and just append it.
-    // Should then be much faster than we currently see.
-    //todo we have to fix that A.users keeps increasing
-    //todo: add tail call optimisation
-    //todo: super instruction for `${A['length']}` and A['length']
     test(code, 1);
+    //todo: this crashes after a lot of runs, I guess something is not correctly reset so it grows forever
     testBench(code, 1);
 //    testBench(code, 0, 1);
 //    debug("active {}", ts::vm2::pool.active);

@@ -112,7 +112,6 @@ namespace ts::checker {
                     result.subroutines.push_back({.name = name, .address = address});
                     break;
                 }
-                case OP::FrameReturnJump:
                 case OP::Jump: {
                     auto address = vm::readInt32(bin, i + 1);
                     params += fmt::format(" [{}, +{}]", startI + address, address);
@@ -123,10 +122,6 @@ namespace ts::checker {
                     break;
                 }
                 case OP::Main: {
-                    auto address = vm::readUint32(bin, i + 1);
-                    params += fmt::format(" [{}, +{}]", startI + address, address);
-                    vm::eatParams(op, &i);
-                    result.subroutines.push_back({.name = "main", .address = address});
                     newSubRoutine = true;
                     break;
                 }
@@ -134,7 +129,12 @@ namespace ts::checker {
                     newSubRoutine = true;
                     break;
                 }
-                case OP::Distribute:
+                case OP::Distribute: {
+                    params += fmt::format(" &{} [{}, +{}]", vm::readUint16(bin, i + 1), startI + vm::readUint32(bin, i + 3), vm::readUint32(bin, i + 3));
+                    vm::eatParams(op, &i);
+                    newLine = true;
+                    break;
+                }
                 case OP::JumpCondition: {
                     params += fmt::format(" [{}]", startI + vm::readUint32(bin, i + 1));
                     vm::eatParams(op, &i);
@@ -167,8 +167,13 @@ namespace ts::checker {
                     vm::eatParams(op, &i);
                     break;
                 }
+                case OP::Union:
+                case OP::Tuple:
+                case OP::TemplateLiteral:
+                case OP::ObjectLiteral:
+                case OP::Slots:
                 case OP::Loads: {
-                    params += fmt::format(" &{}:{}", vm::readUint16(bin, i + 1), vm::readUint16(bin, i + 3));
+                    params += fmt::format(" {}", vm::readUint16(bin, i + 1));
                     vm::eatParams(op, &i);
                     break;
                 }
