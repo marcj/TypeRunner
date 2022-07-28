@@ -996,15 +996,14 @@ namespace ts::checker {
                                 //which indicates the VM that the function needs to be instantiated first.
 
                                 auto subroutineIndex = program.pushSubroutineNameLess();
-
+                                unsigned int size = 0;
                                 for (auto &&param: n->typeParameters->list) {
                                     handle(param, program);
                                 }
                                 program.pushSlots();
 
-                                for (auto &&param: n->parameters->list) {
-                                    handle(param, program);
-                                }
+                                //first comes the return type
+                                size++;
                                 if (n->type) {
                                     handle(n->type, program);
                                 } else {
@@ -1014,7 +1013,13 @@ namespace ts::checker {
                                     } else {
                                     }
                                 }
+
+                                for (auto &&param: n->parameters->list) {
+                                    size++;
+                                    handle(param, program);
+                                }
                                 program.pushOp(OP::Function, node);
+                                program.pushUint16(size);
                                 program.popSubroutine();
 
                                 program.pushOp(OP::FunctionRef, node);
@@ -1024,9 +1029,9 @@ namespace ts::checker {
                                 program.pushSubroutine(symbol);
                                 program.pushSlots();
 
-                                for (auto &&param: n->parameters->list) {
-                                    handle(param, program);
-                                }
+                                unsigned int size = 0;
+                                //first comes the return type
+                                size++;
                                 if (n->type) {
                                     handle(n->type, program);
                                 } else {
@@ -1036,7 +1041,14 @@ namespace ts::checker {
                                     } else {
                                     }
                                 }
+
+                                for (auto &&param: n->parameters->list) {
+                                    size++;
+                                    handle(param, program);
+                                }
+
                                 program.pushOp(OP::Function, node);
+                                program.pushUint16(size);
                                 program.popSubroutine();
                             }
                         }

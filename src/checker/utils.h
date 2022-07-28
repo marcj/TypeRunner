@@ -106,6 +106,7 @@ namespace ts::vm {
                 *i += 2;
                 break;
             }
+            case OP::Function:
             case OP::Union:
             case OP::Tuple:
             case OP::TemplateLiteral:

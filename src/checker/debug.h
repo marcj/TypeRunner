@@ -163,10 +163,11 @@ namespace ts::checker {
                     break;
                 }
                 case OP::CallExpression: {
-                    params += fmt::format(" &{}", vm::readUint16(bin, i + 1));
+                    params += fmt::format(" {}", vm::readUint16(bin, i + 1));
                     vm::eatParams(op, &i);
                     break;
                 }
+                case OP::Function:
                 case OP::Union:
                 case OP::Tuple:
                 case OP::TemplateLiteral:

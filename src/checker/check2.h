@@ -34,7 +34,7 @@ namespace ts::vm2 {
             case TypeKind::TupleMember: {
                 if (left->kind != TypeKind::TupleMember) return false;
                 //todo: handle optional
-                if (!extends((Type *)left->type, (Type *)right->type)) return false;
+                if (!extends((Type *) left->type, (Type *) right->type)) return false;
 
                 return true;
             }
@@ -167,6 +167,13 @@ namespace ts::vm2 {
                         return left->flag & TypeFlag::True || left->flag & TypeFlag::False;
                 }
                 break;
+            }
+            case TypeKind::Parameter: {
+                switch (left->kind) {
+                    case TypeKind::Parameter:
+                        return extends((Type *) left->type, (Type *) right->type);
+                }
+                return extends(left, (Type *) right->type);
             }
         }
         return false;

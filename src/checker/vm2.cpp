@@ -48,6 +48,19 @@ namespace ts::vm2 {
         gcQueue[gcQueueIdx++] = type;
     }
 
+    inline Type * widen(Type * type) {
+        switch (type->kind) {
+            case TypeKind::Literal: {
+                if (type->flag & TypeFlag::StringLiteral) return allocate(TypeKind::String);
+                if (type->flag & TypeFlag::NumberLiteral) return allocate(TypeKind::Number);
+                if (type->flag & TypeFlag::BooleanLiteral) return allocate(TypeKind::Boolean);
+                if (type->flag & TypeFlag::BigIntLiteral) return allocate(TypeKind::BigInt);
+            }
+        }
+
+        return type;
+    }
+
     void gc(Type *type) {
         //debug("gc refCount={} {} ref={}", type->refCount, stringify(type), (void *) type);
         if (type->refCount>0) return;
@@ -541,7 +554,7 @@ namespace ts::vm2 {
             auto frame = frames.at(i);
             debug("Frame {} depth={} variables={} initialSp={}", i, frame->depth, frame->variables, frame->initialSp);
 
-            if (top > 0) {
+            if (top>0) {
                 auto size = top - frame->initialSp;
                 for (unsigned int j = 0; j<size; j++) {
                     auto i = top - j - 1;
@@ -568,7 +581,7 @@ namespace ts::vm2 {
         debug("");
     }
 
-    inline void print(Type *type, char * title = "") {
+    inline void print(Type *type, char *title = "") {
         debug("[{}] {} refCount={} {} ref={}", activeSubroutine->ip, title, type->refCount, stringify(type), (void *) type);
     }
 
@@ -602,22 +615,113 @@ namespace ts::vm2 {
                     stack[sp++] = allocate(TypeKind::Null);
                     break;
                 }
-                    //case OP::FrameEnd: {
-                    //    if (frame->size()>frame->variables) {
-                    //        //there is a return value on the stack, which we need to preserve
-                    //        auto ret = pop();
-                    //        popFrame();
-                    //        push(ret);
-                    //    } else {
-                    //        //throw away the whole stack
-                    //        popFrame();
-                    //    }
-                    //    break;
-                    //}
-                    //case OP::Frame: {
-                    //    pushFrame();
-                    //    break;
-                    //}
+                case OP::Unknown: {
+                    stack[sp++] = allocate(TypeKind::Unknown);
+                    break;
+                }
+                case OP::Parameter: {
+                    const auto address = activeSubroutine->parseUint32();
+                    auto type = allocate(TypeKind::Parameter);
+                    type->readStorage(bin, address);
+                    type->type = pop();
+                    stack[sp++] = type;
+                    break;
+                }
+                case OP::Function: {
+                    const auto size = activeSubroutine->parseUint16();
+                    auto types = frame->pop(size);
+                    auto type = allocate(TypeKind::Function);
+                    //first is always the return type
+                    type->type = useAsRef(types[0]);
+                    if (types.size()>1) {
+                        auto current = (TypeRef *) type->type;
+                        for_each(++types.begin(), types.end(), [&current](auto v) {
+                            current->next = useAsRef(v);
+                            current = current->next;
+                        });
+                        current->next = nullptr;
+                    }
+                    stack[sp++] = type;
+                    break;
+                }
+                case OP::FunctionRef: {
+                    const auto address = activeSubroutine->parseUint32();
+                    auto type = allocate(TypeKind::FunctionRef);
+                    type->size = address;
+                    stack[sp++] = type;
+                    break;
+                }
+                case OP::Instantiate: {
+                    const auto arguments = activeSubroutine->parseUint16();
+                    auto ref = pop(); //FunctionRef/Class
+
+                    switch (ref->kind) {
+                        case TypeKind::FunctionRef: {
+                            call(ref->size, arguments);
+                            break;
+                        }
+                        default: {
+                            throw std::runtime_error(fmt::format("Can not instantiate {}", ref->kind));
+                        }
+                    }
+                    break;
+                }
+                case OP::CallExpression: {
+                    const auto parameterAmount = activeSubroutine->parseUint16();
+                    auto parameters = frame->pop(parameterAmount);
+                    auto typeToCall = pop();
+
+                    switch (typeToCall->kind) {
+                        case TypeKind::Function: {
+                            //it's important to handle parameters/typeArguments first before changing the stack with push() since `parameters` is a std::span.
+                            auto current = (TypeRef *) typeToCall->type;
+                            for (unsigned int i = 0;; i++) {
+                                current = (TypeRef *) current->next;
+                                if (!current) break; //end
+                                auto parameter = current->type;
+                                auto optional = isOptional(parameter);
+                                if (i>parameters.size() - 1) {
+                                    //parameter not provided
+                                    if (!optional && !parameter->type) {
+                                        report(fmt::format("An argument for '{}' was not provided.", parameter->text), parameter);
+                                    }
+                                    break;
+                                }
+                                auto lvalue = parameters[i];
+                                //auto rvalue = reinterpret_pointer_cast<Type>(parameter);
+                                //ExtendableStack stack;
+                                if (!extends(lvalue, parameter)) {
+                                    //rerun again with
+                                    //report(stack.errorMessage());
+                                    report(fmt::format("Argument of type '{}' is not assignable to parameter '{}' of type '{}'", stringify(lvalue), parameter->text, stringify(parameter)));
+                                }
+                            }
+
+                            //we could convert parameters to a tuple and then run isExtendable() on two tuples,
+                            //necessary for REST parameters.
+                            break;
+                        }
+                        default: {
+                            throw std::runtime_error(fmt::format("CallExpression on {} not handled", typeToCall->kind));
+                        }
+                    }
+                    break;
+                }
+                case OP::Widen: {
+                    auto type = pop();
+                    auto widened = widen(type);
+                    push(widened);
+                    if (widened != type) gc(type);
+                    break;
+                }
+                case OP::Set: {
+                    const auto address = activeSubroutine->parseUint32();
+                    auto type = pop();
+                    auto subroutine = activeSubroutine->module->getSubroutine(address);
+                    if (subroutine->narrowed) drop(subroutine->narrowed);
+                    subroutine->narrowed = use(type);
+                    break;
+                }
                 case OP::Assign: {
                     auto rvalue = pop();
                     auto lvalue = pop();

@@ -19,6 +19,7 @@ namespace ts::vm2 {
         Undefined,
         String,
         Number,
+        BigInt,
         Boolean,
         Literal,
         PropertySignature,
@@ -29,6 +30,9 @@ namespace ts::vm2 {
         Tuple,
         TupleMember,
         TemplateLiteral,
+        Parameter,
+        Function,
+        FunctionRef,
     };
 
     //Used in the vm
@@ -38,11 +42,12 @@ namespace ts::vm2 {
         StringLiteral = 1 << 2,
         NumberLiteral = 1 << 3,
         BooleanLiteral = 1 << 4,
-        True = 1 << 5,
-        False = 1 << 6,
-        Stored = 1 << 6, //Used somewhere as cache or as value (subroutine->result for example), and thus can not be stolen/modified
-        RestReuse = 1 << 8, //allow to reuse/steal T in ...T
-        Deleted = 1 << 9, //for debugging purposes
+        BigIntLiteral = 1 << 5,
+        True = 1 << 6,
+        False = 1 << 7,
+        Stored = 1 << 8, //Used somewhere as cache or as value (subroutine->result for example), and thus can not be stolen/modified
+        RestReuse = 1 << 9, //allow to reuse/steal T in ...T
+        Deleted = 1 << 10, //for debugging purposes
     };
 
     struct Type;
@@ -285,6 +290,10 @@ namespace ts::vm2 {
                 stringifyType((Type *) type->type, r);
                 break;
             }
+            case TypeKind::Parameter: {
+                stringifyType((Type *) type->type, r);
+                break;
+            }
             case TypeKind::Tuple: {
                 r += "[";
                 auto current = (TypeRef *) type->type;
@@ -309,9 +318,9 @@ namespace ts::vm2 {
                         r += "...";
                         break;
                     }
-                    if (current) r += "| ";
                     stringifyType(current->type, r);
                     current = current->next;
+                    if (current) r += " | ";
                 }
                 break;
             }
@@ -357,6 +366,10 @@ namespace ts::vm2 {
         std::string r;
         stringifyType(type, r);
         return r;
+    }
+
+    inline bool isOptional(Type *type) {
+        return type->flag & TypeFlag::Optional;
     }
 
 //    struct TypeMeta {

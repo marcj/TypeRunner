@@ -114,13 +114,13 @@ const v5: a<true, string> = 'nope';
 TEST_CASE("gc") {
     // The idea of garbage collection is this: Each type has refCount.
     // As soon as another type wants to hold on it, it increases refCount.
-    // This happens automatically once a user pop() from the stack. The stack itself
-    // is not an owner. If the user who pop()'d does not want to keep it, a drop(type) is necessary.
+    // This happens automatically once a user use(pop()) from the stack. The stack itself
+    // is not an owner. If the user who pop()'d does not want to keep it, a gc() call is necessary.
     // This schedules it for garbage collection.
     // If a type was received from somewhere else than the stack, the counter needs to be increased
     // manually by using use(type).
     // Subroutines like here `var1` keep the type for caching, hence this example has one active type
-    // and after clearing the module, all its subroutines reset their cache, so that is not no active type anymore.
+    // and after clearing the module, all its subroutines reset their cache, so that is not an active type anymore.
     string code = R"(
 type b<T> = T;
 type a<T> = b<T>;
@@ -134,7 +134,6 @@ const var1: a<string> = false;
 
     ts::vm2::gcFlush();
     //only var1 cached value should live
-    //todo: currently subroutines do not cache results because of TailCall. Is this good?
     REQUIRE(ts::vm2::pool.active == 1);
 
     ts::vm2::clear(module);
@@ -395,11 +394,6 @@ const var1: F1<[]> = [0];
 }
 
 TEST_CASE("vm2Fn5") {
-    //todo: make sure that temporary parameter are not GC inside the callee.
-    // currently `if (T->users == 1) {` is not true since T gets GC in ::Extends before [...T, 0] is reached
-    // the idea is to flag parameter [] as input, so that it doesn't get GC. We can't increase 'users' since that would mean
-    // we have no indicator whether it can be simply stolen in [...T].
-    // question is when is <[]> GC? => always the stack that creates the objects should clear it. So when a Call is done, a Return cleans it up for it after switching to the caller.
     string code = R"(
 type F1<T> = T extends any ? [...T, 0] : never;
 const var1: F1<[]> = [0];
@@ -502,20 +496,6 @@ type F2<T2> = T2 extends any ? T2 extends any ? F1<T2> : 1 : 2;
 const var1: F2<[]> = [0];
 )";
     test(code, 0);
-    //todo:
-    // 1. Remove NJump, make Jump int32
-    // 2. Find all tail calls.
-    // 2.1 Restructure the way subroutines are built? How? => Into Sections. An sections know where they are used (ConditionalTrue, ConditionalFalse, Distributive, MappedType, MappedTypeName)
-    // 2.2. Find all Call[] and check if it eventually hits a Return? (inefficient) => No
-
-    //todo: Detect all tail calls in above
-    //what to consider
-    // conditional type
-    // distributive conditional type
-    // infer in conditional type
-    // mapped type
-    // tail call optimisation
-    // frames
 }
 
 TEST_CASE("vm2FnTailCallCondition") {
@@ -524,10 +504,6 @@ type F1<T1, K> = [...T1, 0];
 type F2<T2> = T2 extends any ? T2 extends any ? F1<T2> : 1 : 2;
 const var1: F2<[]> = [0];
 )";
-    //todo: TailCall for all exits in JumpCondition and Distributive, even when nested `T extends x ? T extends y ? y : x : x`
-    // find all Call and look either
-    //  - subsequent OP is Return, so convert it to TailCall
-    //  - subsequent OP is Jump that leads eventually to Return, so convert it to TailCall
     test(code, 0);
     ts::vm2::gcFlush();
     REQUIRE(ts::vm2::pool.active == 3);
@@ -556,15 +532,44 @@ const var1: StringToNum<'999', []> = 1002;
     }
 
     testBench(code, 1);
-//    debug("active {}", ts::vm2::pool.active);
-//    ts::vm2::gcFlush();
-//    debug("active gc {}", ts::vm2::pool.active);
-//    REQUIRE(ts::vm2::pool.active == 1);
+}
 
-//    ts::bench("first", 10, [&] {
-//        module->clear();
-//        run(module);
-//    });
+TEST_CASE("function1") {
+    string code = R"(
+    function doIt<T extends number>(v: T) {
+    }
+    const a = doIt<number>;
+    a(23);
+)";
+    test(code, 0);
+    testBench(code, 0);
+}
+
+TEST_CASE("function2") {
+    string code = R"(
+    function doIt<T extends number>(v: T) {
+    }
+    doIt<number>(23);
+    doIt<34>(33);
+)";
+    test(code, 1);
+    testBench(code, 1);
+}
+
+TEST_CASE("controlFlow1") {
+    string code = R"(
+    function boolFunc(t: true) {}
+    let bool = true;
+    boolFunc(bool);
+
+    bool = false;
+    boolFunc(bool);
+
+    bool = Date.now() > 1000 ? true : false;
+    boolFunc(bool);
+)";
+    test(code, 2);
+    testBench(code, 2);
 }
 
 TEST_CASE("vm2Cartesian") {
@@ -646,8 +651,6 @@ TEST_CASE("bigUnion") {
 
     ts::bench("first", 1000, [&] {
         module->clear();
-//        ts::vm2::clear(module);
         run(module);
-//        REQUIRE(process(ops) == 300 * 6);
     });
 }
