@@ -47,5 +47,4 @@ namespace ts {
 
         std::cout << fmt::format("{} iterations (it): compile {:.9f}ms/it, cold {:.9f}ms/it, warm {:.9f}ms/it", iterations, compileTime.count() / iterations, coldTime.count() / iterations, warmTime.count() / iterations);
     }
-
 }

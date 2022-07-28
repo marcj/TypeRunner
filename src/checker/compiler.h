@@ -74,7 +74,7 @@ namespace ts::checker {
         unsigned int end = 0;
         OP lastOp = OP::Noop;
         unsigned int ops = 0;
-        bool isBlockTailCall;
+        bool isBlockTailCall{};
 
         bool hasChild = false;
         vector<TypeArgumentUsage> typeArgumentUsages;
@@ -178,11 +178,14 @@ namespace ts::checker {
         }
 
         void optimise() {
-            //find all tail sections (sections that end the program when executed)
+            //find all tail sections (sections that end the subroutine when executed)
             for (auto &&section: sections) {
-                if (section.hasChild) continue;
-                if (section.isBlockTailCall) continue;
-                if (section.next>=0 && !ended(section)) continue;
+                if (section.hasChild || section.isBlockTailCall) {
+                    continue;
+                }
+                if (section.next>=0 && !ended(section)) {
+                    continue;
+                }
 
                 Section *current = section.up>=0 ? &sections[section.up] : nullptr;
                 bool tail = true;

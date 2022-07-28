@@ -81,7 +81,7 @@ namespace ts::vm2 {
 
     inline Type *use(Type *type) {
         type->refCount++;
-//        debug("use users={} {} ref={}", type->users, stringify(type), (void *) type);
+//        debug("use refCount={} {} ref={}", type->refCount, stringify(type), (void *) type);
         return type;
     }
 
@@ -115,11 +115,11 @@ namespace ts::vm2 {
         if (type == nullptr) return;
 
         if (type->refCount == 0) {
-            //debug("type {} not used already!", stringify(type));
+            debug("type {} not used already!", stringify(type));
             return;
         }
         type->refCount--;
-//        debug("drop users={} {}  ref={}", type->users, stringify(type), (void *) type);
+//        debug("drop refCount={} {}  ref={}", type->refCount, stringify(type), (void *) type);
         if (type->refCount == 0) {
             gc(type);
         }
@@ -194,15 +194,15 @@ namespace ts::vm2 {
         report(DiagnosticMessage(message, ip));
     }
 
-    inline void pushFrame() {
-        auto next = frames.push(); ///&frames[frameIdx++];
-        //important to reset necessary stuff, since we reuse
-        next->initialSp = sp;
-        next->depth = frame->depth + 1;
-//        debug("pushFrame {}", sp);
-        next->variables = 0;
-        frame = next;
-    }
+//    inline void pushFrame() {
+//        auto next = frames.push(); ///&frames[frameIdx++];
+//        //important to reset necessary stuff, since we reuse
+//        next->initialSp = sp;
+//        next->depth = frame->depth + 1;
+////        debug("pushFrame {}", sp);
+//        next->variables = 0;
+//        frame = next;
+//    }
 
     //Returns true if it actually jumped to another subroutine, false if it just pushed its cached type.
     inline bool tailCall(unsigned int address, unsigned int arguments) {
@@ -221,18 +221,18 @@ namespace ts::vm2 {
             use(stack[sp - i - 1]);
         }
 
-        //remove all open frames
-        while (frame->depth>0) {
-            for (unsigned int i = 0; i<frame->variables; i++) {
-                drop(stack[frame->initialSp + i]);
-            }
-            frame = frames.pop();
-        }
+        ////remove all open frames
+        //while (frame->depth>0) {
+        //    for (unsigned int i = 0; i<frame->variables; i++) {
+        //        drop(stack[frame->initialSp + i]);
+        //    }
+        //    frame = frames.pop();
+        //}
 
         //stack could look like that:
         // | [T] [T] [V] [P1] [P2] [TailCall] |
         // T=TypeArgument, V=TypeVariable, but we do not need anything of that, so we GC that. P indicates argument for the call.
-        for (unsigned int i = 0; i<frame->variables; i++) {
+        for (unsigned int i = 0; i<activeSubroutine->typeArguments; i++) {
             drop(stack[frame->initialSp + i]);
         }
 
@@ -249,6 +249,7 @@ namespace ts::vm2 {
 
         //we want to reuse the same frame, so reset it
         frame->variables = 0;
+        assert(frame->loop == nullptr);
         sp = frame->initialSp + arguments;
 
         //jump to the new address
@@ -273,7 +274,6 @@ namespace ts::vm2 {
             push(routine->result);
             return false;
         }
-//        debug("Call &{} {}", address, routine->name.size());
 
         activeSubroutine->ip++;
         auto nextActiveSubroutine = activeSubroutines.push(); //&activeSubroutines[++activeSubroutineIdx];
@@ -291,9 +291,12 @@ namespace ts::vm2 {
 
         // | (initialSp) [P1] [P1] (sp) |
 
+        //debug("Call &{}[{}] {}", address, arguments, routine->name);
+        //printStack();
         nextFrame->initialSp = sp - arguments; //we move x arguments from the old stack frame to the new one
         for (unsigned int i = 0; i<arguments; i++) {
-            use(stack[frame->initialSp + i]);
+            //debug("arg {} refCount={} {} ref={}", i, stack[nextFrame->initialSp + i]->refCount, stringify(stack[nextFrame->initialSp + i]), (void *) stack[nextFrame->initialSp + i]);
+            use(stack[nextFrame->initialSp + i]);
         }
         nextFrame->variables = 0;
         frame = nextFrame;
@@ -497,27 +500,27 @@ namespace ts::vm2 {
         push(result);
     }
 
-    inline void mapFrameToChildren(Type *container) {
-        auto i = frame->initialSp + frame->variables;
-        auto current = (TypeRef *) (container->type = useAsRef(stack[i++]));
-        for (; i<sp; i++) {
-            current->next = useAsRef(stack[i]);
-            current = current->next;
-        }
-        current->next = nullptr;
-
-//        unsigned int start = 0;
-//        std::span<Type *> sub{stack.data() + start, sp - start};
-//        sp = frame->initialSp;
-//        frame = frames.pop(); //&frames[--frameIdx];
-//
-//        TypeRef * current = allocateRef();
-//        for_each(++types.begin(), types.end(), [&current](auto v) {
-//            current->next = allocateRef(v);
+//    inline void mapFrameToChildren(Type *container) {
+//        auto i = frame->initialSp + frame->variables;
+//        auto current = (TypeRef *) (container->type = useAsRef(stack[i++]));
+//        for (; i<sp; i++) {
+//            current->next = useAsRef(stack[i]);
 //            current = current->next;
-//        });
+//        }
 //        current->next = nullptr;
-    }
+//
+////        unsigned int start = 0;
+////        std::span<Type *> sub{stack.data() + start, sp - start};
+////        sp = frame->initialSp;
+////        frame = frames.pop(); //&frames[--frameIdx];
+////
+////        TypeRef * current = allocateRef();
+////        for_each(++types.begin(), types.end(), [&current](auto v) {
+////            current->next = allocateRef(v);
+////            current = current->next;
+////        });
+////        current->next = nullptr;
+//    }
 
     void printStack() {
         debug("");
@@ -538,17 +541,19 @@ namespace ts::vm2 {
             auto frame = frames.at(i);
             debug("Frame {} depth={} variables={} initialSp={}", i, frame->depth, frame->variables, frame->initialSp);
 
-            auto size = top - frame->initialSp;
-            for (unsigned int j = 0; j<size; j++) {
-                auto i = top - j - 1;
-                debug("  {}: {} users={} ref={}", i, stringify(stack[i]), stack[i]->refCount, (void *) stack[i]);
+            if (top > 0) {
+                auto size = top - frame->initialSp;
+                for (unsigned int j = 0; j<size; j++) {
+                    auto i = top - j - 1;
+                    debug("  {}: {} refCount={} ref={}", i, stringify(stack[i]), stack[i]->refCount, (void *) stack[i]);
+                }
+                top -= size;
             }
-            top -= size;
 
 //            if (size != 0) {
 //                do {
 //                    auto i = top - size;
-//                    debug("{}: {} users={} ref={}", i, stringify(stack[i]), stack[i]->users, (void *) stack[i]);
+//                    debug("{}: {} refCount={} ref={}", i, stringify(stack[i]), stack[i]->refCount, (void *) stack[i]);
 //                    size--;
 //                } while (size>0);
 //            }
@@ -561,6 +566,10 @@ namespace ts::vm2 {
         }
         debug("~~~~~~~~~~~~~~~");
         debug("");
+    }
+
+    inline void print(Type *type, char * title = "") {
+        debug("[{}] {} refCount={} {} ref={}", activeSubroutine->ip, title, type->refCount, stringify(type), (void *) type);
     }
 
     void process() {
@@ -593,22 +602,22 @@ namespace ts::vm2 {
                     stack[sp++] = allocate(TypeKind::Null);
                     break;
                 }
-                case OP::FrameEnd: {
-                    if (frame->size()>frame->variables) {
-                        //there is a return value on the stack, which we need to preserve
-                        auto ret = pop();
-                        popFrame();
-                        push(ret);
-                    } else {
-                        //throw away the whole stack
-                        popFrame();
-                    }
-                    break;
-                }
-                case OP::Frame: {
-                    pushFrame();
-                    break;
-                }
+                    //case OP::FrameEnd: {
+                    //    if (frame->size()>frame->variables) {
+                    //        //there is a return value on the stack, which we need to preserve
+                    //        auto ret = pop();
+                    //        popFrame();
+                    //        push(ret);
+                    //    } else {
+                    //        //throw away the whole stack
+                    //        popFrame();
+                    //    }
+                    //    break;
+                    //}
+                    //case OP::Frame: {
+                    //    pushFrame();
+                    //    break;
+                    //}
                 case OP::Assign: {
                     auto rvalue = pop();
                     auto lvalue = pop();
@@ -629,18 +638,14 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Return: {
-                    if (activeSubroutine->isMain()) return;
-
-                    //while (frame->depth > 0) {
-                    //    for (unsigned int i = 0; i<frame->variables; i++) {
-                    //        drop(stack[frame->initialSp + i]);
-                    //    }
-                    //    frame = frames.pop();
-                    //}
+                    if (activeSubroutine->isMain()) {
+                        activeSubroutine = activeSubroutines.reset();
+                        return;
+                    }
 
                     //printStack();
                     //gc all parameters
-                    for (unsigned int i = 0; i<frame->variables; i++) {
+                    for (unsigned int i = 0; i<activeSubroutine->typeArguments; i++) {
                         if (stack[frame->initialSp + i] != stack[sp - 1]) {
                             //only if the parameter is not at the same time the return value
                             drop(stack[frame->initialSp + i]);
@@ -810,7 +815,6 @@ namespace ts::vm2 {
                         push(use(allocate(TypeKind::Unknown)));
                     } else {
                         //for provided argument we do not increase refCount, because it's the caller's job
-                        //use(stack[frame->initialSp + activeSubroutine->typeArguments]);
                     }
                     activeSubroutine->typeArguments++;
                     frame->variables++;
@@ -827,7 +831,6 @@ namespace ts::vm2 {
                         }
                     } else {
                         //for provided argument we do not increase refCount, because it's the caller's job
-                        //use(stack[frame->initialSp + activeSubroutine->typeArguments]);
 
                         activeSubroutine->ip += 4; //jump over address
 
@@ -988,7 +991,7 @@ namespace ts::vm2 {
                         if (first->refCount == 0) {
                             item->type = first->type;
                             first->type = nullptr;
-                            //since we stole its children, we want it to GC but without its children. their 'users' count belongs now to us.
+                            //since we stole its children, we want it to GC but without its children. their refCount count belongs now to us.
                             gc(first);
                         } else {
                             throw std::runtime_error("Can not merge used union");
@@ -1007,7 +1010,7 @@ namespace ts::vm2 {
                                 if (v->refCount == 0) {
                                     current->next = (TypeRef *) v->type;
                                     v->type = nullptr;
-                                    //since we stole its children, we want it to GC but without its children. their 'users' count belongs now to us.
+                                    //since we stole its children, we want it to GC but without its children. their refCount count belongs now to us.
                                     gcWithoutChildren(v);
                                     //set current to the end of the list
                                     while (current->next) current = current->next;
@@ -1077,18 +1080,19 @@ namespace ts::vm2 {
                             //debug("...T of size {} with refCount={} *{}", T->size, T->refCount, (void *) T);
 
                             //if type has no owner, we can just use it as the new type
-                            //T.users is minimum 1, because the T is owned by Rest, and Rest owned by TupleMember, and TupleMember by nobody,
+                            //T.refCount is minimum 1, because the T is owned by Rest, and Rest owned by TupleMember, and TupleMember by nobody,
                             //if T comes from a type argument, it is 2 since argument belongs to the caller.
-                            //thus an expression of [...T] yields always T.users >= 1.
+                            //thus an expression of [...T] yields always T.refCount >= 2.
                             if (T->refCount == 2 && firstType->flag & TypeFlag::RestReuse && !(firstType->flag & TypeFlag::Stored)) {
                                 item = T;
                                 //item = use(T);
+                                //print(item, "reuse tuple");
                             } else {
                                 item = allocate(TypeKind::Tuple);
                                 TypeRef *newCurrent = nullptr;
                                 auto oldCurrent = (TypeRef *) T->type;
                                 while (oldCurrent) {
-                                    //we reuse the tuple member and increase its `users`.
+                                    //we reuse the tuple member and increase its refCount.
                                     auto tupleMember = useAsRef(oldCurrent->type);
 
                                     item->size++;
@@ -1101,15 +1105,17 @@ namespace ts::vm2 {
 
                                     oldCurrent = oldCurrent->next;
                                 }
+                                //print(item, "new tuple");
                             }
-//                            debug("...T after merge size {}", refLength((TypeRef *) item->type));
                         } else {
                             item = allocate(TypeKind::Tuple);
                             debug("Error: [...T] where T is not an array/tuple.");
                         }
+//                            debug("...T after merge size {}", refLength((TypeRef *) item->type));
                         //drop Rest operator, since it was consumed now, so its resources are freed.
-                        //the tuple member has users=0 in a [...T] operation, so it also GCs its REST type.
-                        //decreases T->refCount
+                        //the tuple member has refCount=0 in a [...T] operation, so it also GCs its REST type.
+                        //decreases T->refCount.
+                        //this tuple member ...T is not needed anymore, since it was consumed, so we GC it.
                         gc(firstTupleMember);
                     } else {
                         item = allocate(TypeKind::Tuple);
@@ -1137,7 +1143,7 @@ namespace ts::vm2 {
                                     //type New = [...T, x]; => [y, z, x];
                                     auto oldCurrent = (TypeRef *) T->type;
                                     while (oldCurrent) {
-                                        //we reuse the tuple member and increase its `users`.
+                                        //we reuse the tuple member and increase its refCount.
                                         auto tupleMember = useAsRef(oldCurrent->type);
                                         current->next = tupleMember;
                                         current = current->next;

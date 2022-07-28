@@ -96,7 +96,7 @@ namespace ts::vm2 {
     inline unsigned int sp = 0;
 
     struct LoopHelper {
-        TypeRef *current;
+        TypeRef *current = nullptr;
         unsigned int ip = 0;
         unsigned int startSP = 0;
         unsigned int var1 = 0;

@@ -550,9 +550,12 @@ const var1: StringToNum<'999', []> = 1002;
 //const var2: StringToNum<'999'> = 1002;
 )";
     test(code, 1);
-    //todo: this crashes after a lot of runs, I guess something is not correctly reset so it grows forever
+    for (auto i = 0; i <1000; i++) {
+        auto bin = compile(code, false);
+        assert(bin[439] == OP::TailCall);
+    }
+
     testBench(code, 1);
-//    testBench(code, 0, 1);
 //    debug("active {}", ts::vm2::pool.active);
 //    ts::vm2::gcFlush();
 //    debug("active gc {}", ts::vm2::pool.active);
@@ -602,30 +605,31 @@ TEST_CASE("vm2Cartesian") {
 TEST_CASE("bigUnion") {
     ts::checker::Program program;
 
-    program.pushOp(OP::Frame);
     for (auto i = 0; i<300; i++) {
-        program.pushOp(OP::Frame);
         program.pushOp(OP::StringLiteral);
         program.pushStorage((new string("foo"))->append(to_string(i)));
         program.pushOp(OP::StringLiteral);
         program.pushStorage("a");
         program.pushOp(OP::PropertySignature);
         program.pushOp(OP::ObjectLiteral);
+        program.pushUint16(1);
         program.pushOp(OP::TupleMember);
     }
     program.pushOp(OP::Tuple);
+    program.pushUint16(300);
 
-    program.pushOp(OP::Frame);
-    program.pushOp(OP::Frame);
     for (auto i = 0; i<300; i++) {
         program.pushOp(OP::StringLiteral);
         program.pushStorage((new string("foo"))->append(to_string(i)));
     }
     program.pushOp(OP::Union);
+    program.pushUint16(300);
+
     program.pushOp(OP::StringLiteral);
     program.pushStorage("a");
     program.pushOp(OP::PropertySignature);
     program.pushOp(OP::ObjectLiteral);
+    program.pushUint16(1);
     program.pushOp(OP::Array);
 
     program.pushOp(OP::Assign);
