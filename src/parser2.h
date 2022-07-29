@@ -6842,19 +6842,19 @@ namespace ts {
             return withJSDoc(finishNode(factory.createEmptyStatement(), pos), hasJSDoc);
         }
 
-//        function parseIfStatement(): IfStatement {
-//            auto pos = getNodePos();
-//            auto hasJSDoc = hasPrecedingJSDocComment();
-//            parseExpected(SyntaxKind::IfKeyword);
-//            auto openParenPosition = scanner.getTokenPos();
-//            auto openParenParsed = parseExpected(SyntaxKind::OpenParenToken);
-//            auto expression = allowInAnd<shared<Expression>>(parseExpression);
-//            parseExpectedMatchingBrackets(SyntaxKind::OpenParenToken, SyntaxKind::CloseParenToken, openParenParsed, openParenPosition);
-//            auto thenStatement = parseStatement();
-//            auto elseStatement = parseOptional(SyntaxKind::ElseKeyword) ? parseStatement() : undefined;
-//            return withJSDoc(finishNode(factory.createIfStatement(expression, thenStatement, elseStatement), pos), hasJSDoc);
-//        }
-//
+        shared<IfStatement> parseIfStatement() {
+            auto pos = getNodePos();
+            auto hasJSDoc = hasPrecedingJSDocComment();
+            parseExpected(SyntaxKind::IfKeyword);
+            auto openParenPosition = scanner.getTokenPos();
+            auto openParenParsed = parseExpected(SyntaxKind::OpenParenToken);
+            auto expression = allowInAnd<shared<Expression>>(CALLBACK(parseExpression));
+            parseExpectedMatchingBrackets(SyntaxKind::OpenParenToken, SyntaxKind::CloseParenToken, openParenParsed, openParenPosition);
+            auto thenStatement = parseStatement();
+            auto elseStatement = parseOptional(SyntaxKind::ElseKeyword) ? parseStatement() : nullptr;
+            return withJSDoc(finishNode(factory.createIfStatement(expression, thenStatement, elseStatement), pos), hasJSDoc);
+        }
+
 //        function parseDoStatement(): DoStatement {
 //            auto pos = getNodePos();
 //            auto hasJSDoc = hasPrecedingJSDocComment();
@@ -7325,8 +7325,8 @@ namespace ts {
                     return parseFunctionDeclaration(getNodePos(), hasPrecedingJSDocComment(), /*decorators*/ {}, /*modifiers*/ {});
                 case SyntaxKind::ClassKeyword:
                     return parseClassDeclaration(getNodePos(), hasPrecedingJSDocComment(), /*decorators*/ {}, /*modifiers*/ {});
-//                case SyntaxKind::IfKeyword:
-//                    return parseIfStatement();
+                case SyntaxKind::IfKeyword:
+                    return parseIfStatement();
 //                case SyntaxKind::DoKeyword:
 //                    return parseDoStatement();
 //                case SyntaxKind::WhileKeyword:

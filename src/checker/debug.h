@@ -141,7 +141,10 @@ namespace ts::checker {
                     newLine = true;
                     break;
                 }
+                case OP::CheckBody:
+                case OP::InferBody:
                 case OP::SelfCheck:
+                case OP::Inline:
                 case OP::Set:
                 case OP::TypeArgumentDefault: {
                     params += fmt::format(" &{}", vm::readUint32(bin, i + 1));

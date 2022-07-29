@@ -124,12 +124,35 @@ namespace ts::vm2 {
                 return false;
             }
             case TypeKind::Union: {
-                auto current = (TypeRef *) right->type;
-                while (current) {
-                    if (extends(left, current->type)) return true;
-                    current = current->next;
+                if (left->kind == TypeKind::Union) {
+                    //number | string extends number => false
+                    //number | string extends number | string => true
+                    //string extends number | string => true
+
+                    //pretty inefficient I know
+                    auto current = (TypeRef *) right->type;
+                    while (current) {
+                        auto currentLeft = (TypeRef *) left->type;
+                        bool fit = false;
+                        while (currentLeft) {
+                            if (extends(currentLeft->type, current->type)) {
+                                fit = true;
+                                break;
+                            };
+                            currentLeft = currentLeft->next;
+                        }
+                        if (!fit) return false;
+                        current = current->next;
+                    }
+                    return true;
+                } else {
+                    auto current = (TypeRef *) right->type;
+                    while (current) {
+                        if (extends(left, current->type)) return true;
+                        current = current->next;
+                    }
+                    return false;
                 }
-                return false;
             }
             case TypeKind::Literal: {
                 switch (left->kind) {

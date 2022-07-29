@@ -90,7 +90,10 @@ namespace ts::vm {
                 break;
             }
             case OP::Set:
+            case OP::CheckBody:
+            case OP::InferBody:
             case OP::SelfCheck:
+            case OP::Inline:
             case OP::TypeArgumentDefault: {
                 *i += 4;
                 break;

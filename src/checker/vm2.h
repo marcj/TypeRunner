@@ -38,52 +38,6 @@ namespace ts::vm2 {
     void gcRefFlush();
     void printStack();
 
-    enum ActiveSubroutineFlag {
-    };
-
-    /**
-     * For each active subroutine this object is created.
-     */
-    struct ActiveSubroutine {
-        Module *module;
-        ModuleSubroutine *subroutine;
-//        ActiveSubroutine *previous = nullptr;
-
-        unsigned int ip = 0; //current instruction pointer
-//        unsigned int index = 0;
-        unsigned int depth = 0;
-
-        unsigned int flag = 0;
-
-//        bool active = true;
-
-        unsigned int typeArguments = 0;
-
-//        explicit ProgressingSubroutine(shared<Module> module, ModuleSubroutine *subroutine): module(module), subroutine(subroutine) {}
-
-        uint32_t parseUint32() {
-            auto val = vm::readUint32(module->bin, ip + 1);
-            ip += 4;
-            return val;
-        }
-
-        bool isMain() {
-            return !subroutine;
-        }
-
-        int32_t parseInt32() {
-            auto val = vm::readInt32(module->bin, ip + 1);
-            ip += 4;
-            return val;
-        }
-
-        uint16_t parseUint16() {
-            auto val = vm::readUint16(module->bin, ip + 1);
-            ip += 2;
-            return val;
-        }
-    };
-
     constexpr auto maxGcSize = 4069;
     inline std::array<Type *, maxGcSize> gcQueue;
     inline unsigned int gcQueueIdx;
@@ -115,21 +69,27 @@ namespace ts::vm2 {
         }
     };
 
-    enum FrameFlag: uint8_t {
-        //InSingleDistribute = 1<<0
+    enum SubroutineFlag: uint16_t {
+        InferBody = 1 << 0,
     };
 
-    struct Frame {
+    /**
+     * For each active subroutine this object is created.
+     */
+    struct ActiveSubroutine {
+        Module *module;
+        ModuleSubroutine *subroutine;
+        unsigned int ip = 0; //current instruction pointer
+        unsigned int depth = 0;
+
         unsigned int initialSp = 0; //initial stack pointer
         //the amount of registered variable slots on the stack. will be subtracted when doing popFrame()
         //type arguments of type functions and variables like for mapped types
         unsigned int variables = 0;
+        uint16_t typeArguments = 0;
 
-        //for every ActiveSubroutine this starts from 0 and increases within the subroutine.
-        //important to know which frame should be removed when TailCall/Return
-        unsigned int depth;
-
-        uint8_t flags = 0;
+        /** @see SubroutineFlag */
+        uint16_t flags = 0;
         LoopHelper *loop = nullptr;
 
         LoopHelper *createLoop(unsigned int var1, TypeRef *type);
@@ -144,6 +104,27 @@ namespace ts::vm2 {
         std::span<Type *> pop(unsigned int size) {
             sp -= size;
             return {stack.data() + sp, size};
+        }
+        uint32_t parseUint32() {
+            auto val = vm::readUint32(module->bin, ip + 1);
+            ip += 4;
+            return val;
+        }
+
+        bool isMain() {
+            return !subroutine;
+        }
+
+        int32_t parseInt32() {
+            auto val = vm::readInt32(module->bin, ip + 1);
+            ip += 4;
+            return val;
+        }
+
+        uint16_t parseUint16() {
+            auto val = vm::readUint16(module->bin, ip + 1);
+            ip += 2;
+            return val;
         }
     };
 
@@ -177,19 +158,10 @@ namespace ts::vm2 {
     };
 
     constexpr auto stackSize = 4069;
-    inline StackPool<Frame, stackSize> frames;
     inline StackPool<ActiveSubroutine, stackSize> activeSubroutines;
     inline StackPool<LoopHelper, stackSize> loops;
 
-//    inline std::array<Frame, 4069> frames;
-//    inline unsigned int frameIdx;
-
-//    inline std::array<ActiveSubroutine, 4069> activeSubroutines;
-//    inline unsigned int activeSubroutineIdx;
-
-    inline Frame *frame = nullptr;
-    inline ActiveSubroutine *activeSubroutine = nullptr;
-//    inline TypeMemoryPool2 pool;
+    inline ActiveSubroutine *subroutine = nullptr;
 
     void process();
 
@@ -217,8 +189,7 @@ namespace ts::vm2 {
         gcQueueIdx = 0;
         gcQueueRefIdx = 0;
         sp = 0;
-        activeSubroutine = activeSubroutines.reset();
-        frame = frames.reset();
+        subroutine = activeSubroutines.reset();
         loops.reset();
 
         prepare(module);

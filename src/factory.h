@@ -1904,19 +1904,19 @@ namespace ts {
 //                : node;
 //        }
 //
-//        // @api
-//        function createIfStatement(shared<Expression> expression, thenStatement: Statement, elseStatement?: Statement) {
-//            auto node = createBaseNode<IfStatement>(SyntaxKind::IfStatement);
-//            node->expression = expression;
-//            node->thenStatement = asEmbeddedStatement(thenStatement);
-//            node->elseStatement = asEmbeddedStatement(elseStatement);
-//            node->transformFlags |=
-//                propagateChildFlags(node->expression) |
-//                propagateChildFlags(node->thenStatement) |
-//                propagateChildFlags(node->elseStatement);
-//            return node;
-//        }
-//
+        // @api
+        shared<IfStatement> createIfStatement(shared<Expression> expression, shared<Statement> thenStatement, sharedOpt<Statement> elseStatement = nullptr) {
+            auto node = createBaseNode<IfStatement>(SyntaxKind::IfStatement);
+            node->expression = expression;
+            node->thenStatement = asEmbeddedStatement(thenStatement);
+            node->elseStatement = asEmbeddedStatement(elseStatement);
+            node->transformFlags |=
+                propagateChildFlags(node->expression) |
+                propagateChildFlags(node->thenStatement) |
+                propagateChildFlags(node->elseStatement);
+            return node;
+        }
+
 //        // @api
 //        function updateIfStatement(node: IfStatement, shared<Expression> expression, thenStatement: Statement, elseStatement: Statement | undefined) {
 //            return node->expression != expression

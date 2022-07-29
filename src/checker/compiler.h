@@ -271,10 +271,10 @@ namespace ts::checker {
         for (unsigned int i = 0; visit.active && i<ops.size(); i++) {
             visit.op = (OP) ops[i];
             switch (visit.op) {
-                case OP::Frame: {
-                    visit.frameDepth++;
-                    break;
-                }
+                //case OP::Frame: {
+                //    visit.frameDepth++;
+                //    break;
+                //}
                 case OP::Tuple:
                 case OP::Union:
                 case OP::Intersection:
@@ -566,6 +566,15 @@ namespace ts::checker {
             activeSubroutines.back()->popSection();
         }
 
+        //if > 0 expression statements keep the return value on the stack, otherwise they are removed.
+        // e.g. `doIt()` removes its return type of `doIt()` while `doIt().deep()` keeps it (so that deep can be resolved).
+        unsigned int expressionResult = 0;
+        void pushKeepExpressionResult() {
+            expressionResult++;
+        }
+        void popKeepExpressionResult() {
+            expressionResult--;
+        }
         void pushSlots() {
             currentSubroutine()->slotIP = ip();
             pushOp(OP::Slots);
@@ -779,31 +788,80 @@ namespace ts::checker {
             }
         }
 
-        void pushFunction(OP op, sharedOpt<FunctionLikeDeclarationBase> node, Program &program, sharedOpt<Node> withName) {
-            if (node->typeParameters) {
+        void pushFunction(OP op, sharedOpt<Node> node, Program &program, sharedOpt<Node> withName) {
+            sharedOpt<Node> body;
+            sharedOpt<Node> type;
+            sharedOpt<NodeArray> typeParameters;
+            sharedOpt<NodeArray> parameters;
+            if (auto a = to<FunctionDeclaration>(node)) {
+                body = a->body;
+                type = a->type;
+                parameters = a->parameters;
+                typeParameters = a->typeParameters;
+            } else if (auto a = to<MethodDeclaration>(node)) {
+                body = a->body;
+                type = a->type;
+                parameters = a->parameters;
+                typeParameters = a->typeParameters;
+            } else {
+                throw std::runtime_error("function type not supported");
+            }
+
+            auto pushBodyType = [&] {
+                unsigned int bodyAddress;
+                if (body) {
+                    bodyAddress = program.pushSubroutineNameLess();
+                    program.pushOp(OP::TypeArgument);
+                    handle(body, program);
+                    program.pushOp(OP::Loads);
+                    program.pushUint16(0);
+                    program.pushOp(OP::UnwrapInferBody);
+                    program.popSubroutine();
+                }
+
+                if (type) {
+                    handle(type, program);
+
+                    if (bodyAddress) {
+                        //type and body given, so we check if all `return` are valid.
+                        //it is moved in its own subroutine, so that the return type is cached and only run once.
+                        auto checkBodyAddress = program.pushSubroutineNameLess();
+                        program.pushOp(OP::CheckBody);
+                        program.pushAddress(bodyAddress);
+                        program.popSubroutine();
+
+                        program.pushOp(OP::Call);
+                        program.pushAddress(checkBodyAddress);
+                        program.pushUint16(0);
+                    }
+                } else {
+                    if (bodyAddress) {
+                        //no type given, so we infer from body
+                        program.pushOp(OP::InferBody);
+                        program.pushAddress(bodyAddress);
+                    } else {
+                        program.pushOp(OP::Unknown);
+                    }
+                }
+            };
+
+            if (typeParameters) {
                 //when there are type parameters, FunctionDeclaration returns a FunctionRef
                 //which indicates the VM that the function needs to be instantiated first.
 
                 auto subroutineIndex = program.pushSubroutineNameLess();
                 unsigned int size = 0;
-                for (auto &&param: node->typeParameters->list) {
+                for (auto &&param: typeParameters->list) {
                     handle(param, program);
                 }
                 program.pushSlots();
 
                 //first comes the return type
                 size++;
-                if (node->type) {
-                    handle(node->type, program);
-                } else {
-                    //todo: Infer from body, put into own subroutine so it is cached
-                    program.pushOp(OP::Unknown);
-                    if (node->body) {
-                    } else {
-                    }
-                }
 
-                for (auto &&param: node->parameters->list) {
+                pushBodyType();
+
+                for (auto &&param: parameters->list) {
                     size++;
                     handle(param, program);
                 }
@@ -821,17 +879,10 @@ namespace ts::checker {
                 unsigned int size = 0;
                 //first comes the return type
                 size++;
-                if (node->type) {
-                    handle(node->type, program);
-                } else {
-                    //todo: Infer from body
-                    program.pushOp(OP::Unknown);
-                    if (node->body) {
-                    } else {
-                    }
-                }
 
-                for (auto &&param: node->parameters->list) {
+                pushBodyType();
+
+                for (auto &&param: parameters->list) {
                     size++;
                     handle(param, program);
                 }
@@ -1179,6 +1230,15 @@ namespace ts::checker {
                     program.pushUint16(size);
                     break;
                 }
+                case SyntaxKind::IfStatement: {
+                    const auto n = to<IfStatement>(node);
+                    //todo handle n->expression, necessary for type narrowing
+                    handle(n->thenStatement, program);
+                    if (n->elseStatement) {
+                        handle(n->elseStatement, program);
+                    }
+                    break;
+                }
                 case SyntaxKind::ParenthesizedExpression: {
                     const auto n = to<ParenthesizedExpression>(node);
                     handle(n->expression, program);
@@ -1232,9 +1292,27 @@ namespace ts::checker {
 
                     break;
                 }
+                case SyntaxKind::ReturnStatement: {
+                    const auto n = to<ReturnStatement>(node);
+                    handle(n->expression, program);
+                    program.pushOp(OP::ReturnStatement);
+                    break;
+                }
+                case SyntaxKind::Block: {
+                    const auto n = to<Block>(node);
+                    for (auto &&statement: n->statements->list) {
+                        handle(statement, program);
+                    }
+                    break;
+                }
                 case SyntaxKind::ExpressionStatement: {
                     const auto n = to<ExpressionStatement>(node);
                     handle(n->expression, program);
+                    if (!program.expressionResult) {
+                        //expression statements that are not used need to be removed from the stack.
+                        //.e.g `true;` or `doIt();`
+                        program.pushOp(OP::Pop);
+                    }
                     break;
                 }
                 case SyntaxKind::ConditionalExpression: {
@@ -1355,11 +1433,13 @@ namespace ts::checker {
                 }
                 case SyntaxKind::PropertyAccessExpression: {
                     //e.g. object.method
+                    program.pushKeepExpressionResult();
                     auto n = to<PropertyAccessExpression>(node);
                     handle(n->expression, program);
                     //to avoid resolving Identifier to a symbol, we handle it manually
                     pushName(n->name, program);
                     program.pushOp(OP::PropertyAccess, node);
+                    program.popKeepExpressionResult();
                     break;
                 }
                 case SyntaxKind::ClassExpression: {

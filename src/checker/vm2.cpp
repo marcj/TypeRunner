@@ -2,14 +2,13 @@
 #include "../hash.h"
 #include "./check2.h"
 #include "./vm2_utils.h"
-#include <ranges>
 
 namespace ts::vm2 {
     void prepare(shared<Module> &module) {
         parseHeader(module);
-        activeSubroutine->module = module.get();
-        activeSubroutine->ip = module->subroutines[0].address; //first is main
-        activeSubroutine->depth = 0;
+        subroutine->module = module.get();
+        subroutine->ip = module->subroutines[0].address; //first is main
+        subroutine->depth = 0;
     }
 
     // TypeRef is an owning reference
@@ -48,17 +47,102 @@ namespace ts::vm2 {
         gcQueue[gcQueueIdx++] = type;
     }
 
-    inline Type *widen(Type *type) {
+    //Used in the vm
+    enum TypeWidenFlag: unsigned int {
+        Any = 1<<1,
+        String = 1<<2,
+        Number = 1<<3,
+        Boolean = 1<<4,
+        BigInt = 1<<5,
+    };
+
+    inline Type *_widen(Type *type) {
+        //see https://github.com/Microsoft/TypeScript/pull/10676
         switch (type->kind) {
             case TypeKind::Literal: {
                 if (type->flag & TypeFlag::StringLiteral) return allocate(TypeKind::String);
                 if (type->flag & TypeFlag::NumberLiteral) return allocate(TypeKind::Number);
                 if (type->flag & TypeFlag::BooleanLiteral) return allocate(TypeKind::Boolean);
                 if (type->flag & TypeFlag::BigIntLiteral) return allocate(TypeKind::BigInt);
+                throw std::runtime_error("Invalid literal to widen");
+            }
+            case TypeKind::Union: {
+                auto current = (TypeRef *) type->type;
+                bool found = false;
+                while (!found && current) {
+                    switch (current->type->kind) {
+                        case TypeKind::Null:
+                        case TypeKind::Undefined:
+                        case TypeKind::Literal: {
+                            found = true;
+                            break;
+                        }
+                    }
+                    current = current->next;
+                }
+
+                if (found) {
+                    //we found something to widen
+                    auto current = (TypeRef *) type->type;
+                    //widen each literal in the union.
+                    //remove duplicates (like "12" | "23" => string | string => string)
+                    unsigned int flag = 0;
+
+                    auto newUnion = allocate(TypeKind::Union);
+
+                    while (current) {
+                        switch (current->type->kind) {
+                            case TypeKind::Null:
+                            case TypeKind::Undefined: {
+                                if (!(flag & TypeWidenFlag::Any)) {
+                                    newUnion->appendChild(useAsRef(allocate(TypeKind::Any)));
+                                    flag |= TypeWidenFlag::Any;
+                                }
+                                break;
+                            }
+                            case TypeKind::Literal: {
+                                if (current->type->flag & TypeFlag::StringLiteral && !(flag & TypeWidenFlag::String)) {
+                                    newUnion->appendChild(useAsRef(allocate(TypeKind::String)));
+                                    flag |= TypeWidenFlag::String;
+                                }
+                                if (current->type->flag & TypeFlag::NumberLiteral && !(flag & TypeWidenFlag::Number)) {
+                                    newUnion->appendChild(useAsRef(allocate(TypeKind::Number)));
+                                    flag |= TypeWidenFlag::Number;
+                                }
+                                if (current->type->flag & TypeFlag::BooleanLiteral && !(flag & TypeWidenFlag::Boolean)) {
+                                    newUnion->appendChild(useAsRef(allocate(TypeKind::Boolean)));
+                                    flag |= TypeWidenFlag::Boolean;
+                                }
+                                if (current->type->flag & TypeFlag::BigIntLiteral && !(flag & TypeWidenFlag::BigInt)) {
+                                    newUnion->appendChild(useAsRef(allocate(TypeKind::BigInt)));
+                                    flag |= TypeWidenFlag::BigInt;
+                                }
+                                break;
+                            }
+                            default: {
+                                newUnion->appendChild(useAsRef(current->type));
+                                break;
+                            };
+                        }
+                        current = current->next;
+                    }
+                    return newUnion;
+                }
+                break;
             }
         }
 
         return type;
+    }
+
+    inline Type *widen(Type *type) {
+        auto widened = _widen(type);
+        if (type == widened) {
+            return type;
+        } else {
+            gc(type);
+            return widened;
+        }
     }
 
     void gc(Type *type) {
@@ -171,27 +255,27 @@ namespace ts::vm2 {
 
     inline void popFrameWithoutGC() {
         throw std::runtime_error("deprecated");
-        //sp = frame->initialSp;
+        //sp = subroutine->initialSp;
         //frame = frames.pop();
     }
 
     inline std::span<Type *> popFrame() {
         throw std::runtime_error("deprecated");
-        //auto start = frame->initialSp + frame->variables;
+        //auto start = subroutine->initialSp + subroutine->variables;
         //std::span<Type *> sub{stack.data() + start, sp - start};
-        //if (frame->variables>0) {
+        //if (subroutine->variables>0) {
         //    //we need to GC all variables
-        //    for (unsigned int i = 0; i<frame->variables; i++) {
-        //        gc(stack[frame->initialSp + i]);
+        //    for (unsigned int i = 0; i<subroutine->variables; i++) {
+        //        gc(stack[subroutine->initialSp + i]);
         //    }
         //}
-        //sp = frame->initialSp;
+        //sp = subroutine->initialSp;
         //frame = frames.pop(); //&frames[--frameIdx];
         //return sub;
     }
 
     inline void report(DiagnosticMessage message) {
-        message.module = activeSubroutine->module;
+        message.module = subroutine->module;
         message.module->errors.push_back(message);
     }
 
@@ -200,7 +284,7 @@ namespace ts::vm2 {
     }
 
     inline void report(const string &message) {
-        report(DiagnosticMessage(message, activeSubroutine->ip));
+        report(DiagnosticMessage(message, subroutine->ip));
     }
 
     inline void report(const string &message, unsigned int ip) {
@@ -211,7 +295,7 @@ namespace ts::vm2 {
 //        auto next = frames.push(); ///&frames[frameIdx++];
 //        //important to reset necessary stuff, since we reuse
 //        next->initialSp = sp;
-//        next->depth = frame->depth + 1;
+//        next->depth = subroutine->depth + 1;
 ////        debug("pushFrame {}", sp);
 //        next->variables = 0;
 //        frame = next;
@@ -219,7 +303,7 @@ namespace ts::vm2 {
 
     //Returns true if it actually jumped to another subroutine, false if it just pushed its cached type.
     inline bool tailCall(unsigned int address, unsigned int arguments) {
-        auto routine = activeSubroutine->module->getSubroutine(address);
+        auto routine = subroutine->module->getSubroutine(address);
         if (routine->narrowed) {
             push(routine->narrowed);
             return false;
@@ -235,9 +319,9 @@ namespace ts::vm2 {
         }
 
         ////remove all open frames
-        //while (frame->depth>0) {
-        //    for (unsigned int i = 0; i<frame->variables; i++) {
-        //        drop(stack[frame->initialSp + i]);
+        //while (subroutine->depth>0) {
+        //    for (unsigned int i = 0; i<subroutine->variables; i++) {
+        //        drop(stack[subroutine->initialSp + i]);
         //    }
         //    frame = frames.pop();
         //}
@@ -245,8 +329,8 @@ namespace ts::vm2 {
         //stack could look like that:
         // | [T] [T] [V] [P1] [P2] [TailCall] |
         // T=TypeArgument, V=TypeVariable, but we do not need anything of that, so we GC that. P indicates argument for the call.
-        for (unsigned int i = 0; i<activeSubroutine->typeArguments; i++) {
-            drop(stack[frame->initialSp + i]);
+        for (unsigned int i = 0; i<subroutine->typeArguments; i++) {
+            drop(stack[subroutine->initialSp + i]);
         }
 
         //stack could look like that:
@@ -254,31 +338,49 @@ namespace ts::vm2 {
         //in this case we have to move P1 and P2 at the beginning
         // | [P1] [P2]
         // T, T, and V were already dropped above.
-        if (frame->variables) {
+        if (subroutine->variables) {
             for (unsigned int i = 0; i<arguments; i++) {
-                stack[frame->initialSp + i] = stack[frame->initialSp + frame->variables + i];
+                stack[subroutine->initialSp + i] = stack[subroutine->initialSp + subroutine->variables + i];
             }
         }
 
         //we want to reuse the same frame, so reset it
-        frame->variables = 0;
-        assert(frame->loop == nullptr);
-        sp = frame->initialSp + arguments;
+        subroutine->variables = 0;
+        assert(subroutine->loop == nullptr);
+        sp = subroutine->initialSp + arguments;
 
         //jump to the new address
-        activeSubroutine->ip = routine->address;
-        activeSubroutine->module = activeSubroutine->module;
-        activeSubroutine->subroutine = routine;
-        activeSubroutine->depth = activeSubroutine->depth + 1;
-        activeSubroutine->typeArguments = 0;
+        subroutine->ip = routine->address;
+        subroutine->module = subroutine->module;
+        subroutine->subroutine = routine;
+        subroutine->depth = subroutine->depth + 1;
+        subroutine->typeArguments = 0;
 
-        //debug("[{}] TailCall", activeSubroutine->ip - 4 - 2);
+        //debug("[{}] TailCall", subroutine->ip - 4 - 2);
         //printStack();
         return true;
     }
 
+    inline ActiveSubroutine *pushSubroutine(ModuleSubroutine *routine, unsigned int arguments) {
+        auto nextSubroutine = activeSubroutines.push(); //&activeSubroutines[++activeSubroutineIdx];
+        //important to reset necessary stuff, since we reuse
+        nextSubroutine->ip = routine->address;
+        nextSubroutine->module = subroutine->module;
+        nextSubroutine->subroutine = routine;
+        nextSubroutine->depth = subroutine->depth + 1;
+        nextSubroutine->typeArguments = 0;
+        nextSubroutine->variables = 0;
+        subroutine = nextSubroutine;
+
+        //we move x arguments from the old stack frame to the new one
+        subroutine->initialSp = sp - arguments;
+        for (unsigned int i = 0; i<arguments; i++) {
+            use(stack[subroutine->initialSp + i]);
+        }
+    }
+
     inline bool call(unsigned int address, unsigned int arguments) {
-        auto routine = activeSubroutine->module->getSubroutine(address);
+        auto routine = subroutine->module->getSubroutine(address);
         if (routine->narrowed) {
             push(routine->narrowed);
             return false;
@@ -288,31 +390,8 @@ namespace ts::vm2 {
             return false;
         }
 
-        activeSubroutine->ip++;
-        auto nextActiveSubroutine = activeSubroutines.push(); //&activeSubroutines[++activeSubroutineIdx];
-        //important to reset necessary stuff, since we reuse
-        nextActiveSubroutine->ip = routine->address;
-        nextActiveSubroutine->module = activeSubroutine->module;
-        nextActiveSubroutine->subroutine = routine;
-        nextActiveSubroutine->depth = activeSubroutine->depth + 1;
-        nextActiveSubroutine->typeArguments = 0;
-        activeSubroutine = nextActiveSubroutine;
-
-        auto nextFrame = frames.push(); //&frames[++frameIdx];
-        nextFrame->depth = 0;
-        //important to reset necessary stuff, since we reuse
-
-        // | (initialSp) [P1] [P1] (sp) |
-
-        //debug("Call &{}[{}] {}", address, arguments, routine->name);
-        //printStack();
-        nextFrame->initialSp = sp - arguments; //we move x arguments from the old stack frame to the new one
-        for (unsigned int i = 0; i<arguments; i++) {
-            //debug("arg {} refCount={} {} ref={}", i, stack[nextFrame->initialSp + i]->refCount, stringify(stack[nextFrame->initialSp + i]), (void *) stack[nextFrame->initialSp + i]);
-            use(stack[nextFrame->initialSp + i]);
-        }
-        nextFrame->variables = 0;
-        frame = nextFrame;
+        subroutine->ip++;
+        pushSubroutine(routine, arguments);
         return true;
     }
 
@@ -528,8 +607,8 @@ namespace ts::vm2 {
     }
 
     void handleTemplateLiteral() {
-        auto size = activeSubroutine->parseUint16();
-        auto types = frame->pop(size);
+        auto size = subroutine->parseUint16();
+        auto types = subroutine->pop(size);
 
         //short path for `{'asd'}`
         if (types.size() == 1 && types[0]->kind == TypeKind::Literal) {
@@ -603,7 +682,7 @@ namespace ts::vm2 {
     }
 
 //    inline void mapFrameToChildren(Type *container) {
-//        auto i = frame->initialSp + frame->variables;
+//        auto i = subroutine->initialSp + subroutine->variables;
 //        auto current = (TypeRef *) (container->type = useAsRef(stack[i++]));
 //        for (; i<sp; i++) {
 //            current->next = useAsRef(stack[i]);
@@ -613,7 +692,7 @@ namespace ts::vm2 {
 //
 ////        unsigned int start = 0;
 ////        std::span<Type *> sub{stack.data() + start, sp - start};
-////        sp = frame->initialSp;
+////        sp = subroutine->initialSp;
 ////        frame = frames.pop(); //&frames[--frameIdx];
 ////
 ////        TypeRef * current = allocateRef();
@@ -629,59 +708,59 @@ namespace ts::vm2 {
         debug("~~~~~~~~~~~~~~~");
         debug("Stack sp={}", sp);
         debug("~~~~~~~~~~~~~~~");
-        for (int i = activeSubroutines.i; i>=0; i--) {
-            if (!activeSubroutines.at(i)->subroutine) {
-                debug("Main");
-            } else {
-                debug("Routine {} (typeArguments={})", activeSubroutines.at(i)->subroutine->name, activeSubroutines.at(i)->typeArguments);
-            }
-        }
+        //for (int i = activeSubroutines.i; i>=0; i--) {
+        //    if (!activeSubroutines.at(i)->subroutine) {
+        //        debug("Main");
+        //    } else {
+        //        debug("Routine {} (typeArguments={})", activeSubroutines.at(i)->subroutine->name, activeSubroutines.at(i)->typeArguments);
+        //    }
+        //}
         debug("-");
 
-        auto top = sp;
-        for (int i = frames.i; i>=0; i--) {
-            auto frame = frames.at(i);
-            debug("Frame {} depth={} variables={} initialSp={}", i, frame->depth, frame->variables, frame->initialSp);
-
-            if (top>0) {
-                auto size = top - frame->initialSp;
-                for (unsigned int j = 0; j<size; j++) {
-                    auto i = top - j - 1;
-                    debug("  {}: {} refCount={} ref={}", i, stringify(stack[i]), stack[i]->refCount, (void *) stack[i]);
-                }
-                top -= size;
-            }
-
-//            if (size != 0) {
-//                do {
-//                    auto i = top - size;
-//                    debug("{}: {} refCount={} ref={}", i, stringify(stack[i]), stack[i]->refCount, (void *) stack[i]);
-//                    size--;
-//                } while (size>0);
+//        auto top = sp;
+//        for (int i = frames.i; i>=0; i--) {
+//            auto frame = frames.at(i);
+//            debug("Frame {} depth={} variables={} initialSp={}", i, subroutine->depth, subroutine->variables, subroutine->initialSp);
+//
+//            if (top>0) {
+//                auto size = top - subroutine->initialSp;
+//                for (unsigned int j = 0; j<size; j++) {
+//                    auto i = top - j - 1;
+//                    debug("  {}: {} refCount={} ref={}", i, stringify(stack[i]), stack[i]->refCount, (void *) stack[i]);
+//                }
+//                top -= size;
 //            }
-
-//            do {
-//                if (top == 0) break;
-//                if (top == frame->initialSp) break;
-//                top--;
-//            } while (top != 0);
-        }
+//
+////            if (size != 0) {
+////                do {
+////                    auto i = top - size;
+////                    debug("{}: {} refCount={} ref={}", i, stringify(stack[i]), stack[i]->refCount, (void *) stack[i]);
+////                    size--;
+////                } while (size>0);
+////            }
+//
+////            do {
+////                if (top == 0) break;
+////                if (top == subroutine->initialSp) break;
+////                top--;
+////            } while (top != 0);
+//        }
         debug("~~~~~~~~~~~~~~~");
         debug("");
     }
 
     inline void print(Type *type, char *title = "") {
-        debug("[{}] {} refCount={} {} ref={}", activeSubroutine->ip, title, type->refCount, stringify(type), (void *) type);
+        debug("[{}] {} refCount={} {} ref={}", subroutine->ip, title, type->refCount, stringify(type), (void *) type);
     }
 
     Type *handleFunction(TypeKind kind) {
-        const auto size = activeSubroutine->parseUint16();
+        const auto size = subroutine->parseUint16();
 
         auto type = allocate(kind);
         //first is the name
         type->type = useAsRef(pop());
 
-        auto types = frame->pop(size);
+        auto types = subroutine->pop(size);
         auto current = (TypeRef *) type->type;
 
         //second is always the return type
@@ -701,17 +780,35 @@ namespace ts::vm2 {
 
     void process() {
         start:
-        auto &bin = activeSubroutine->module->bin;
+        auto &bin = subroutine->module->bin;
         while (true) {
-            debug("[{}:{}] OP {} {}", activeSubroutine->depth, frame->depth, activeSubroutine->ip, (OP) bin[activeSubroutine->ip]);
-            switch ((OP) bin[activeSubroutine->ip]) {
+            //debug("[{}:{}] OP {} {}", subroutine->depth, subroutine->depth, subroutine->ip, (OP) bin[subroutine->ip]);
+            switch ((OP) bin[subroutine->ip]) {
                 case OP::Halt: {
-//                    activeSubroutine = activeSubroutines.reset();
+//                    subroutine = activeSubroutines.reset();
 //                    frame = frames.reset();
 //                    gcStack();
 //                    gcFlush();
 //                    printStack();
                     return;
+                }
+                case OP::Error: {
+                    auto ip = subroutine->ip;
+                    const auto code = (instructions::ErrorCode) subroutine->parseUint16();
+                    switch (code) {
+                        case instructions::ErrorCode::CannotFind: {
+                            report(DiagnosticMessage(fmt::format("Cannot find name '{}'", subroutine->module->findIdentifier(ip)), ip));
+                            break;
+                        }
+                        default: {
+                            report(DiagnosticMessage(fmt::format("{}", code), ip));
+                        }
+                    }
+                    break;
+                }
+                case OP::Pop: {
+                    gc(pop());
+                    break;
                 }
                 case OP::Never: {
                     stack[sp++] = allocate(TypeKind::Never);
@@ -734,7 +831,7 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Parameter: {
-                    const auto address = activeSubroutine->parseUint32();
+                    const auto address = subroutine->parseUint32();
                     auto type = allocate(TypeKind::Parameter);
                     type->readStorage(bin, address);
                     type->type = pop();
@@ -746,14 +843,14 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::FunctionRef: {
-                    const auto address = activeSubroutine->parseUint32();
+                    const auto address = subroutine->parseUint32();
                     auto type = allocate(TypeKind::FunctionRef);
                     type->size = address;
                     stack[sp++] = type;
                     break;
                 }
                 case OP::Instantiate: {
-                    const auto arguments = activeSubroutine->parseUint16();
+                    const auto arguments = subroutine->parseUint16();
                     auto ref = pop(); //FunctionRef/Class
 
                     switch (ref->kind) {
@@ -777,8 +874,8 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::CallExpression: {
-                    const auto parameterAmount = activeSubroutine->parseUint16();
-                    auto parameters = frame->pop(parameterAmount);
+                    const auto parameterAmount = subroutine->parseUint16();
+                    auto parameters = subroutine->pop(parameterAmount);
                     auto typeToCall = pop();
 
                     switch (typeToCall->kind) {
@@ -811,12 +908,15 @@ namespace ts::vm2 {
                                     //report(stack.errorMessage());
                                     report(fmt::format("Argument of type '{}' is not assignable to parameter '{}' of type '{}'", stringify(lvalue), parameter->text, stringify(parameter)));
                                 }
+                                gc(parameter);
                             }
 
                             //we could convert parameters to a tuple and then run isExtendable() on two tuples,
                             //necessary for REST parameters.
 
                             push(returnType);
+
+                            gc(typeToCall);
                             break;
                         }
                         default: {
@@ -826,18 +926,15 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Widen: {
-                    auto type = pop();
-                    auto widened = widen(type);
-                    push(widened);
-                    if (widened != type) gc(type);
+                    stack[sp - 1] = widen(stack[sp - 1]);
                     break;
                 }
                 case OP::Set: {
-                    const auto address = activeSubroutine->parseUint32();
+                    const auto address = subroutine->parseUint32();
                     auto type = pop();
-                    auto subroutine = activeSubroutine->module->getSubroutine(address);
-                    if (subroutine->narrowed) drop(subroutine->narrowed);
-                    subroutine->narrowed = use(type);
+                    auto subroutineToSet = subroutine->module->getSubroutine(address);
+                    if (subroutineToSet->narrowed) drop(subroutineToSet->narrowed);
+                    subroutineToSet->narrowed = use(type);
                     break;
                 }
                 case OP::Assign: {
@@ -847,7 +944,7 @@ namespace ts::vm2 {
                     if (!extends(lvalue, rvalue)) {
 //                        auto error = stack.errorMessage();
 //                        error.ip = ip;
-                        report(fmt::format("{} = {} not assignable", stringify(rvalue), stringify(lvalue)));
+                        report(fmt::format("Type '{}' is not assignable to type '{}'", stringify(lvalue), stringify(rvalue)));
                     }
 //                    ExtendableStack stack;
 //                    if (!isExtendable(lvalue, rvalue, stack)) {
@@ -860,44 +957,47 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Return: {
-                    if (activeSubroutine->isMain()) {
-                        activeSubroutine = activeSubroutines.reset();
+                    if (subroutine->isMain()) {
+                        subroutine = activeSubroutines.reset();
                         return;
                     }
 
                     //printStack();
                     //gc all parameters
-                    for (unsigned int i = 0; i<activeSubroutine->typeArguments; i++) {
-                        if (stack[frame->initialSp + i] != stack[sp - 1]) {
+                    for (unsigned int i = 0; i<subroutine->typeArguments; i++) {
+                        if (stack[subroutine->initialSp + i] != stack[sp - 1]) {
                             //only if the parameter is not at the same time the return value
-                            drop(stack[frame->initialSp + i]);
+                            drop(stack[subroutine->initialSp + i]);
                         } else {
                             //we decrease refCount for return value though, to remove ownership. The callee is responsible to clean it up now
-                            stack[frame->initialSp + i]->refCount--;
+                            stack[subroutine->initialSp + i]->refCount--;
                         }
                     }
                     //the current frame could not only have the return value, but variables and other stuff,
                     //which we don't want. So if size is bigger than 1, we move last stack entry to first
                     // | [T] [T] [R] |
-                    if (frame->size()>1) {
-                        stack[frame->initialSp] = stack[sp - 1];
+                    if (subroutine->size()>1) {
+                        stack[subroutine->initialSp] = stack[sp - 1];
                     }
 
-                    sp = frame->initialSp + 1;
-                    frame = frames.pop(); //&frames[--frameIdx];
-                    if (activeSubroutine->typeArguments == 0) {
-//                        debug("keep type result {}", activeSubroutine->subroutine->name);
-                        activeSubroutine->subroutine->result = use(stack[sp - 1]);
-                        activeSubroutine->subroutine->result->flag |= TypeFlag::Stored;
+                    sp = subroutine->initialSp + 1;
+                    if (subroutine->typeArguments == 0 || subroutine->flags & SubroutineFlag::InferBody) {
+//                        debug("keep type result {}", subroutine->subroutine->name);
+                        subroutine->subroutine->result = use(stack[sp - 1]);
+                        subroutine->subroutine->result->flag |= TypeFlag::Stored;
                     }
-                    activeSubroutine = activeSubroutines.pop(); //&activeSubroutines[--activeSubroutineIdx];
+                    subroutine = activeSubroutines.pop(); //&activeSubroutines[--activeSubroutineIdx];
                     goto start;
+                }
+                case OP::Inline: {
+                    const auto address = subroutine->parseUint32();
+                    auto routine = subroutine->module->getSubroutine(address);
                     break;
                 }
                 case OP::TailCall: {
-                    const auto address = activeSubroutine->parseUint32();
-                    const auto arguments = activeSubroutine->parseUint16();
-                    //if (activeSubroutine->flag & ActiveSubroutineFlag::BlockTailCall) {
+                    const auto address = subroutine->parseUint32();
+                    const auto arguments = subroutine->parseUint16();
+                    //if (subroutine->flag & ActiveSubroutineFlag::BlockTailCall) {
                     //    if (call(address, arguments)) {
                     //        goto start;
                     //    }
@@ -909,13 +1009,54 @@ namespace ts::vm2 {
                     break;
                     //}
                 }
-                case OP::SelfCheck: {
-                    const auto address = activeSubroutine->parseUint32();
-                    //todo: this needs more definition: A type alias like `type a<T> = T`; needs to type check as well without throwing `Generic type 'a' requires 1 type argument(s).`
-                    auto routine = activeSubroutine->module->getSubroutine(address);
+                case OP::UnwrapInferBody: {
+                    auto returnType = stack[sp - 1];
+                    if (returnType->size == 0) {
+                        returnType->kind = TypeKind::Never;
+                    } else if (returnType->size == 1) {
+                        auto type = ((TypeRef *) returnType->type)->type;
+                        //We do not gc(returnType) since it was loaded from TypeArgument which will be drop() later in ::Return
+                        stack[sp - 1] = widen(type);
+                    } else {
+                        //We do not gc(returnType) since it was loaded from TypeArgument which will be drop() later in ::Return
+                        stack[sp - 1] = widen(returnType);
+                    }
+                    break;
+                }
+                case OP::ReturnStatement: {
+                    if (subroutine->flags & SubroutineFlag::InferBody) {
+                        //first entry in the new stack frame is for getting all ReturnStatement calls in a union.
+                        auto returnType = stack[subroutine->initialSp];
+                        auto type = pop();
+                        returnType->appendChild(useAsRef(type));
+                    } else {
+
+                    }
+                    break;
+                }
+                case OP::InferBody: {
+                    const auto address = subroutine->parseUint32();
+                    auto routine = subroutine->module->getSubroutine(address);
                     if (routine->result) {
+                        push(routine->result);
                         break;
                     }
+                    subroutine->ip++;
+                    pushSubroutine(routine, 0);
+                    //subroutine is now set to a new one.
+                    //If this is set, OP::ReturnStatement acts different
+                    subroutine->flags |= SubroutineFlag::InferBody;
+
+                    //first entry in the new stack frame is for getting all ReturnStatement calls in a union.
+                    //use() since it is in the place of TypeArgument, we are the owner. Will be dropped in ::Return.
+                    push(use(allocate(TypeKind::Union)));
+                    goto start;
+                }
+                case OP::SelfCheck: {
+                    const auto address = subroutine->parseUint32();
+                    //todo: this needs more definition: A type alias like `type a<T> = T`; needs to type check as well without throwing `Generic type 'a' requires 1 type argument(s).`
+                    auto routine = subroutine->module->getSubroutine(address);
+                    if (routine->result) break;
 
                     if (call(address, 0)) {
                         goto start;
@@ -923,15 +1064,15 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Call: {
-                    const auto address = activeSubroutine->parseUint32();
-                    const auto arguments = activeSubroutine->parseUint16();
+                    const auto address = subroutine->parseUint32();
+                    const auto arguments = subroutine->parseUint16();
                     if (call(address, arguments)) {
                         goto start;
                     }
                     break;
                 }
                     //case OP::FrameReturnJump: {
-                    //    if (frame->size()>frame->variables) {
+                    //    if (subroutine->size()>subroutine->variables) {
                     //        //there is a return value on the stack, which we need to preserve
                     //        auto ret = pop();
                     //        popFrame();
@@ -940,25 +1081,25 @@ namespace ts::vm2 {
                     //        //throw away the whole stack
                     //        popFrame();
                     //    }
-                    //    const auto address = activeSubroutine->parseInt32();
-                    //    //debug("FrameEndJump to {} ({})", activeSubroutine->ip + address - 4, address);
-                    //    activeSubroutine->ip += address - 4; //decrease by uint32 too
+                    //    const auto address = subroutine->parseInt32();
+                    //    //debug("FrameEndJump to {} ({})", subroutine->ip + address - 4, address);
+                    //    subroutine->ip += address - 4; //decrease by uint32 too
                     //    goto start;
                     //}
                 case OP::Jump: {
-                    const auto address = activeSubroutine->parseInt32();
-                    //debug("Jump to {} ({})", activeSubroutine->ip + address - 4, address);
-                    activeSubroutine->ip += address - 4;
+                    const auto address = subroutine->parseInt32();
+                    //debug("Jump to {} ({})", subroutine->ip + address - 4, address);
+                    subroutine->ip += address - 4;
                     goto start;
                 }
                 case OP::JumpCondition: {
                     auto condition = pop();
-                    const auto rightProgram = activeSubroutine->parseUint32();
+                    const auto rightProgram = subroutine->parseUint32();
                     auto valid = isConditionTruthy(condition);
                     //debug("JumpCondition {}", valid);
                     gc(condition);
                     if (!valid) {
-                        activeSubroutine->ip += rightProgram - 4;
+                        subroutine->ip += rightProgram - 4;
                         goto start;
                     }
                     break;
@@ -981,29 +1122,29 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Distribute: {
-                    auto slot = activeSubroutine->parseUint16();
+                    auto slot = subroutine->parseUint16();
                     //if there is OP::Distribute, then there was always before this OP
                     //a OP::Loads to push the type on the stack.
-                    if (!frame->loop || frame->loop->ip != activeSubroutine->ip) {
+                    if (!subroutine->loop || subroutine->loop->ip != subroutine->ip) {
                         //no loop for this distribute created yet
                         auto type = pop();
                         if (type->kind == TypeKind::Union) {
-                            frame->createLoop(frame->initialSp + slot, (TypeRef *) type->type);
+                            subroutine->createLoop(subroutine->initialSp + slot, (TypeRef *) type->type);
                         } else {
-                            frame->createEmptyLoop();
-                            stack[frame->initialSp + slot] = type;
+                            subroutine->createEmptyLoop();
+                            stack[subroutine->initialSp + slot] = type;
                             //jump over parameters, right to the distribute section
-                            activeSubroutine->ip += 1 + 4;
+                            subroutine->ip += 1 + 4;
                             goto start;
                         }
                     }
 
-                    auto next = frame->loop->next();
+                    auto next = subroutine->loop->next();
                     if (!next) {
                         //done
                         //printStack();
-                        auto types = frame->pop(sp - frame->loop->startSP);
-                        frame->popLoop();
+                        auto types = subroutine->pop(sp - subroutine->loop->startSP);
+                        subroutine->popLoop();
                         if (types.empty()) {
                             push(allocate(TypeKind::Never));
                         } else if (types.size() == 1) {
@@ -1018,36 +1159,36 @@ namespace ts::vm2 {
                             current->next = nullptr;
                             push(result);
                         }
-                        const auto loopEnd = vm::readUint32(bin, activeSubroutine->ip + 1);
-                        activeSubroutine->ip += loopEnd - 1 - 2;
+                        const auto loopEnd = vm::readUint32(bin, subroutine->ip + 1);
+                        subroutine->ip += loopEnd - 1 - 2;
                     } else {
                         //jump over parameters, right to the distribute section
-                        activeSubroutine->ip += 1 + 4;
+                        subroutine->ip += 1 + 4;
                         goto start;
                     }
                     break;
                 }
                 case OP::Loads: {
-                    const auto varIndex = activeSubroutine->parseUint16();
-                    push(stack[frame->initialSp + varIndex]);
+                    const auto varIndex = subroutine->parseUint16();
+                    push(stack[subroutine->initialSp + varIndex]);
                     //debug("Loads {}:{} -> {}", frameOffset, varIndex, stringify(stack[index]));
                     //if (frameOffset == 0) {
-                    //    push(stack[frame->initialSp + varIndex]);
+                    //    push(stack[subroutine->initialSp + varIndex]);
                     //} else {
                     //    push(stack[frames.at(frames.i - frameOffset)->initialSp + varIndex]);
                     //}
                     break;
                 }
                 case OP::Slots: {
-                    auto size = activeSubroutine->parseUint16();
-                    frame->variables += size;
+                    auto size = subroutine->parseUint16();
+                    subroutine->variables += size;
                     sp += size;
                     break;
                 }
                 case OP::TypeArgumentConstraint: {
                     auto constraint = pop();
-                    if (frame->size() == activeSubroutine->typeArguments) {
-                        auto argument = stack[frame->initialSp + activeSubroutine->typeArguments];
+                    if (subroutine->size() == subroutine->typeArguments) {
+                        auto argument = stack[subroutine->initialSp + subroutine->typeArguments];
                         if (!extends(argument, constraint)) {
                             report(fmt::format("Type '{}' does not satisfy the constraint '{}'", stringify(argument), stringify(constraint)));
                         }
@@ -1056,47 +1197,47 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::TypeArgument: {
-                    if (frame->size()<=activeSubroutine->typeArguments) {
+                    if (subroutine->size()<=subroutine->typeArguments) {
                         //all variables will be dropped at the end of the subroutine
                         push(use(allocate(TypeKind::Unknown)));
                     } else {
                         //for provided argument we do not increase refCount, because it's the caller's job
                         //check constraints
                     }
-                    activeSubroutine->typeArguments++;
-                    frame->variables++;
+                    subroutine->typeArguments++;
+                    subroutine->variables++;
                     break;
                 }
                 case OP::TypeArgumentDefault: {
-                    if (frame->size()<=activeSubroutine->typeArguments) {
-                        activeSubroutine->typeArguments++;
-                        frame->variables++;
+                    if (subroutine->size()<=subroutine->typeArguments) {
+                        subroutine->typeArguments++;
+                        subroutine->variables++;
                         //load default value
-                        const auto address = activeSubroutine->parseUint32();
+                        const auto address = subroutine->parseUint32();
                         if (call(address, 0)) { //the result is pushed on the stack
                             goto start;
                         }
                     } else {
                         //for provided argument we do not increase refCount, because it's the caller's job
 
-                        activeSubroutine->ip += 4; //jump over address
+                        subroutine->ip += 4; //jump over address
 
-                        activeSubroutine->typeArguments++;
-                        frame->variables++;
+                        subroutine->typeArguments++;
+                        subroutine->variables++;
                     }
                     break;
 
-//                    auto t = stack[frame->initialSp + activeSubroutine->typeArguments - 1];
+//                    auto t = stack[subroutine->initialSp + subroutine->typeArguments - 1];
 //                    //t is always set because TypeArgument ensures that
 //                    if (t->flag & TypeFlag::UnprovidedArgument) {
 //                        //gc(stack[sp - 1]);
 //                        sp--; //remove unknown type from stack
-//                        const auto address = activeSubroutine->parseUint32();
+//                        const auto address = subroutine->parseUint32();
 //                        if (call(address, 0)) { //the result is pushed on the stack
 //                            goto start;
 //                        }
 //                    } else {
-//                        activeSubroutine->ip += 4; //jump over address
+//                        subroutine->ip += 4; //jump over address
 //                    }
 //                    break;
                 }
@@ -1152,7 +1293,7 @@ namespace ts::vm2 {
                 }
                 case OP::NumberLiteral: {
                     auto item = allocate(TypeKind::Literal);
-                    const auto address = activeSubroutine->parseUint32();
+                    const auto address = subroutine->parseUint32();
                     item->readStorage(bin, address);
                     item->flag |= TypeFlag::NumberLiteral;
                     stack[sp++] = item;
@@ -1160,7 +1301,7 @@ namespace ts::vm2 {
                 }
                 case OP::StringLiteral: {
                     auto item = allocate(TypeKind::Literal);
-                    const auto address = activeSubroutine->parseUint32();
+                    const auto address = subroutine->parseUint32();
                     item->readStorage(bin, address);
                     item->flag |= TypeFlag::StringLiteral;
                     stack[sp++] = item;
@@ -1213,7 +1354,7 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Class: {
-                    const auto size = activeSubroutine->parseUint16();
+                    const auto size = subroutine->parseUint16();
                     auto item = allocate(TypeKind::Class);
                     if (!size) {
                         item->type = nullptr;
@@ -1221,7 +1362,7 @@ namespace ts::vm2 {
                         break;
                     }
 
-                    auto types = frame->pop(size);
+                    auto types = subroutine->pop(size);
                     item->type = useAsRef(types[0]);
                     if (types.size()>1) {
                         auto current = (TypeRef *) item->type;
@@ -1235,7 +1376,7 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::ObjectLiteral: {
-                    const auto size = activeSubroutine->parseUint16();
+                    const auto size = subroutine->parseUint16();
                     auto item = allocate(TypeKind::ObjectLiteral);
                     if (!size) {
                         item->type = nullptr;
@@ -1243,7 +1384,7 @@ namespace ts::vm2 {
                         break;
                     }
 
-                    auto types = frame->pop(size);
+                    auto types = subroutine->pop(size);
                     item->type = useAsRef(types[0]);
                     if (types.size()>1) {
                         auto current = (TypeRef *) item->type;
@@ -1257,7 +1398,7 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Union: {
-                    const auto size = activeSubroutine->parseUint16();
+                    const auto size = subroutine->parseUint16();
                     auto item = allocate(TypeKind::Union);
                     //printStack();
                     if (!size) {
@@ -1265,7 +1406,7 @@ namespace ts::vm2 {
                         push(item);
                         break;
                     }
-                    auto types = frame->pop(size);
+                    auto types = subroutine->pop(size);
                     auto first = types[0];
 
                     if (first->kind == TypeKind::Union) {
@@ -1335,7 +1476,7 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Tuple: {
-                    const auto size = activeSubroutine->parseUint16();
+                    const auto size = subroutine->parseUint16();
                     if (size == 0) {
                         auto item = allocate(TypeKind::Tuple);
                         item->type = nullptr;
@@ -1343,7 +1484,7 @@ namespace ts::vm2 {
                         break;
                     }
 
-                    auto types = frame->pop(size);
+                    auto types = subroutine->pop(size);
                     Type *item;
                     auto firstTupleMember = types[0];
                     auto firstType = (Type *) firstTupleMember->type;
@@ -1452,31 +1593,31 @@ namespace ts::vm2 {
                     break;
                 }
                 default: {
-                    debug("[{}] OP {} not handled!", activeSubroutine->ip, (OP) bin[activeSubroutine->ip]);
+                    debug("[{}] OP {} not handled!", subroutine->ip, (OP) bin[subroutine->ip]);
                 }
             }
-            activeSubroutine->ip++;
+            subroutine->ip++;
         }
     }
 
-    LoopHelper *Frame::createLoop(unsigned int var1, TypeRef *type) {
+    LoopHelper *ActiveSubroutine::createLoop(unsigned int var1, TypeRef *type) {
         auto newLoop = loops.push();
         newLoop->set(var1, type);
-        newLoop->ip = activeSubroutine->ip;
+        newLoop->ip = ip;
         newLoop->startSP = sp;
         newLoop->previous = loop;
         return loop = newLoop;
     }
 
-    LoopHelper *Frame::createEmptyLoop() {
+    LoopHelper *ActiveSubroutine::createEmptyLoop() {
         auto newLoop = loops.push();
-        newLoop->ip = activeSubroutine->ip;
+        newLoop->ip = ip;
         newLoop->startSP = sp;
         newLoop->previous = loop;
         return loop = newLoop;
     }
 
-    void Frame::popLoop() {
+    void ActiveSubroutine::popLoop() {
         loop = loop->previous;
         loops.pop();
     }

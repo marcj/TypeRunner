@@ -43,6 +43,13 @@ const v2: number = 123;
     testBench(code, 0);
 }
 
+TEST_CASE("vm2BaseError1") {
+    string code = R"(
+const v2: string = 123;
+    )";
+    test(code, 1);
+}
+
 TEST_CASE("vm2TwoTests") {
     test(R"(
 const v1: string = "abc";
@@ -167,7 +174,6 @@ TEST_CASE("gcUnion") {
 
 TEST_CASE("gcTuple") {
     ts::checker::Program program;
-    program.pushOp(OP::Frame);
     for (auto i = 0; i<10; i++) {
         program.pushOp(OP::String);
         program.pushOp(OP::TupleMember);
@@ -185,7 +191,6 @@ TEST_CASE("gcTuple") {
 
 TEST_CASE("gcObject") {
     ts::checker::Program program;
-    program.pushOp(OP::Frame);
     for (auto i = 0; i<10; i++) {
         program.pushOp(OP::StringLiteral);
         program.pushStorage("a");
@@ -556,6 +561,42 @@ TEST_CASE("function2") {
     testBench(code, 1);
 }
 
+TEST_CASE("function3") {
+    string code = R"(
+    function doIt() {
+        return 1;
+    }
+    const var1: number = doIt();
+    const var2: string = doIt();
+)";
+    test(code, 1);
+    //testBench(code, 1);
+}
+
+TEST_CASE("function4") {
+    string code = R"(
+    function doIt(v: number) {
+        if (v == 2) return 'yes';
+        return 1;
+    }
+    const var1: number | string = doIt(0);
+    const var2: number = doIt(0);
+)";
+    test(code, 1);
+    testBench(code, 1);
+}
+
+TEST_CASE("function5") {
+    string code = R"(
+    function doIt(): string {
+        return 1;
+    }
+    doIt();
+)";
+    test(code, 1);
+    testBench(code, 1);
+}
+
 TEST_CASE("controlFlow1") {
     string code = R"(
     function boolFunc(t: true) {}
@@ -581,6 +622,20 @@ TEST_CASE("class1") {
     }
     const now: number = Date.now();
     const now2: string = Date.now();
+)";
+    test(code, 1);
+    //testBench(code, 0);
+}
+
+TEST_CASE("class2") {
+    string code = R"(
+    class Date {
+        now(): number {
+            return 0;
+        }
+    }
+    const now: number = new Date.now();
+    const now2: string = new Date.now();
 )";
     test(code, 1);
     //testBench(code, 0);

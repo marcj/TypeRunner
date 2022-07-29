@@ -127,15 +127,21 @@ namespace ts::instructions {
         Dup, //Duplicates the current stack end
         Set, //narrows/Sets a new value for a subroutine (variables)
         Error,
+        Pop,
+        Inline, //Execute a subroutine on the same active frame
 
-        Frame, //creates a new stack frame
-        FrameEnd,
-        Return,
+        //Frame, //creates a new stack frame
+        //FrameEnd,
+        Return, //end of a subroutine
+        ReturnStatement, //used in inferring return types of functions
 
         Subroutine,
         Distribute, //calls a subroutine for each union member. one parameter (address to subroutine)
         Call, //call a subroutine and push the result on the stack
         TailCall,
+        CheckBody,
+        InferBody,
+        UnwrapInferBody,
     };
 
     enum class ErrorCode {

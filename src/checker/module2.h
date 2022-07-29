@@ -142,15 +142,15 @@ namespace ts::vm2 {
                     auto map = findNormalizedMap(e.ip);
 
                     if (map.found()) {
-                        std::size_t lineStart = code.rfind('\n', map.pos);
+                        auto lineStart = code.rfind('\n', map.pos);
                         lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
 
-                        std::size_t lineEnd = code.find('\n', map.end);
+                        auto lineEnd = code.find('\n', map.end);
                         if (lineEnd == std::string::npos) lineEnd = code.size();
                         std::cout << cyan << fileName << ":" << yellow << map.pos << ":" << map.end << reset << " - " << red << "error" << reset << " TS0000: " << e.message << "\n\n";
-                        std::cout << code.substr(lineStart, lineEnd - lineStart - 1) << "\n";
+                        std::cout << "»" << code.substr(lineStart, lineEnd - lineStart - 1) << "\n";
                         auto space = map.pos - lineStart;
-                        std::cout << std::string(space, ' ') << red << "^" << reset << "\n\n";
+                        std::cout << "»" << std::string(space, ' ') << red << std::string(map.end - map.pos, '~') << reset << "\n\n";
                         continue;
                     }
                 }

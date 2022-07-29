@@ -44,18 +44,18 @@ namespace ts::vm2 {
 
     //Used in the vm
     enum TypeFlag: unsigned int {
-        Readonly = 1 << 0,
-        Optional = 1 << 1,
-        StringLiteral = 1 << 2,
-        NumberLiteral = 1 << 3,
-        BooleanLiteral = 1 << 4,
-        BigIntLiteral = 1 << 5,
-        True = 1 << 6,
-        False = 1 << 7,
-        Stored = 1 << 8, //Used somewhere as cache or as value (subroutine->result for example), and thus can not be stolen/modified
-        RestReuse = 1 << 9, //allow to reuse/steal T in ...T
-        Deleted = 1 << 10, //for debugging purposes
-        Static = 1 << 11,
+        Readonly = 1<<0,
+        Optional = 1<<1,
+        StringLiteral = 1<<2,
+        NumberLiteral = 1<<3,
+        BooleanLiteral = 1<<4,
+        BigIntLiteral = 1<<5,
+        True = 1<<6,
+        False = 1<<7,
+        Stored = 1<<8, //Used somewhere as cache or as value (subroutine->result for example), and thus can not be stolen/modified
+        RestReuse = 1<<9, //allow to reuse/steal T in ...T
+        Deleted = 1<<10, //for debugging purposes
+        Static = 1<<11,
     };
 
     struct Type;
@@ -93,7 +93,7 @@ namespace ts::vm2 {
 //            if (extended) {
 //                extended->push_back(type);
 //            } else {
-            if (p > defaultTypesSize) {
+            if (p>defaultTypesSize) {
 //                    createExtended(300);
 //                    extended = new std::vector<Type *>(32);
 //                    extended->insert(extended->begin(), list.begin(), list.end());
@@ -142,6 +142,10 @@ namespace ts::vm2 {
         ~Type() {
             if (kind == TypeKind::Literal && type) delete (string *) type;
         };
+
+        bool isDeleted() {
+            return flag & TypeFlag::Deleted;
+        }
 
         void fromLiteral(Type *literal) {
             flag = literal->flag;
@@ -216,6 +220,7 @@ namespace ts::vm2 {
             } else {
                 ((TypeRef *) type)->next = ref;
             }
+            size++;
         }
 
         void readStorage(const string_view &bin, uint32_t offset) {
@@ -225,6 +230,15 @@ namespace ts::vm2 {
             text = vm::readStorage(bin, offset);
         }
     };
+
+    inline void forEach(Type *type, std::function<void(TypeRef *ref, bool &stop)> callback) {
+        bool stop = false;
+
+        auto current = (TypeRef *) type->type;
+        while (!stop && current) {
+            callback(current, stop);
+        }
+    }
 
     inline void stringifyType(Type *type, std::string &r) {
         switch (type->kind) {
@@ -262,7 +276,7 @@ namespace ts::vm2 {
                 unsigned int i = 0;
                 auto current = (TypeRef *) type->type;
                 while (current) {
-                    if (i++ > 20) {
+                    if (i++>20) {
                         r += "...";
                         break;
                     }
@@ -307,7 +321,7 @@ namespace ts::vm2 {
                 auto current = (TypeRef *) type->type;
                 unsigned int i = 0;
                 while (current) {
-                    if (i++ > 20) {
+                    if (i++>20) {
                         r += "...";
                         break;
                     }
@@ -322,7 +336,7 @@ namespace ts::vm2 {
                 auto current = (TypeRef *) type->type;
                 unsigned int i = 0;
                 while (current) {
-                    if (i++ > 20) {
+                    if (i++>20) {
                         r += "...";
                         break;
                     }
