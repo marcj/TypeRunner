@@ -44,9 +44,9 @@ namespace ts::instructions {
         PropertySignature,
 
         Class,
-
         ObjectLiteral,
         IndexSignature,
+        PropertyAccess,
 
         Array,
         Tuple,
@@ -55,6 +55,7 @@ namespace ts::instructions {
 
         Optional,
         Readonly,
+        Static,
         Rest,
         RestReuse, //in expressions like [...T, x] indicates that T can be stolen instead of copied
 
@@ -74,6 +75,12 @@ namespace ts::instructions {
          * 1 parameter indicating how many stack entries will be reserved.
          */
         Slots,
+
+        /**
+         * Self checks an expression, like variable, class, interface, type, etc.
+         * TypeScript checks types even if they are never used. This SelfCheck makes sure all expression are visited at least once in main.
+         */
+        SelfCheck,
 
         ///**
         // * Stack parameter. For each JS variable, JS function, as well as type variables (mapped-type variable for example).
@@ -98,7 +105,7 @@ namespace ts::instructions {
         TypeArgument,
         TypeArgumentDefault, //one parameter with the address of the subroutine of the default value
 
-        TypeArgumentConstraint, //expects an entry on the stack
+        TypeArgumentConstraint, //expects an entry (the constraint) on the stack
 
         TemplateLiteral,
 

@@ -765,6 +765,85 @@ namespace ts::checker {
             return std::move(program);
         }
 
+        void pushName(sharedOpt<Node> name, Program &program) {
+            if (!name) {
+                program.pushOp(OP::Never);
+                return;
+            }
+
+            if (name->kind == SyntaxKind::Identifier) {
+                program.pushStringLiteral(to<Identifier>(name)->escapedText, name);
+            } else {
+                //computed type name like `[a]: string`
+                handle(name, program);
+            }
+        }
+
+        void pushFunction(OP op, sharedOpt<FunctionLikeDeclarationBase> node, Program &program, sharedOpt<Node> withName) {
+            if (node->typeParameters) {
+                //when there are type parameters, FunctionDeclaration returns a FunctionRef
+                //which indicates the VM that the function needs to be instantiated first.
+
+                auto subroutineIndex = program.pushSubroutineNameLess();
+                unsigned int size = 0;
+                for (auto &&param: node->typeParameters->list) {
+                    handle(param, program);
+                }
+                program.pushSlots();
+
+                //first comes the return type
+                size++;
+                if (node->type) {
+                    handle(node->type, program);
+                } else {
+                    //todo: Infer from body, put into own subroutine so it is cached
+                    program.pushOp(OP::Unknown);
+                    if (node->body) {
+                    } else {
+                    }
+                }
+
+                for (auto &&param: node->parameters->list) {
+                    size++;
+                    handle(param, program);
+                }
+
+                if (withName) {
+                    pushName(withName, program);
+                }
+                program.pushOp(op, reinterpret_pointer_cast<Node>(node));
+                program.pushUint16(size);
+                program.popSubroutine();
+
+                program.pushOp(OP::FunctionRef, reinterpret_pointer_cast<Node>(node));
+                program.pushAddress(subroutineIndex);
+            } else {
+                unsigned int size = 0;
+                //first comes the return type
+                size++;
+                if (node->type) {
+                    handle(node->type, program);
+                } else {
+                    //todo: Infer from body
+                    program.pushOp(OP::Unknown);
+                    if (node->body) {
+                    } else {
+                    }
+                }
+
+                for (auto &&param: node->parameters->list) {
+                    size++;
+                    handle(param, program);
+                }
+
+                if (withName) {
+                    pushName(withName, program);
+                }
+                program.pushOp(op, reinterpret_pointer_cast<Node>(node));
+                program.pushUint16(size);
+            }
+        }
+
         void handle(const shared<Node> &node, Program &program) {
             switch (node->kind) {
                 case SyntaxKind::SourceFile: {
@@ -980,7 +1059,10 @@ namespace ts::checker {
                     } else {
                         program.pushOp(instructions::TypeArgument, n->name);
                     }
-                    //todo constraints
+                    if (n->constraint) {
+                        handle(n->constraint, program);
+                        program.pushOp(instructions::TypeArgumentConstraint);
+                    }
                     break;
                 }
                 case SyntaxKind::FunctionDeclaration: {
@@ -990,67 +1072,10 @@ namespace ts::checker {
                         if (symbol.declarations>1) {
                             //todo: embed error since function is declared twice
                         } else {
-                            if (n->typeParameters) {
-                                program.pushSubroutine(symbol);
-                                //when there are type parameters, FunctionDeclaration returns a FunctionRef
-                                //which indicates the VM that the function needs to be instantiated first.
-
-                                auto subroutineIndex = program.pushSubroutineNameLess();
-                                unsigned int size = 0;
-                                for (auto &&param: n->typeParameters->list) {
-                                    handle(param, program);
-                                }
-                                program.pushSlots();
-
-                                //first comes the return type
-                                size++;
-                                if (n->type) {
-                                    handle(n->type, program);
-                                } else {
-                                    //todo: Infer from body, put into own subroutine so it is cached
-                                    program.pushOp(OP::Unknown);
-                                    if (n->body) {
-                                    } else {
-                                    }
-                                }
-
-                                for (auto &&param: n->parameters->list) {
-                                    size++;
-                                    handle(param, program);
-                                }
-                                program.pushOp(OP::Function, node);
-                                program.pushUint16(size);
-                                program.popSubroutine();
-
-                                program.pushOp(OP::FunctionRef, node);
-                                program.pushAddress(subroutineIndex);
-                                program.popSubroutine();
-                            } else {
-                                program.pushSubroutine(symbol);
-                                program.pushSlots();
-
-                                unsigned int size = 0;
-                                //first comes the return type
-                                size++;
-                                if (n->type) {
-                                    handle(n->type, program);
-                                } else {
-                                    //todo: Infer from body
-                                    program.pushOp(OP::Unknown);
-                                    if (n->body) {
-                                    } else {
-                                    }
-                                }
-
-                                for (auto &&param: n->parameters->list) {
-                                    size++;
-                                    handle(param, program);
-                                }
-
-                                program.pushOp(OP::Function, node);
-                                program.pushUint16(size);
-                                program.popSubroutine();
-                            }
+                            program.pushSubroutine(symbol);
+                            program.pushSlots();
+                            pushFunction(OP::Function, n, program, n->name);
+                            program.popSubroutine();
                         }
                     } else {
                         debug("No identifier in name");
@@ -1095,15 +1120,11 @@ namespace ts::checker {
                     } else {
                         program.pushOp(OP::Any, n);
                     }
-                    if (n->name->kind == SyntaxKind::Identifier) {
-                        program.pushStringLiteral(to<Identifier>(n->name)->escapedText, n->name);
-                    } else {
-                        //computed type name like `[a]: string`
-                        handle(n->name, program);
-                    }
+                    pushName(n, program);
                     program.pushOp(OP::PropertySignature, n->name);
                     if (n->questionToken) program.pushOp(OP::Optional);
                     if (hasModifier(n, SyntaxKind::ReadonlyKeyword)) program.pushOp(OP::Readonly);
+                    if (hasModifier(n, SyntaxKind::StaticKeyword)) program.pushOp(OP::Static);
                     break;
                 }
                 case SyntaxKind::PropertySignature: {
@@ -1113,12 +1134,7 @@ namespace ts::checker {
                     } else {
                         program.pushOp(OP::Any);
                     }
-                    if (n->name->kind == SyntaxKind::Identifier) {
-                        program.pushStringLiteral(to<Identifier>(n->name)->escapedText, n->name);
-                    } else {
-                        //computed type name like `[a]: string`
-                        handle(n->name, program);
-                    }
+                    pushName(n, program);
                     program.pushOp(OP::PropertySignature, node);
                     if (n->questionToken) program.pushOp(OP::Optional);
                     if (hasModifier(n, SyntaxKind::ReadonlyKeyword)) program.pushOp(OP::Readonly);
@@ -1256,7 +1272,7 @@ namespace ts::checker {
 
                         program.pushOp(OP::Distribute);
                         distributeJumpIp = program.ip();
-                        program.pushUint16(symbol.index);
+                        program.pushSymbolAddress(symbol);
                         program.pushAddress(0);
                     }
 
@@ -1335,6 +1351,64 @@ namespace ts::checker {
                     program.pushOp(OP::Tuple, node);
                     program.pushUint16(size);
                     //todo: handle `as const`, widen if not const
+                    break;
+                }
+                case SyntaxKind::PropertyAccessExpression: {
+                    //e.g. object.method
+                    auto n = to<PropertyAccessExpression>(node);
+                    handle(n->expression, program);
+                    //to avoid resolving Identifier to a symbol, we handle it manually
+                    pushName(n->name, program);
+                    program.pushOp(OP::PropertyAccess, node);
+                    break;
+                }
+                case SyntaxKind::ClassExpression: {
+                    //todo: class expression, e.g. `const a = class {}`
+                    throw std::runtime_error("class expression not supported");
+                    break;
+                }
+                case SyntaxKind::ClassDeclaration: {
+                    auto n = to<ClassDeclaration>(node);
+
+                    if (!n->name) {
+                        throw std::runtime_error("class without name not supported");
+                    }
+
+                    auto &symbol = program.pushSymbolForRoutine(n->name->escapedText, SymbolType::Class, n); //move this to earlier symbol-scan round
+                    if (symbol.declarations>1) {
+                        //todo: for functions/variable embed an error that symbol was declared twice in the same scope
+                        throw std::runtime_error("Nope");
+                    } else {
+                        //populate routine
+                        program.pushSubroutine(symbol);
+                        program.blockTailCall();
+
+                        if (n->typeParameters) {
+                            for (auto &&p: n->typeParameters->list) {
+                                handle(p, program);
+                            }
+                        }
+                        program.pushSlots();
+
+                        unsigned int size = 0;
+                        for (auto &&member: n->members->list) {
+                            size++;
+                            handle(member, program);
+                        }
+                        program.pushOp(OP::Class, node);
+                        program.pushUint16(size);
+                        program.popSubroutine();
+                    }
+                    break;
+                }
+                case SyntaxKind::MethodDeclaration: {
+                    auto n = to<MethodDeclaration>(node);
+
+                    pushFunction(OP::Method, n, program, n->name);
+
+                    if (n->questionToken) program.pushOp(OP::Optional);
+                    if (hasModifier(n, SyntaxKind::ReadonlyKeyword)) program.pushOp(OP::Readonly);
+                    if (hasModifier(n, SyntaxKind::StaticKeyword)) program.pushOp(OP::Static);
                     break;
                 }
                 case SyntaxKind::ArrayType: {
@@ -1452,6 +1526,10 @@ namespace ts::checker {
                                     program.pushOp(OP::Any);
                                     program.popSubroutine();
                                 }
+                            }
+                            if (symbol.routine) {
+                                program.pushOp(OP::SelfCheck);
+                                program.pushAddress(symbol.routine->index);
                             }
                         }
                     } else {

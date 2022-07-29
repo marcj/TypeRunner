@@ -48,7 +48,7 @@ namespace ts::vm2 {
         gcQueue[gcQueueIdx++] = type;
     }
 
-    inline Type * widen(Type * type) {
+    inline Type *widen(Type *type) {
         switch (type->kind) {
             case TypeKind::Literal: {
                 if (type->flag & TypeFlag::StringLiteral) return allocate(TypeKind::String);
@@ -329,6 +329,48 @@ namespace ts::vm2 {
         return i;
     }
 
+    Type *resolveObjectIndexType(Type *object, Type *index) {
+        auto current = (TypeRef *) object->type;
+        switch (index->kind) {
+            case TypeKind::Literal: {
+                while (current) {
+                    auto member = current->type;
+                    switch (member->kind) {
+                        case TypeKind::Method:
+                        case TypeKind::MethodSignature:
+                        case TypeKind::Property:
+                        case TypeKind::PropertySignature: {
+                            if (object->kind == TypeKind::Class && !(member->flag & TypeFlag::Static)) break;
+                            auto first = (TypeRef *) member->type;
+                            //first->type == index compares unique symbol equality
+                            if (first->type == index || first->type->hash == index->hash) return member;
+                            break;
+                        }
+                    }
+                    current = current->next;
+                }
+                return allocate(TypeKind::Never);
+            }
+            case TypeKind::Number:
+            case TypeKind::BigInt:
+            case TypeKind::Symbol:
+            case TypeKind::String: {
+                while (current) {
+                    auto member = current->type;
+                    switch (member->kind) {
+                        case TypeKind::IndexSignature: {
+                            //todo
+                            //if (extends(index, member->type)) return member.type;
+                            break;
+                        }
+                    }
+                    current = current->next;
+                }
+                return allocate(TypeKind::Never);
+            }
+        }
+    }
+
     /**
      * Query a container type and return the result.
      *
@@ -342,6 +384,53 @@ namespace ts::vm2 {
     inline uint64_t lengthHash = hash::const_hash("length");
 
     inline Type *indexAccess(Type *container, Type *index) {
+        switch (container->kind) {
+            case TypeKind::Array: {
+                throw std::runtime_error("Not implemented");
+                break;
+            }
+            case TypeKind::Tuple: {
+                if (index->hash == lengthHash) {
+                    auto t = allocate(TypeKind::Literal);
+                    t->setDynamicLiteral(TypeFlag::NumberLiteral, std::to_string(container->size));
+                    return t;
+                }
+                throw std::runtime_error("Not implemented");
+                break;
+            }
+            case TypeKind::ObjectLiteral:
+            case TypeKind::ClassInstance:
+            case TypeKind::Class: {
+                switch (index->kind) {
+                    case TypeKind::Literal: {
+                        return resolveObjectIndexType(container, index);
+                    }
+                    case TypeKind::Union: {
+                        //    const union: TypeUnion = { kind: TypeKind::union, types: [] };
+                        //    for (const t of index.types) {
+                        //        const result = resolveObjectIndexType(container, t);
+                        //        if (result.kind == TypeKind::never) continue;
+                        //
+                        //        if (result.kind == TypeKind::union) {
+                        //            for (const resultT of result.types) {
+                        //                if (isTypeIncluded(union.types, resultT)) continue;
+                        //                union.types.push(resultT);
+                        //            }
+                        //        } else {
+                        //            if (isTypeIncluded(union.types, result)) continue;
+                        //            union.types.push(result);
+                        //        }
+                        //    }
+                        //    return unboxUnion(union);
+                        throw std::runtime_error("Not implemented");
+                        break;
+                    }
+                    default: {
+                        return allocate(TypeKind::Never);
+                    }
+                }
+            }
+        }
         if (container->kind == TypeKind::Array) {
 //            if ((index.kind == TypeKind::literal && 'number' == typeof index.literal) || index.kind == TypeKind::number) return container.type;
 //            if (index.kind == TypeKind::literal && index.literal == 'length') return { kind: TypeKind::number };
@@ -585,11 +674,36 @@ namespace ts::vm2 {
         debug("[{}] {} refCount={} {} ref={}", activeSubroutine->ip, title, type->refCount, stringify(type), (void *) type);
     }
 
+    Type *handleFunction(TypeKind kind) {
+        const auto size = activeSubroutine->parseUint16();
+
+        auto type = allocate(kind);
+        //first is the name
+        type->type = useAsRef(pop());
+
+        auto types = frame->pop(size);
+        auto current = (TypeRef *) type->type;
+
+        //second is always the return type
+        current->next = useAsRef(types[0]);
+        current = current->next;
+
+        if (types.size()>1) {
+            for_each(++types.begin(), types.end(), [&current](auto v) {
+                current->next = useAsRef(v);
+                current = current->next;
+            });
+            current->next = nullptr;
+        }
+        stack[sp++] = type;
+        return type;
+    }
+
     void process() {
         start:
         auto &bin = activeSubroutine->module->bin;
         while (true) {
-            //debug("[{}:{}] OP {} {}", activeSubroutine->depth, frame->depth, activeSubroutine->ip, (OP) bin[activeSubroutine->ip]);
+            debug("[{}:{}] OP {} {}", activeSubroutine->depth, frame->depth, activeSubroutine->ip, (OP) bin[activeSubroutine->ip]);
             switch ((OP) bin[activeSubroutine->ip]) {
                 case OP::Halt: {
 //                    activeSubroutine = activeSubroutines.reset();
@@ -628,20 +742,7 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Function: {
-                    const auto size = activeSubroutine->parseUint16();
-                    auto types = frame->pop(size);
-                    auto type = allocate(TypeKind::Function);
-                    //first is always the return type
-                    type->type = useAsRef(types[0]);
-                    if (types.size()>1) {
-                        auto current = (TypeRef *) type->type;
-                        for_each(++types.begin(), types.end(), [&current](auto v) {
-                            current->next = useAsRef(v);
-                            current = current->next;
-                        });
-                        current->next = nullptr;
-                    }
-                    stack[sp++] = type;
+                    handleFunction(TypeKind::Function);
                     break;
                 }
                 case OP::FunctionRef: {
@@ -666,15 +767,30 @@ namespace ts::vm2 {
                     }
                     break;
                 }
+                case OP::Static: {
+                    stack[sp - 1]->flag |= TypeFlag::Static;
+                    break;
+                }
+                case OP::Optional: {
+                    stack[sp - 1]->flag |= TypeFlag::Optional;
+                    break;
+                    break;
+                }
                 case OP::CallExpression: {
                     const auto parameterAmount = activeSubroutine->parseUint16();
                     auto parameters = frame->pop(parameterAmount);
                     auto typeToCall = pop();
 
                     switch (typeToCall->kind) {
+                        case TypeKind::Method:
                         case TypeKind::Function: {
                             //it's important to handle parameters/typeArguments first before changing the stack with push() since `parameters` is a std::span.
                             auto current = (TypeRef *) typeToCall->type;
+
+                            //first always the name, so we jump over it
+                            current = (TypeRef *) current->next;
+                            auto returnType = current->type;
+
                             for (unsigned int i = 0;; i++) {
                                 current = (TypeRef *) current->next;
                                 if (!current) break; //end
@@ -699,6 +815,8 @@ namespace ts::vm2 {
 
                             //we could convert parameters to a tuple and then run isExtendable() on two tuples,
                             //necessary for REST parameters.
+
+                            push(returnType);
                             break;
                         }
                         default: {
@@ -790,6 +908,19 @@ namespace ts::vm2 {
                     }
                     break;
                     //}
+                }
+                case OP::SelfCheck: {
+                    const auto address = activeSubroutine->parseUint32();
+                    //todo: this needs more definition: A type alias like `type a<T> = T`; needs to type check as well without throwing `Generic type 'a' requires 1 type argument(s).`
+                    auto routine = activeSubroutine->module->getSubroutine(address);
+                    if (routine->result) {
+                        break;
+                    }
+
+                    if (call(address, 0)) {
+                        goto start;
+                    }
+                    break;
                 }
                 case OP::Call: {
                     const auto address = activeSubroutine->parseUint32();
@@ -913,12 +1044,24 @@ namespace ts::vm2 {
                     sp += size;
                     break;
                 }
+                case OP::TypeArgumentConstraint: {
+                    auto constraint = pop();
+                    if (frame->size() == activeSubroutine->typeArguments) {
+                        auto argument = stack[frame->initialSp + activeSubroutine->typeArguments];
+                        if (!extends(argument, constraint)) {
+                            report(fmt::format("Type '{}' does not satisfy the constraint '{}'", stringify(argument), stringify(constraint)));
+                        }
+                    }
+                    gc(constraint);
+                    break;
+                }
                 case OP::TypeArgument: {
                     if (frame->size()<=activeSubroutine->typeArguments) {
                         //all variables will be dropped at the end of the subroutine
                         push(use(allocate(TypeKind::Unknown)));
                     } else {
                         //for provided argument we do not increase refCount, because it's the caller's job
+                        //check constraints
                     }
                     activeSubroutine->typeArguments++;
                     frame->variables++;
@@ -1035,25 +1178,60 @@ namespace ts::vm2 {
                     stack[sp++] = item;
                     break;
                 }
-                case OP::PropertySignature: {
-                    auto nameLiteral = pop();
-                    auto type = pop();
-                    switch (nameLiteral->kind) {
-                        case TypeKind::Literal: {
-                            auto item = allocate(TypeKind::PropertySignature);
-                            item->type = use(type);
-                            item->text = nameLiteral->text;
-                            gc(nameLiteral);
-                            push(item);
+                case OP::PropertyAccess: {
+                    auto name = pop();
+                    auto container = pop();
+                    //e.g. container.name
+                    switch (container->kind) {
+                        case TypeKind::Class: {
+                            //MyClass.name, static access
+                            auto type = indexAccess(container, name);
+                            push(type);
                             break;
                         }
                         default: {
-                            //popped types need either be consumed (owned) or deallocated.
-                            gc(type);
-                            gc(nameLiteral);
-                            report("A computed property name in an interface must refer to an expression whose type is a literal type or a 'unique symbol' type", type);
+                            throw std::runtime_error(fmt::format("Property access to {} not supported", container->kind));
                         }
                     }
+
+                    gc(name);
+                    gc(container);
+                    break;
+                }
+                case OP::Method: {
+                    handleFunction(TypeKind::Method);
+                    break;
+                }
+                case OP::PropertySignature: {
+                    auto name = pop();
+                    auto propertyType = pop();
+                    //PropertySignature has a linked list of name->type
+                    auto type = allocate(TypeKind::PropertySignature);
+                    type->type = useAsRef(name);
+                    ((TypeRef *) type->type)->next = useAsRef(propertyType);
+                    push(type);
+                    break;
+                }
+                case OP::Class: {
+                    const auto size = activeSubroutine->parseUint16();
+                    auto item = allocate(TypeKind::Class);
+                    if (!size) {
+                        item->type = nullptr;
+                        push(item);
+                        break;
+                    }
+
+                    auto types = frame->pop(size);
+                    item->type = useAsRef(types[0]);
+                    if (types.size()>1) {
+                        auto current = (TypeRef *) item->type;
+                        for_each(++types.begin(), types.end(), [&current](auto v) {
+                            current->next = useAsRef(v);
+                            current = current->next;
+                        });
+                        current->next = nullptr;
+                    }
+                    push(item);
                     break;
                 }
                 case OP::ObjectLiteral: {

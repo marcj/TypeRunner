@@ -9,7 +9,6 @@
 template<typename T, size_t Items = 4096, size_t BlockSize = sizeof(T) * (1 + Items)>
 class MemoryPool {
 public:
-    /* Member types */
     typedef T value_type;
     typedef T *pointer;
     typedef T &reference;

@@ -90,6 +90,7 @@ namespace ts::vm {
                 break;
             }
             case OP::Set:
+            case OP::SelfCheck:
             case OP::TypeArgumentDefault: {
                 *i += 4;
                 break;
@@ -106,10 +107,12 @@ namespace ts::vm {
                 *i += 2;
                 break;
             }
+            case OP::Method:
             case OP::Function:
             case OP::Union:
             case OP::Tuple:
             case OP::TemplateLiteral:
+            case OP::Class:
             case OP::ObjectLiteral:
             case OP::Slots:
             case OP::CallExpression: {

@@ -2072,18 +2072,18 @@ namespace ts {
 //                : node;
 //        }
 //
-//        // @api
-//        function createReturnStatement(expression?: Expression): ReturnStatement {
-//            auto node = createBaseNode<ReturnStatement>(SyntaxKind::ReturnStatement);
-//            node->expression = expression;
-//            // return in an ES2018 async generator must be awaited
-//            node->transformFlags |=
-//                propagateChildFlags(node->expression) |
-//                (int)TransformFlags::ContainsES2018 |
-//                (int)TransformFlags::ContainsHoistedDeclarationOrCompletion;
-//            return node;
-//        }
-//
+        // @api
+        shared<ReturnStatement> createReturnStatement(sharedOpt<Expression> expression) {
+            auto node = createBaseNode<ReturnStatement>(SyntaxKind::ReturnStatement);
+            node->expression = expression;
+            // return in an ES2018 async generator must be awaited
+            node->transformFlags |=
+                propagateChildFlags(node->expression) |
+                (int)TransformFlags::ContainsES2018 |
+                (int)TransformFlags::ContainsHoistedDeclarationOrCompletion;
+            return node;
+        }
+
 //        // @api
 //        function updateReturnStatement(node: ReturnStatement, sharedOpt<Expression> expression) {
 //            return node->expression != expression

@@ -141,6 +141,7 @@ namespace ts::checker {
                     newLine = true;
                     break;
                 }
+                case OP::SelfCheck:
                 case OP::Set:
                 case OP::TypeArgumentDefault: {
                     params += fmt::format(" &{}", vm::readUint32(bin, i + 1));
@@ -167,10 +168,12 @@ namespace ts::checker {
                     vm::eatParams(op, &i);
                     break;
                 }
+                case OP::Method:
                 case OP::Function:
                 case OP::Union:
                 case OP::Tuple:
                 case OP::TemplateLiteral:
+                case OP::Class:
                 case OP::ObjectLiteral:
                 case OP::Slots:
                 case OP::Loads: {

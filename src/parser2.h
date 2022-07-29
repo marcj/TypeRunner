@@ -6943,15 +6943,15 @@ namespace ts {
 //                : factory.createContinueStatement(label);
 //            return withJSDoc(finishNode(node, pos), hasJSDoc);
 //        }
-//
-//        function parseReturnStatement(): ReturnStatement {
-//            auto pos = getNodePos();
-//            auto hasJSDoc = hasPrecedingJSDocComment();
-//            parseExpected(SyntaxKind::ReturnKeyword);
-//            auto expression = canParseSemicolon() ? undefined : allowInAnd<shared<Expression>>(parseExpression);
-//            parseSemicolon();
-//            return withJSDoc(finishNode(factory.createReturnStatement(expression), pos), hasJSDoc);
-//        }
+
+        shared<ReturnStatement> parseReturnStatement() {
+            auto pos = getNodePos();
+            auto hasJSDoc = hasPrecedingJSDocComment();
+            parseExpected(SyntaxKind::ReturnKeyword);
+            shared<Expression> expression = canParseSemicolon() ? nullptr : allowInAnd<shared<Expression>>(CALLBACK(parseExpression));
+            parseSemicolon();
+            return withJSDoc(finishNode(factory.createReturnStatement(expression), pos), hasJSDoc);
+        }
 //
 //        function parseWithStatement(): WithStatement {
 //            auto pos = getNodePos();
@@ -7267,8 +7267,8 @@ namespace ts {
                     return parseVariableStatement(pos, hasJSDoc, decorators, modifiers);
                 case SyntaxKind::FunctionKeyword:
                     return parseFunctionDeclaration(pos, hasJSDoc, decorators, modifiers);
-//                case SyntaxKind::ClassKeyword:
-//                    return parseClassDeclaration(pos, hasJSDoc, decorators, modifiers);
+                case SyntaxKind::ClassKeyword:
+                    return parseClassDeclaration(pos, hasJSDoc, decorators, modifiers);
 //                case SyntaxKind::InterfaceKeyword:
 //                    return parseInterfaceDeclaration(pos, hasJSDoc, decorators, modifiers);
                 case SyntaxKind::TypeKeyword:
@@ -7323,8 +7323,8 @@ namespace ts {
                     break;
                 case SyntaxKind::FunctionKeyword:
                     return parseFunctionDeclaration(getNodePos(), hasPrecedingJSDocComment(), /*decorators*/ {}, /*modifiers*/ {});
-//                case SyntaxKind::ClassKeyword:
-//                    return parseClassDeclaration(getNodePos(), hasPrecedingJSDocComment(), /*decorators*/ {}, /*modifiers*/ {});
+                case SyntaxKind::ClassKeyword:
+                    return parseClassDeclaration(getNodePos(), hasPrecedingJSDocComment(), /*decorators*/ {}, /*modifiers*/ {});
 //                case SyntaxKind::IfKeyword:
 //                    return parseIfStatement();
 //                case SyntaxKind::DoKeyword:
@@ -7337,8 +7337,8 @@ namespace ts {
 //                    return parseBreakOrContinueStatement(SyntaxKind::ContinueStatement);
 //                case SyntaxKind::BreakKeyword:
 //                    return parseBreakOrContinueStatement(SyntaxKind::BreakStatement);
-//                case SyntaxKind::ReturnKeyword:
-//                    return parseReturnStatement();
+                case SyntaxKind::ReturnKeyword:
+                    return parseReturnStatement();
 //                case SyntaxKind::WithKeyword:
 //                    return parseWithStatement();
 //                case SyntaxKind::SwitchKeyword:
@@ -7424,13 +7424,12 @@ namespace ts {
 //                parseDiagnostics.push(createDetachedDiagnostic(fileName, pos, end, diagnostic));
 //            }
         }
-//
 
-//        // DECLARATIONS
-//        function parseClassDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): ClassDeclaration {
-//            return parseClassDeclarationOrExpression(pos, hasJSDoc, decorators, modifiers, SyntaxKind::ClassDeclaration) as ClassDeclaration;
-//        }
-//
+        // DECLARATIONS
+        shared<ClassDeclaration> parseClassDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray> decorators, sharedOpt<NodeArray> modifiers) {
+            return to<ClassDeclaration>(parseClassDeclarationOrExpression(pos, hasJSDoc, decorators, modifiers, SyntaxKind::ClassDeclaration));
+        }
+
 //        function parseInterfaceDeclaration(int pos, bool hasJSDoc, sharedOpt<NodeArray>  decorators, sharedOpt<NodeArray>  modifiers): InterfaceDeclaration {
 //            parseExpected(SyntaxKind::InterfaceKeyword);
 //            auto name = parseIdentifier();

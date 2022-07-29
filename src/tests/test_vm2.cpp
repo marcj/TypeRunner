@@ -572,6 +572,20 @@ TEST_CASE("controlFlow1") {
     testBench(code, 2);
 }
 
+TEST_CASE("class1") {
+    string code = R"(
+    class Date {
+        static now(): number {
+            return 0;
+        }
+    }
+    const now: number = Date.now();
+    const now2: string = Date.now();
+)";
+    test(code, 1);
+    //testBench(code, 0);
+}
+
 TEST_CASE("vm2Cartesian") {
     {
         vm2::CartesianProduct cartesian;

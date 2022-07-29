@@ -21,8 +21,15 @@ namespace ts::vm2 {
         Number,
         BigInt,
         Boolean,
+        Symbol,
         Literal,
+        IndexSignature,
+        Method,
+        MethodSignature,
+        Property,
         PropertySignature,
+        Class,
+        ClassInstance,
         ObjectLiteral,
         Union,
         Array,
@@ -48,6 +55,7 @@ namespace ts::vm2 {
         Stored = 1 << 8, //Used somewhere as cache or as value (subroutine->result for example), and thus can not be stolen/modified
         RestReuse = 1 << 9, //allow to reuse/steal T in ...T
         Deleted = 1 << 10, //for debugging purposes
+        Static = 1 << 11,
     };
 
     struct Type;
