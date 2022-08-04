@@ -352,5 +352,4 @@ const commands: CommandConfig[] = [
     {id: 'foo282'}, {id: 'foo283'}, {id: 'foo284'}, {id: 'foo285'}, {id: 'foo286'}, {id: 'foo287'},
     {id: 'foo288'}, {id: 'foo289'}, {id: 'foo290'}, {id: 'foo291'}, {id: 'foo292'}, {id: 'foo293'},
     {id: 'foo294'}, {id: 'foo295'}, {id: 'foo296'}, {id: 'foo297'}, {id: 'foo298'}, {id: 'foo299'},
-    {id: 3}
 ];

@@ -15,6 +15,6 @@ add_library(typescript utf.h utf.cpp core.h core.cpp utilities.h utilities.cpp n
 #        ${CMAKE_CURRENT_SOURCE_DIR}/../libs/tracy/TracyClient.cpp
 
 target_link_libraries(typescript fmt)
-target_link_libraries(typescript asmjit::asmjit)
+#target_link_libraries(typescript asmjit::asmjit)
 
 add_subdirectory(gui)

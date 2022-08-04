@@ -2,7 +2,7 @@
 
 #include <catch2/catch.hpp>
 #include <string>
-#include "../checker/MemoryPool.h"
+#include "../checker/pool_single.h"
 #include <vector>
 
 struct Item {
@@ -12,7 +12,7 @@ struct Item {
 };
 
 TEST_CASE("allocator1") {
-    MemoryPool<Item, 2> pool;
+    PoolSingle<Item, 2> pool;
     REQUIRE(pool.blocks == 0);
     REQUIRE(pool.active == 0);
 
@@ -42,7 +42,7 @@ TEST_CASE("allocator1") {
 }
 
 TEST_CASE("allocator2") {
-    MemoryPool<Item, 2> pool;
+    PoolSingle<Item, 2> pool;
     auto p1 = pool.allocate();
     auto p2 = pool.allocate();
     REQUIRE(pool.active == 2);
@@ -62,7 +62,7 @@ TEST_CASE("allocator2") {
 }
 
 TEST_CASE("allocator3") {
-    MemoryPool<Item, 2> pool;
+    PoolSingle<Item, 2> pool;
     {
         auto p1 = pool.allocate();
         auto p2 = pool.allocate();
@@ -106,7 +106,7 @@ TEST_CASE("allocator3") {
 }
 
 TEST_CASE("allocator4") {
-    MemoryPool<Item, 2> pool;
+    PoolSingle<Item, 2> pool;
     pool.clear();
 
     auto p1 = pool.newElement();
@@ -128,7 +128,7 @@ TEST_CASE("allocator4") {
 }
 
 TEST_CASE("allocator5") {
-    MemoryPool<Item, 2> pool;
+    PoolSingle<Item, 2> pool;
     pool.clear();
 
     auto p1 = pool.newElement();

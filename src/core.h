@@ -236,8 +236,8 @@ namespace ts {
     template<typename T, typename...Args>
     inline void debug(T fmt, Args &&...args) {
 //        fmt::print(fmt, std::forward<Args>(args)...);
-//        std::cout << fmt::format(fmt, std::forward<Args>(args)...) << "\n";
-        std::cout << fmt::format(fmt, args...) << "\n";
+        std::cout << fmt::format(fmt, std::forward<Args>(args)...) << "\n";
+//        std::cout << fmt::format(fmt, args...) << "\n";
     }
 
     inline std::chrono::duration<double, std::milli> benchRun(int iterations, const function<void()> &callback) {

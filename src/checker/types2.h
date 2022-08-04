@@ -11,7 +11,7 @@ namespace ts::vm2 {
     using std::string;
     using std::string_view;
 
-    enum class TypeKind: unsigned char {
+    enum class TypeKind: unsigned int {
         Unknown,
         Never,
         Any,
@@ -126,18 +126,34 @@ namespace ts::vm2 {
     struct TypeRef {
         Type *type;
         TypeRef *next = nullptr;
+        explicit TypeRef(): type(nullptr), next(nullptr) {}
+        explicit TypeRef(Type *type, TypeRef *next = nullptr): type(type), next(next) {}
     };
 
     struct Type {
         TypeKind kind;
+
+        //used to map type to sourcecode
         unsigned int ip;
-        string_view text;
+
         /** see TypeFlag */
         unsigned int flag = 0;
+
+        //ref counter for garbage collection
         unsigned int refCount = 0;
+
+        string_view text;
         uint64_t hash = 0;
+
+        //used as address for FunctionRef
         unsigned int size = 0;
-        void *type = nullptr; //either Type* or TypeRef* or string* depending on kind
+
+        //either Type* or TypeRef* or string* depending on kind
+        void *type = nullptr;
+
+        std::span<TypeRef> children;
+
+        Type(TypeKind kind, uint64_t hash): kind(kind), hash(hash) {}
 
         ~Type() {
             if (kind == TypeKind::Literal && type) delete (string *) type;
@@ -151,7 +167,7 @@ namespace ts::vm2 {
             flag = literal->flag;
             if (literal->type) {
                 //dynamic value, so copy it
-                setDynamicText(literal->text);
+                setDynamicText(literal->text, literal->hash);
             } else {
                 //static value, safe reuse of string_view's reference
                 text = literal->text;
@@ -186,7 +202,7 @@ namespace ts::vm2 {
             }
         }
 
-        void setDynamicText(string_view value) {
+        void setDynamicText(string_view value, uint64_t hash = 0) {
             if (!type) {
                 type = new string(value);
             } else {
@@ -194,12 +210,12 @@ namespace ts::vm2 {
                 ((string *) type)->append(value);
             }
             text = *(string *) type;
-            hash = hash::runtime_hash(text);
+            this->hash = hash ? hash : hash::runtime_hash(text);
         }
 
         void setDynamicLiteral(TypeFlag flag, string_view value) {
+            this->flag |= flag;
             setDynamicText(value);
-            setLiteral(flag, *(string *) type);
         }
 
         Type *setFlag(TypeFlag flag) {
@@ -231,13 +247,80 @@ namespace ts::vm2 {
         }
     };
 
-    inline void forEach(Type *type, std::function<void(TypeRef *ref, bool &stop)> callback) {
-        bool stop = false;
-
-        auto current = (TypeRef *) type->type;
-        while (!stop && current) {
-            callback(current, stop);
+    inline Type *findChild(Type *type, uint64_t hash) {
+        if (type->children.empty()) {
+            auto current = (TypeRef *)type->type;
+            while (current) {
+                if (current->type->hash == hash) return current->type;
+                current = current->next;
+            }
+            return nullptr;
+        } else {
+            TypeRef *entry = &type->children[hash % type->children.size()];
+            if (!entry->type) return nullptr;
+            while (entry && entry->type->hash != hash) {
+                //step through linked collisions
+                entry = entry->next;
+            }
+            return entry ? entry->type : nullptr;
         }
+    }
+
+    inline void forEachChild(Type *type, const std::function<void(Type *child, bool &stop)> &callback) {
+        if (type->type) {
+            auto stop = false;
+            auto current = (TypeRef *)type->type;
+            while (!stop && current) {
+                callback(current->type, stop);
+                current = current->next;
+            }
+        } else {
+            auto stop = false;
+            unsigned int i = 0;
+            unsigned int end = type->children.size();
+            while (!stop && i<end) {
+                auto child = type->children[i];
+                //bucket could be empty
+                if (child.type) callback(child.type, stop);
+                if (child.next) {
+                    //has hash collision, execute them as well
+                    auto current = child.next;
+                    while (!stop && current) {
+                        callback(current->type, stop);
+                        current = current->next;
+                    }
+                }
+                i++;
+            }
+        }
+    }
+
+    inline void forEachHashTableChild(Type *type, const std::function<void(Type *child, bool &stop)> &callback) {
+        auto stop = false;
+        unsigned int i = 0;
+        unsigned int end = type->children.size();
+        while (!stop && i<end) {
+            auto child = type->children[i];
+            //bucket could be empty
+            if (child.type) callback(child.type, stop);
+            if (child.next) {
+                //has hash collision, execute them as well
+                auto current = child.next;
+                while (!stop && current) {
+                    callback(current->type, stop);
+                    current = current->next;
+                }
+            }
+            i++;
+        }
+    }
+
+    inline Type *getPropertyOrMethodName(Type *type) {
+        return type->children[0].type;
+    }
+
+    inline Type *getPropertyOrMethodType(Type *type) {
+        return type->children[1].type;
     }
 
     inline void stringifyType(Type *type, std::string &r) {
@@ -267,23 +350,23 @@ namespace ts::vm2 {
                 break;
             }
             case TypeKind::PropertySignature: {
-                r += string(type->text) + ": ";
-                stringifyType((Type *) type->type, r);
+                stringifyType(((TypeRef*)type->type)->type, r);
+                r += ": ";
+                stringifyType(((TypeRef*)type->type)->next->type, r);
                 break;
             }
             case TypeKind::ObjectLiteral: {
                 r += "{";
                 unsigned int i = 0;
-                auto current = (TypeRef *) type->type;
-                while (current) {
+                forEachChild(type, [&i, &r](Type *child, auto stop) {
                     if (i++>20) {
                         r += "...";
-                        break;
+                        stop = true;
+                        return;
                     }
-                    stringifyType(current->type, r);
-                    current = current->next;
+                    stringifyType(child, r);
                     r + "; ";
-                }
+                });
                 r += "}";
                 break;
             }
@@ -302,7 +385,7 @@ namespace ts::vm2 {
                 break;
             }
             case TypeKind::Array: {
-                r += "<";
+                r += "Array<";
                 stringifyType((Type *) type->type, r);
                 r += ">";
                 break;

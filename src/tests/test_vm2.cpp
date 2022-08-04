@@ -28,6 +28,13 @@ using std::string_view;
 //    debug("std::array<TypeBase, 4> = {}", sizeof(std::array<Type, 4>));
 //}
 
+TEST_CASE("vm2Base0") {
+    string code = R"(
+const a: string = '';
+    )";
+    testBench(code, 0);
+}
+
 TEST_CASE("vm2Base1") {
     string code = R"(
 const v1: string = "abc";
@@ -62,7 +69,15 @@ const v2: number = 44;
     )", 0);
 }
 
-TEST_CASE("vm2Union") {
+TEST_CASE("vm2Union0") {
+    string code = R"(
+const v1: string | number = 123;
+const v2: string | number = true;
+    )";
+    testBench(code, 1);
+}
+
+TEST_CASE("vm2Union1") {
     string code = R"(
 type a<T> = T | (string | number);
 const v1: a<true> = 'yes';
@@ -75,7 +90,7 @@ const v3: a<true> = false;
 
     REQUIRE(module->errors.size() == 1);
     ts::vm2::gcStackAndFlush();
-    //only v1, v2, v3 plus for each 4 union (true | string | number)
+    //only v1, v2, v3 plus for each 4 because union + (true | string | number)
     REQUIRE(ts::vm2::pool.active == 3 * 4);
 
     testBench(code, 1);
@@ -290,6 +305,7 @@ const var1: A = [1, 2];
     auto module = test(code, 0);
     ts::vm2::gcFlush();
     REQUIRE(ts::vm2::pool.active == (1 + 2) + (1 + 2)); //[1], [1, 2], where "1" in second tuple is shared with first "1" in [1]
+    testBench(code);
 }
 
 TEST_CASE("vm2Tuple30") {
@@ -522,6 +538,7 @@ TEST_CASE("vm2BenchOverhead") {
 TEST_CASE("vm2Complex1") {
     string code = R"(
 type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>; //yes
+
 //type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [A, ...A, 0]>; //no, A refCount too big.
 //type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<A, [...A, 0]>; //????, this makes it to 'use' A before the call and [...A, 0] happen
 //type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0, A]>; //no, A used after ...A
@@ -530,13 +547,16 @@ type StringToNum<T, A> = `${A['length']}` extends T ? A['length'] : StringToNum<
 const var1: StringToNum<'999', []> = 1002;
 //const var2: StringToNum<'999'> = 1002;
 )";
-    test(code, 1);
-    for (auto i = 0; i <1000; i++) {
-        auto bin = compile(code, false);
-        assert(bin[439] == OP::TailCall);
-    }
 
-    testBench(code, 1);
+    testWarmBench(code, 100);
+    //test(code, 1);
+    //for (auto i = 0; i <1000; i++) {
+    //    auto bin = compile(code, false);
+    //    assert(bin[439] == OP::TailCall);
+    //}
+    //testBench(code, 1, 1);
+
+    usleep(100000);
 }
 
 TEST_CASE("function1") {
@@ -562,6 +582,7 @@ TEST_CASE("function2") {
 }
 
 TEST_CASE("function3") {
+    ZoneScoped;
     string code = R"(
     function doIt() {
         return 1;
@@ -570,13 +591,22 @@ TEST_CASE("function3") {
     const var2: string = doIt();
 )";
     test(code, 1);
-    //testBench(code, 1);
+    testBench(code, 1);
 }
 
 TEST_CASE("function4") {
     string code = R"(
     function doIt(v: number) {
+        if (v == 1) return 'yes';
         if (v == 2) return 'yes';
+        if (v == 3) return 'yes';
+        if (v == 4) return 'yes';
+        if (v == 5) return 'yes';
+        if (v == 6) return 'yes';
+        if (v == 7) return 'yes';
+        if (v == 8) return 'yes';
+        if (v == 9) return 'yes';
+        if (v == 10) return 'yes';
         return 1;
     }
     const var1: number | string = doIt(0);
@@ -604,6 +634,7 @@ TEST_CASE("controlFlow1") {
     boolFunc(bool);
 
     bool = false;
+    (bool = false);
     boolFunc(bool);
 
     bool = Date.now() > 1000 ? true : false;
@@ -615,30 +646,60 @@ TEST_CASE("controlFlow1") {
 
 TEST_CASE("class1") {
     string code = R"(
-    class Date {
+    class MyDate {
         static now(): number {
             return 0;
         }
     }
-    const now: number = Date.now();
-    const now2: string = Date.now();
+    const now: number = MyDate.now();
+    const now2: string = MyDate.now();
 )";
     test(code, 1);
-    //testBench(code, 0);
+    testBench(code, 1);
 }
 
 TEST_CASE("class2") {
     string code = R"(
-    class Date {
+    class MyDate {
         now(): number {
             return 0;
         }
     }
-    const now: number = new Date.now();
-    const now2: string = new Date.now();
+    const now: number = new MyDate.now();
+    const now2: string = new MyDate.now();
 )";
     test(code, 1);
-    //testBench(code, 0);
+    testBench(code, 1);
+}
+
+TEST_CASE("class3") {
+    string code = R"(
+    class MyDate<T> {
+        now(): T {
+            return 0;
+        }
+    }
+    const now: number = new MyDate<number>.now();
+    const now2: string = new MyDate<string>.now();
+)";
+    test(code, 1);
+    testBench(code, 1);
+}
+
+//todo: instance class from value arguments. does this work for functions already?
+TEST_CASE("class4") {
+    string code = R"(
+    class MyDate<T> {
+        constructor(public item: T) {}
+        now(): T {
+            return this.item;
+        }
+    }
+    const now: number = new MyDate(123).now();
+    const now2: string = new MyDate('123').now();
+)";
+    test(code, 1);
+    testBench(code, 1);
 }
 
 TEST_CASE("vm2Cartesian") {
@@ -658,9 +719,11 @@ TEST_CASE("vm2Cartesian") {
         vm2::CartesianProduct cartesian;
         //`${'a'}${'b'|'c'}` => ('a'|'b')|('a'|'c')
         cartesian.add(vm2::allocate(TypeKind::Literal)->setLiteral(TypeFlag::StringLiteral, "a"));
+
         auto unionType = allocate(TypeKind::Union);
-        unionType->appendChild(useAsRef(vm2::allocate(TypeKind::Literal)->setLiteral(TypeFlag::StringLiteral, "b")));
-        unionType->appendChild(useAsRef(vm2::allocate(TypeKind::Literal)->setLiteral(TypeFlag::StringLiteral, "c")));
+        unionType->children = allocateRefs(2);
+        addHashChild(unionType, vm2::allocate(TypeKind::Literal)->setLiteral(TypeFlag::StringLiteral, "b"), 2);
+        addHashChild(unionType, vm2::allocate(TypeKind::Literal)->setLiteral(TypeFlag::StringLiteral, "c"), 2);
         cartesian.add(unionType);
         auto product = cartesian.calculate();
         REQUIRE(product.size() == 2);
@@ -674,52 +737,4 @@ TEST_CASE("vm2Cartesian") {
         REQUIRE(stringify(second[0]) == "\"a\"");
         REQUIRE(stringify(second[1]) == "\"c\"");
     }
-}
-
-TEST_CASE("bigUnion") {
-    ts::checker::Program program;
-
-    for (auto i = 0; i<300; i++) {
-        program.pushOp(OP::StringLiteral);
-        program.pushStorage((new string("foo"))->append(to_string(i)));
-        program.pushOp(OP::StringLiteral);
-        program.pushStorage("a");
-        program.pushOp(OP::PropertySignature);
-        program.pushOp(OP::ObjectLiteral);
-        program.pushUint16(1);
-        program.pushOp(OP::TupleMember);
-    }
-    program.pushOp(OP::Tuple);
-    program.pushUint16(300);
-
-    for (auto i = 0; i<300; i++) {
-        program.pushOp(OP::StringLiteral);
-        program.pushStorage((new string("foo"))->append(to_string(i)));
-    }
-    program.pushOp(OP::Union);
-    program.pushUint16(300);
-
-    program.pushOp(OP::StringLiteral);
-    program.pushStorage("a");
-    program.pushOp(OP::PropertySignature);
-    program.pushOp(OP::ObjectLiteral);
-    program.pushUint16(1);
-    program.pushOp(OP::Array);
-
-    program.pushOp(OP::Assign);
-    program.pushOp(OP::Halt);
-
-    auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
-    run(module);
-    module->printErrors();
-    REQUIRE(module->errors.size() == 0);
-
-    ts::vm2::clear(module);
-    ts::vm2::gcStackAndFlush();
-    REQUIRE(ts::vm2::pool.active == 0);
-
-    ts::bench("first", 1000, [&] {
-        module->clear();
-        run(module);
-    });
 }

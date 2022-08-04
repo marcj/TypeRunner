@@ -825,14 +825,13 @@ namespace ts::checker {
                     if (bodyAddress) {
                         //type and body given, so we check if all `return` are valid.
                         //it is moved in its own subroutine, so that the return type is cached and only run once.
-                        auto checkBodyAddress = program.pushSubroutineNameLess();
+                        //auto checkBodyAddress = program.pushSubroutineNameLess();
+                        //program.pushOp(OP::CheckBody);
+                        //program.pushAddress(bodyAddress);
+                        //program.popSubroutine();
+
                         program.pushOp(OP::CheckBody);
                         program.pushAddress(bodyAddress);
-                        program.popSubroutine();
-
-                        program.pushOp(OP::Call);
-                        program.pushAddress(checkBodyAddress);
-                        program.pushUint16(0);
                     }
                 } else {
                     if (bodyAddress) {
@@ -1171,7 +1170,7 @@ namespace ts::checker {
                     } else {
                         program.pushOp(OP::Any, n);
                     }
-                    pushName(n, program);
+                    pushName(n->name, program);
                     program.pushOp(OP::PropertySignature, n->name);
                     if (n->questionToken) program.pushOp(OP::Optional);
                     if (hasModifier(n, SyntaxKind::ReadonlyKeyword)) program.pushOp(OP::Readonly);
@@ -1185,7 +1184,7 @@ namespace ts::checker {
                     } else {
                         program.pushOp(OP::Any);
                     }
-                    pushName(n, program);
+                    pushName(n->name, program);
                     program.pushOp(OP::PropertySignature, node);
                     if (n->questionToken) program.pushOp(OP::Optional);
                     if (hasModifier(n, SyntaxKind::ReadonlyKeyword)) program.pushOp(OP::Readonly);
@@ -1270,6 +1269,17 @@ namespace ts::checker {
                     program.pushUint16(size);
                     break;
                 }
+                case SyntaxKind::NewExpression: {
+                    const auto n = to<NewExpression>(node);
+                    handle(n->expression, program);
+
+                    auto argumentsCount = n->arguments ? n->arguments->length() : 0;
+                    if (n->arguments) for (auto &&sub: n->arguments->list) handle(sub, program);
+
+                    program.pushOp(OP::New, node);
+                    program.pushUint16(argumentsCount);
+                    break;
+                }
                 case SyntaxKind::CallExpression: {
                     const auto n = to<CallExpression>(node);
                     auto typeArgumentsCount = n->typeArguments ? n->typeArguments->length() : 0;
@@ -1308,7 +1318,15 @@ namespace ts::checker {
                 case SyntaxKind::ExpressionStatement: {
                     const auto n = to<ExpressionStatement>(node);
                     handle(n->expression, program);
-                    if (!program.expressionResult) {
+
+                    auto expressionPutsTypeOnStack = true;
+                    switch (n->expression->kind) {
+                        case SyntaxKind::VariableDeclarationList: {
+                            expressionPutsTypeOnStack = false;
+                            break;
+                        }
+                    }
+                    if (expressionPutsTypeOnStack && !program.expressionResult) {
                         //expression statements that are not used need to be removed from the stack.
                         //.e.g `true;` or `doIt();`
                         program.pushOp(OP::Pop);
@@ -1529,7 +1547,6 @@ namespace ts::checker {
                     auto n = to<BinaryExpression>(node);
                     switch (n->operatorToken->kind) {
                         case SyntaxKind::EqualsToken: {
-
                             if (n->left->kind == SyntaxKind::Identifier) {
                                 const auto name = to<Identifier>(n->left)->escapedText;
                                 auto symbol = program.findSymbol(name);

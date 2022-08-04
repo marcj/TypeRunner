@@ -2,7 +2,8 @@
 
 #include <asmjit/a64.h>
 #include <stdio.h>
-#include "./MemoryPool.h"
+#include "./pool_single.h"
+#include "./pool_array.h"
 #include <array>
 #include <string>
 #include <span>
@@ -32,18 +33,9 @@ namespace ts::vm2 {
 //    };
 
     constexpr auto poolSize = 10000;
-    inline MemoryPool<Type, poolSize> pool;
-    inline MemoryPool<TypeRef, poolSize> poolRef;
-    void gcFlush();
-    void gcRefFlush();
-    void printStack();
-
-    constexpr auto maxGcSize = 4069;
-    inline std::array<Type *, maxGcSize> gcQueue;
-    inline unsigned int gcQueueIdx;
-
-    inline std::array<TypeRef *, maxGcSize> gcQueueRef;
-    inline unsigned int gcQueueRefIdx;
+    inline PoolSingle<Type, poolSize> pool;
+    inline PoolSingle<TypeRef, poolSize> poolRef;
+    inline PoolArray<TypeRef, poolSize> poolRefs;
 
     // The stack does not own Type
     inline std::array<Type *, 4069 * 10> stack;
@@ -157,7 +149,7 @@ namespace ts::vm2 {
         }
     };
 
-    constexpr auto stackSize = 4069;
+    constexpr auto stackSize = 1024;
     inline StackPool<ActiveSubroutine, stackSize> activeSubroutines;
     inline StackPool<LoopHelper, stackSize> loops;
 
@@ -168,14 +160,18 @@ namespace ts::vm2 {
     void clear(shared<ts::vm2::Module> &module);
     void prepare(shared<ts::vm2::Module> &module);
     void drop(Type *type);
-    void drop(TypeRef *type);
-    void gc(TypeRef *typeRef);
+    void drop(std::span<TypeRef> *types);
+    void gc(std::span<TypeRef> *types);
     void gc(Type *type);
+    void gcFlush();
     // Garbage collect whatever is left on the stack
     void gcStack();
     void gcStackAndFlush();
-    TypeRef *useAsRef(Type *type);
-    Type *allocate(TypeKind kind);
+
+    Type *allocate(TypeKind kind, uint64_t hash = 0);
+    std::span<TypeRef> allocateRefs(unsigned int size);
+
+    void addHashChild(Type *type, Type *child, unsigned int size);
 
     std::span<Type *> popFrame();
 
@@ -185,9 +181,8 @@ namespace ts::vm2 {
 //        poolRef = MemoryPool<TypeRef, poolSize>();
         pool.clear();
         poolRef.clear();
+        poolRefs.clear();
 
-        gcQueueIdx = 0;
-        gcQueueRefIdx = 0;
         sp = 0;
         subroutine = activeSubroutines.reset();
         loops.reset();

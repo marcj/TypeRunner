@@ -2,6 +2,7 @@
 #include "../hash.h"
 #include "./check2.h"
 #include "./vm2_utils.h"
+#include "Tracy.hpp"
 
 namespace ts::vm2 {
     void prepare(shared<Module> &module) {
@@ -11,40 +12,182 @@ namespace ts::vm2 {
         subroutine->depth = 0;
     }
 
-    // TypeRef is an owning reference
-    TypeRef *useAsRef(Type *type) {
+    inline Type *use(Type *type) {
+//        debug("use refCount={} {} ref={}", type->refCount, stringify(type), (void *) type);
         type->refCount++;
-        auto t = poolRef.newElement();
-        t->type = type;
-        return t;
-    }
-
-    Type *allocate(TypeKind kind) {
-        auto type = pool.newElement();
-        type->kind = kind;
-        type->refCount = 0;
-//        debug("allocate {}", type->kind);
         return type;
     }
 
-    void gc(TypeRef *typeRef) {
-        if (gcQueueRefIdx>=maxGcSize) {
-            //garbage collect now
-            gcRefFlush();
+    // TypeRef is an owning reference
+    TypeRef *useAsRef(Type *type, TypeRef *next = nullptr) {
+        type->refCount++;
+        return poolRef.construct(type, next);
+    }
+
+    void addHashChild(Type *type, Type *child, unsigned int size) {
+        auto bucket = child->hash % size;
+        auto &entry = type->children[bucket];
+        if (entry.type) {
+            //hash collision, prepend the list
+            entry.next = useAsRef(child, entry.next);
+        } else {
+            entry.type = use(child);
         }
-        gcQueueRef[gcQueueRefIdx++] = typeRef;
+    }
+
+    void addHashChildWithoutRefCounter(Type *type, Type *child, unsigned int size) {
+        auto bucket = child->hash % size;
+        auto &entry = type->children[bucket];
+        if (entry.type) {
+            //hash collision, append the list
+            entry.next = poolRef.construct(child, entry.next);
+        } else {
+            entry.type = child;
+        }
+    }
+
+    Type *allocate(TypeKind kind, uint64_t hash) {
+        return pool.construct(kind, hash);
+    }
+
+    std::span<TypeRef> allocateRefs(unsigned int size) {
+        return poolRefs.construct(size);
     }
 
     inline void gcWithoutChildren(Type *type) {
-        if (gcQueueIdx>=maxGcSize) {
-            //garbage collect now
-            gcFlush();
-        }
+        //just for debugging
         if (type->flag & TypeFlag::Deleted) {
             throw std::runtime_error("Type already deleted");
         }
         type->flag |= TypeFlag::Deleted;
-        gcQueue[gcQueueIdx++] = type;
+
+        pool.gc(type);
+    }
+
+    //void gc(TypeRef *type) {
+    //    type->type->refCount--;
+    //    gc(type->type);
+    //    poolRef.gc(type);
+    //}
+
+    void gcFlush() {
+        pool.gcFlush();
+        poolRef.gcFlush();
+    }
+
+    void gc(Type *type) {
+        //debug("gc refCount={} {} ref={}", type->refCount, stringify(type), (void *) type);
+        if (type->refCount>0) return;
+        gcWithoutChildren(type);
+
+        switch (type->kind) {
+            case TypeKind::Function:
+            case TypeKind::Tuple:
+            case TypeKind::TemplateLiteral: {
+                auto current = (TypeRef *) type->type;
+                while (current) {
+                    auto next = current->next;
+                    current->type->refCount--;
+                    gc(current->type);
+                    current = next;
+                }
+
+                current = (TypeRef *) type->type;
+                while (current) {
+                    poolRef.gc(current);
+                    current = current->next;
+                }
+                break;
+            }
+            case TypeKind::MethodSignature:
+            case TypeKind::PropertySignature: {
+                auto nameRef = (TypeRef *) type->type;
+                auto propTypeRef = nameRef->next;
+
+                poolRef.gc(nameRef);
+                poolRef.gc(propTypeRef);
+
+                nameRef->type->refCount--;
+                propTypeRef->type->refCount--;
+
+                gc(nameRef->type);
+                gc(propTypeRef->type);
+
+                break;
+            }
+            case TypeKind::Union:
+            case TypeKind::ObjectLiteral: {
+                auto current = (TypeRef *) type->type;
+                while (current) {
+                    auto next = current->next;
+                    current->type->refCount--;
+                    gc(current->type);
+                    current = next;
+                }
+
+                current = (TypeRef *) type->type;
+                while (current) {
+                    poolRef.gc(current);
+                    current = current->next;
+                }
+
+                if (!type->children.empty()) {
+                    for (auto &&child: type->children) {
+                        //collision list needs to be GC, too
+                        auto current = child.next;
+                        while (current) {
+                            auto next = current->next;
+                            poolRef.gc(current);
+                            current = next;
+                        }
+                    }
+                    poolRefs.gc(type->children);
+                }
+                break;
+            }
+            case TypeKind::Array:
+            case TypeKind::Rest:
+            case TypeKind::TupleMember: {
+                ((Type *) type->type)->refCount--;
+                gc((Type *) type->type);
+                break;
+            }
+        }
+    }
+
+    void drop(std::span<TypeRef> types) {
+        for (auto &&type: types) {
+            drop(type.type);
+        }
+        poolRefs.gc(types);
+    }
+
+    void drop(Type *type) {
+        if (type == nullptr) return;
+
+        if (type->refCount == 0) {
+            debug("type {} not used already!", stringify(type));
+            return;
+        }
+
+        type->refCount--;
+//        debug("drop refCount={} {}  ref={}", type->refCount, stringify(type), (void *) type);
+        if (type->refCount == 0) {
+            gc(type);
+        }
+    }
+
+    void gcStackAndFlush() {
+        gcStack();
+        pool.gcFlush();
+        poolRef.gcFlush();
+    }
+
+    void gcStack() {
+        for (unsigned int i = 0; i<sp; i++) {
+            gc(stack[i]);
+        }
+        sp = 0;
     }
 
     //Used in the vm
@@ -60,10 +203,10 @@ namespace ts::vm2 {
         //see https://github.com/Microsoft/TypeScript/pull/10676
         switch (type->kind) {
             case TypeKind::Literal: {
-                if (type->flag & TypeFlag::StringLiteral) return allocate(TypeKind::String);
-                if (type->flag & TypeFlag::NumberLiteral) return allocate(TypeKind::Number);
-                if (type->flag & TypeFlag::BooleanLiteral) return allocate(TypeKind::Boolean);
-                if (type->flag & TypeFlag::BigIntLiteral) return allocate(TypeKind::BigInt);
+                if (type->flag & TypeFlag::StringLiteral) return allocate(TypeKind::String, hash::const_hash("string"));
+                if (type->flag & TypeFlag::NumberLiteral) return allocate(TypeKind::Number, hash::const_hash("number"));
+                if (type->flag & TypeFlag::BooleanLiteral) return allocate(TypeKind::Boolean, hash::const_hash("boolean"));
+                if (type->flag & TypeFlag::BigIntLiteral) return allocate(TypeKind::BigInt, hash::const_hash("bigint"));
                 throw std::runtime_error("Invalid literal to widen");
             }
             case TypeKind::Union: {
@@ -87,8 +230,7 @@ namespace ts::vm2 {
                     //widen each literal in the union.
                     //remove duplicates (like "12" | "23" => string | string => string)
                     unsigned int flag = 0;
-
-                    auto newUnion = allocate(TypeKind::Union);
+                    auto newUnion = allocate(TypeKind::Union, hash::const_hash("union"));
 
                     while (current) {
                         switch (current->type->kind) {
@@ -143,95 +285,6 @@ namespace ts::vm2 {
             gc(type);
             return widened;
         }
-    }
-
-    void gc(Type *type) {
-        //debug("gc refCount={} {} ref={}", type->refCount, stringify(type), (void *) type);
-        if (type->refCount>0) return;
-        gcWithoutChildren(type);
-
-        switch (type->kind) {
-            case TypeKind::Union:
-            case TypeKind::Tuple:
-            case TypeKind::TemplateLiteral:
-            case TypeKind::ObjectLiteral: {
-                auto current = (TypeRef *) type->type;
-                while (current) {
-                    current->type->refCount--;
-                    auto next = current->next;
-                    gc(current);
-                    gc(current->type);
-                    current = next;
-                }
-                break;
-            }
-            case TypeKind::Array:
-            case TypeKind::Rest:
-            case TypeKind::PropertySignature:
-            case TypeKind::TupleMember: {
-                ((Type *) type->type)->refCount--;
-                gc((Type *) type->type);
-                break;
-            }
-        }
-    }
-
-    inline Type *use(Type *type) {
-        type->refCount++;
-//        debug("use refCount={} {} ref={}", type->refCount, stringify(type), (void *) type);
-        return type;
-    }
-
-    void gcRefFlush() {
-//        debug("gcRefFlush");
-        for (unsigned int i = 0; i<gcQueueRefIdx; i++) {
-            auto type = gcQueueRef[i];
-            poolRef.deleteElement(type);
-        }
-        gcQueueRefIdx = 0;
-    }
-
-    void gcFlush() {
-//        debug("gcFlush");
-        for (unsigned int i = 0; i<gcQueueIdx; i++) {
-            auto type = gcQueue[i];
-            if (type->refCount) continue;
-            pool.deleteElement(type);
-        }
-        gcQueueIdx = 0;
-    }
-
-    void drop(TypeRef *typeRef) {
-        if (typeRef == nullptr) return;
-        gc(typeRef);
-        drop(typeRef->type);
-        drop(typeRef->next);
-    }
-
-    void drop(Type *type) {
-        if (type == nullptr) return;
-
-        if (type->refCount == 0) {
-            debug("type {} not used already!", stringify(type));
-            return;
-        }
-        type->refCount--;
-//        debug("drop refCount={} {}  ref={}", type->refCount, stringify(type), (void *) type);
-        if (type->refCount == 0) {
-            gc(type);
-        }
-    }
-
-    void gcStackAndFlush() {
-        gcStack();
-        gcFlush();
-    }
-
-    void gcStack() {
-        for (unsigned int i = 0; i<sp; i++) {
-            gc(stack[i]);
-        }
-        sp = 0;
     }
 
     /**
@@ -318,14 +371,6 @@ namespace ts::vm2 {
             use(stack[sp - i - 1]);
         }
 
-        ////remove all open frames
-        //while (subroutine->depth>0) {
-        //    for (unsigned int i = 0; i<subroutine->variables; i++) {
-        //        drop(stack[subroutine->initialSp + i]);
-        //    }
-        //    frame = frames.pop();
-        //}
-
         //stack could look like that:
         // | [T] [T] [V] [P1] [P2] [TailCall] |
         // T=TypeArgument, V=TypeVariable, but we do not need anything of that, so we GC that. P indicates argument for the call.
@@ -409,24 +454,23 @@ namespace ts::vm2 {
     }
 
     Type *resolveObjectIndexType(Type *object, Type *index) {
-        auto current = (TypeRef *) object->type;
         switch (index->kind) {
             case TypeKind::Literal: {
-                while (current) {
-                    auto member = current->type;
-                    switch (member->kind) {
-                        case TypeKind::Method:
-                        case TypeKind::MethodSignature:
-                        case TypeKind::Property:
-                        case TypeKind::PropertySignature: {
-                            if (object->kind == TypeKind::Class && !(member->flag & TypeFlag::Static)) break;
-                            auto first = (TypeRef *) member->type;
-                            //first->type == index compares unique symbol equality
-                            if (first->type == index || first->type->hash == index->hash) return member;
-                            break;
-                        }
+                auto member = findChild(object, index->hash);
+                if (!member) {
+                    return allocate(TypeKind::Never);
+                }
+                switch (member->kind) {
+                    case TypeKind::Method:
+                    case TypeKind::MethodSignature:
+                    case TypeKind::Property:
+                    case TypeKind::PropertySignature: {
+                        if (object->kind == TypeKind::Class && !(member->flag & TypeFlag::Static)) break;
+                        auto first = (TypeRef *) member->type;
+                        //first->type == index compares unique symbol equality
+                        if (first->type == index || first->type->hash == index->hash) return member;
+                        break;
                     }
-                    current = current->next;
                 }
                 return allocate(TypeKind::Never);
             }
@@ -434,6 +478,7 @@ namespace ts::vm2 {
             case TypeKind::BigInt:
             case TypeKind::Symbol:
             case TypeKind::String: {
+                auto current = (TypeRef *) object->type;
                 while (current) {
                     auto member = current->type;
                     switch (member->kind) {
@@ -611,19 +656,27 @@ namespace ts::vm2 {
         auto types = subroutine->pop(size);
 
         //short path for `{'asd'}`
-        if (types.size() == 1 && types[0]->kind == TypeKind::Literal) {
-            if (types[0]->refCount == 0 && types[0]->flag & TypeFlag::StringLiteral) {
+        auto first = types[0];
+        if (types.size() == 1 && first->kind == TypeKind::Literal) {
+            if (first->refCount == 0) {
                 //reuse it
-                push(types[0]);
-            } else {
+                if (first->flag & TypeFlag::StringLiteral) {
+                    push(first);
+                } else if (first->flag & TypeFlag::NumberLiteral) {
+                    first->flag |= ~TypeFlag::NumberLiteral;
+                    first->flag = TypeFlag::StringLiteral;
+                    push(first);
+                }
+                return;
+            } else if (first->flag & TypeFlag::NumberLiteral || first->flag & TypeFlag::StringLiteral) {
                 //create new one
                 auto res = allocate(TypeKind::Literal);
-                res->fromLiteral(types[0]);
+                res->fromLiteral(first);
                 res->flag = TypeFlag::StringLiteral; //convert number to string literal if necessary
-                gc(types[0]);
+                gc(first);
                 push(res);
+                return;
             }
-            return;
         }
 
         CartesianProduct cartesian;
@@ -681,28 +734,6 @@ namespace ts::vm2 {
         push(result);
     }
 
-//    inline void mapFrameToChildren(Type *container) {
-//        auto i = subroutine->initialSp + subroutine->variables;
-//        auto current = (TypeRef *) (container->type = useAsRef(stack[i++]));
-//        for (; i<sp; i++) {
-//            current->next = useAsRef(stack[i]);
-//            current = current->next;
-//        }
-//        current->next = nullptr;
-//
-////        unsigned int start = 0;
-////        std::span<Type *> sub{stack.data() + start, sp - start};
-////        sp = subroutine->initialSp;
-////        frame = frames.pop(); //&frames[--frameIdx];
-////
-////        TypeRef * current = allocateRef();
-////        for_each(++types.begin(), types.end(), [&current](auto v) {
-////            current->next = allocateRef(v);
-////            current = current->next;
-////        });
-////        current->next = nullptr;
-//    }
-
     void printStack() {
         debug("");
         debug("~~~~~~~~~~~~~~~");
@@ -756,9 +787,10 @@ namespace ts::vm2 {
     Type *handleFunction(TypeKind kind) {
         const auto size = subroutine->parseUint16();
 
-        auto type = allocate(kind);
+        auto name = pop();
+        auto type = allocate(kind, name->hash);
         //first is the name
-        type->type = useAsRef(pop());
+        type->type = useAsRef(name);
 
         auto types = subroutine->pop(size);
         auto current = (TypeRef *) type->type;
@@ -778,11 +810,21 @@ namespace ts::vm2 {
         return type;
     }
 
+    inline auto start = std::chrono::high_resolution_clock::now();
+    //string_view frameName;
     void process() {
+        ZoneScoped;
         start:
         auto &bin = subroutine->module->bin;
         while (true) {
-            //debug("[{}:{}] OP {} {}", subroutine->depth, subroutine->depth, subroutine->ip, (OP) bin[subroutine->ip]);
+            ZoneScoped;
+            //std::chrono::duration<double, std::milli> took = std::chrono::high_resolution_clock::now() - start;
+            //fmt::print(" - took {:.9f}ms\n", took.count());
+            //start = std::chrono::high_resolution_clock::now();
+            //fmt::print("[{}:{}] OP {} {}\n", subroutine->depth, subroutine->depth, subroutine->ip, (OP) bin[subroutine->ip]);
+            //auto frameName = new string_view(fmt::format("[{}] {}", subroutine->ip, (OP) bin[subroutine->ip]));
+            //ZoneName(frameName->begin(), frameName->size());
+
             switch ((OP) bin[subroutine->ip]) {
                 case OP::Halt: {
 //                    subroutine = activeSubroutines.reset();
@@ -807,27 +849,28 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Pop: {
-                    gc(pop());
+                    auto type = pop();
+                    gc(type);
                     break;
                 }
                 case OP::Never: {
-                    stack[sp++] = allocate(TypeKind::Never);
+                    stack[sp++] = allocate(TypeKind::Never, hash::const_hash("never"));
                     break;
                 }
                 case OP::Any: {
-                    stack[sp++] = allocate(TypeKind::Any);
+                    stack[sp++] = allocate(TypeKind::Any, hash::const_hash("any"));
                     break;
                 }
                 case OP::Undefined: {
-                    stack[sp++] = allocate(TypeKind::Undefined);
+                    stack[sp++] = allocate(TypeKind::Undefined, hash::const_hash("undefined"));
                     break;
                 }
                 case OP::Null: {
-                    stack[sp++] = allocate(TypeKind::Null);
+                    stack[sp++] = allocate(TypeKind::Null, hash::const_hash("null"));
                     break;
                 }
                 case OP::Unknown: {
-                    stack[sp++] = allocate(TypeKind::Unknown);
+                    stack[sp++] = allocate(TypeKind::Unknown, hash::const_hash("unknown"));
                     break;
                 }
                 case OP::Parameter: {
@@ -844,7 +887,7 @@ namespace ts::vm2 {
                 }
                 case OP::FunctionRef: {
                     const auto address = subroutine->parseUint32();
-                    auto type = allocate(TypeKind::FunctionRef);
+                    auto type = allocate(TypeKind::FunctionRef, hash::const_hash("function"));
                     type->size = address;
                     stack[sp++] = type;
                     break;
@@ -860,6 +903,21 @@ namespace ts::vm2 {
                         }
                         default: {
                             throw std::runtime_error(fmt::format("Can not instantiate {}", ref->kind));
+                        }
+                    }
+                    break;
+                }
+                case OP::New: {
+                    const auto arguments = subroutine->parseUint16();
+                    auto ref = pop(); //Class/Object with constructor signature
+
+                    switch (ref->kind) {
+                        case TypeKind::ClassInstance: {
+                            report("Can not call new on a class instance.");
+                            break;
+                        }
+                        case TypeKind::Class: {
+                            //push()
                         }
                     }
                     break;
@@ -914,8 +972,11 @@ namespace ts::vm2 {
                             //we could convert parameters to a tuple and then run isExtendable() on two tuples,
                             //necessary for REST parameters.
 
+                            if (typeToCall->refCount == 0) {
+                                //detach returnType from typeToCall so it won't be GC
+                                typeToCall->type = ((TypeRef *) typeToCall->type)->next;
+                            }
                             push(returnType);
-
                             gc(typeToCall);
                             break;
                         }
@@ -935,6 +996,7 @@ namespace ts::vm2 {
                     auto subroutineToSet = subroutine->module->getSubroutine(address);
                     if (subroutineToSet->narrowed) drop(subroutineToSet->narrowed);
                     subroutineToSet->narrowed = use(type);
+                    push(type);
                     break;
                 }
                 case OP::Assign: {
@@ -1032,6 +1094,11 @@ namespace ts::vm2 {
                     } else {
 
                     }
+                    break;
+                }
+                case OP::CheckBody: {
+                    const auto address = subroutine->parseUint32();
+                    auto expectedType = stack[sp - 1];
                     break;
                 }
                 case OP::InferBody: {
@@ -1199,7 +1266,7 @@ namespace ts::vm2 {
                 case OP::TypeArgument: {
                     if (subroutine->size()<=subroutine->typeArguments) {
                         //all variables will be dropped at the end of the subroutine
-                        push(use(allocate(TypeKind::Unknown)));
+                        push(use(allocate(TypeKind::Unknown, hash::const_hash("unknown"))));
                     } else {
                         //for provided argument we do not increase refCount, because it's the caller's job
                         //check constraints
@@ -1254,6 +1321,7 @@ namespace ts::vm2 {
                             break;
                         }
                     }
+                    gc(container);
                     push(t);
                     break;
                 }
@@ -1280,15 +1348,15 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::String: {
-                    stack[sp++] = allocate(TypeKind::String);
+                    stack[sp++] = allocate(TypeKind::String, hash::const_hash("string"));
                     break;
                 }
                 case OP::Number: {
-                    stack[sp++] = allocate(TypeKind::Number);
+                    stack[sp++] = allocate(TypeKind::Number, hash::const_hash("number"));
                     break;
                 }
                 case OP::Boolean: {
-                    stack[sp++] = allocate(TypeKind::Boolean);
+                    stack[sp++] = allocate(TypeKind::Boolean, hash::const_hash("boolean"));
                     break;
                 }
                 case OP::NumberLiteral: {
@@ -1350,104 +1418,109 @@ namespace ts::vm2 {
                     auto type = allocate(TypeKind::PropertySignature);
                     type->type = useAsRef(name);
                     ((TypeRef *) type->type)->next = useAsRef(propertyType);
+                    type->hash = name->hash;
                     push(type);
                     break;
                 }
                 case OP::Class: {
                     const auto size = subroutine->parseUint16();
-                    auto item = allocate(TypeKind::Class);
+                    auto type = allocate(TypeKind::Class);
                     if (!size) {
-                        item->type = nullptr;
-                        push(item);
+                        push(type);
                         break;
                     }
 
+                    //for class type->children acts as static hash map
+                    type->children = allocateRefs(size);
                     auto types = subroutine->pop(size);
-                    item->type = useAsRef(types[0]);
-                    if (types.size()>1) {
-                        auto current = (TypeRef *) item->type;
-                        for_each(++types.begin(), types.end(), [&current](auto v) {
-                            current->next = useAsRef(v);
-                            current = current->next;
-                        });
-                        current->next = nullptr;
+                    for (unsigned int i = 0; i<size; i++) {
+                        addHashChild(type, types[i], size);
                     }
-                    push(item);
+                    push(type);
                     break;
                 }
                 case OP::ObjectLiteral: {
                     const auto size = subroutine->parseUint16();
-                    auto item = allocate(TypeKind::ObjectLiteral);
+                    auto type = allocate(TypeKind::ObjectLiteral);
                     if (!size) {
-                        item->type = nullptr;
-                        push(item);
+                        push(type);
                         break;
                     }
 
+                    type->size = size;
                     auto types = subroutine->pop(size);
-                    item->type = useAsRef(types[0]);
-                    if (types.size()>1) {
-                        auto current = (TypeRef *) item->type;
-                        for_each(++types.begin(), types.end(), [&current](auto v) {
-                            current->next = useAsRef(v);
+                    if (size<5) {
+                        type->type = useAsRef(types[0]);
+                        auto current = (TypeRef *) type->type;
+                        for (unsigned int i = 1; i<size; i++) {
+                            current->next = useAsRef(types[i]);
                             current = current->next;
-                        });
-                        current->next = nullptr;
+                        }
+                    } else {
+                        type->children = allocateRefs(size);
+                        for (unsigned int i = 0; i<size; i++) {
+                            addHashChild(type, types[i], size);
+                        }
                     }
-                    push(item);
+                    push(type);
                     break;
                 }
                 case OP::Union: {
                     const auto size = subroutine->parseUint16();
-                    auto item = allocate(TypeKind::Union);
-                    //printStack();
+                    auto type = allocate(TypeKind::Union);
                     if (!size) {
-                        item->type = nullptr;
-                        push(item);
+                        push(type);
                         break;
                     }
+
                     auto types = subroutine->pop(size);
+                    auto allocationSize = size;
+                    for (auto &&child: types) {
+                        if (child->kind == TypeKind::Union) allocationSize += child->size - 1;
+                    }
+
+                    type->size = allocationSize;
                     auto first = types[0];
 
                     if (first->kind == TypeKind::Union) {
-                        //if type has no owner, we can steal its children
-                        if (first->refCount == 0) {
-                            item->type = first->type;
-                            first->type = nullptr;
-                            //since we stole its children, we want it to GC but without its children. their refCount count belongs now to us.
-                            gc(first);
-                        } else {
-                            throw std::runtime_error("Can not merge used union");
-                        }
-                    } else {
-                        item->type = useAsRef(first);
-                    }
-                    if (size>1) {
-                        auto current = (TypeRef *) item->type;
-                        //set current to the end of the list
-                        while (current->next) current = current->next;
-
-                        for_each(++types.begin(), types.end(), [&current](auto v) {
-                            if (v->kind == TypeKind::Union) {
-                                //if type has no owner, we can steal its children
-                                if (v->refCount == 0) {
-                                    current->next = (TypeRef *) v->type;
-                                    v->type = nullptr;
-                                    //since we stole its children, we want it to GC but without its children. their refCount count belongs now to us.
-                                    gcWithoutChildren(v);
-                                    //set current to the end of the list
-                                    while (current->next) current = current->next;
-                                } else {
-                                    throw std::runtime_error("Can not merge used union");
-                                }
+                        TypeRef *current = nullptr;
+                        forEachChild(first, [&type, &current](Type *child, auto) {
+                            if (current) {
+                                current = current->next = useAsRef(child);
                             } else {
-                                current->next = useAsRef(v);
-                                current = current->next;
+                                type->type = current = useAsRef(child);
                             }
                         });
-                        current->next = nullptr;
+                        gc(first);
+                    } else {
+                        type->type = useAsRef(first);
                     }
-                    push(item);
+
+                    auto current = (TypeRef *) type->type;
+                    for (unsigned int i = 1; i<size; i++) {
+                        if (types[i]->kind == TypeKind::Union) {
+                            forEachChild(types[i], [&current](Type *child, auto) {
+                                current = current->next = useAsRef(child);
+                            });
+                            gc(types[i]);
+                        } else {
+                            current = (current->next = useAsRef(types[i]));
+                        }
+                    }
+
+                    if (allocationSize>5) {
+                        type->children = allocateRefs(allocationSize);
+                        for (unsigned int i = 0; i<size; i++) {
+                            if (types[i]->kind == TypeKind::Union) {
+                                forEachChild(types[i], [&allocationSize, &type](Type *child, auto) {
+                                    addHashChildWithoutRefCounter(type, child, allocationSize);
+                                });
+                            } else {
+                                addHashChildWithoutRefCounter(type, types[i], allocationSize);
+                            }
+                        }
+                    }
+                    push(type);
                     break;
                 }
                 case OP::Array: {

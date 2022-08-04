@@ -68,6 +68,7 @@ namespace ts::instructions {
 
         CallExpression, //JS call expression, with 1 parameter (amount of parameters)
         Instantiate, //instantiates a type on the stack (FunctionRef for example), ExpressionWithTypeArguments
+        New,
 
         /**
          * Reserved new stack entries to be used as type variables.
@@ -126,6 +127,7 @@ namespace ts::instructions {
         Assign,
         Dup, //Duplicates the current stack end
         Set, //narrows/Sets a new value for a subroutine (variables)
+        SetAndPush, //narrows/Sets a new value for a subroutine (variables)
         Error,
         Pop,
         Inline, //Execute a subroutine on the same active frame

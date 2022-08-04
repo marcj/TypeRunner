@@ -14,15 +14,6 @@ namespace ts::vm2 {
         inline unsigned int depth;
     }
 
-    inline Type *findMember(TypeRef *start, uint64_t hash) {
-        auto current = start;
-        while (current) {
-            if (current->type->hash == hash) return current->type;
-            current = current->next;
-        }
-        return nullptr;
-    }
-
     /**
      * `left extends right ? true : false`
      */
@@ -95,7 +86,7 @@ namespace ts::vm2 {
             case TypeKind::PropertySignature: {
                 switch (left->kind) {
                     case TypeKind::PropertySignature: {
-                        return true;
+                        return extends(((TypeRef *) left->type)->next->type, ((TypeRef *) right->type)->next->type);
                     }
                 }
                 return false;
@@ -103,20 +94,38 @@ namespace ts::vm2 {
             case TypeKind::ObjectLiteral: {
                 switch (left->kind) {
                     case TypeKind::ObjectLiteral: {
-                        auto rightCurrent = (TypeRef *) right->type;
-                        auto leftStart = (TypeRef *) left->type;
-
-                        while (rightCurrent) {
-                            switch (rightCurrent->type->kind) {
-//                                case TypeKind::PropertySignature:
-                                case TypeKind::PropertySignature: {
-                                    auto found = findMember(leftStart, rightCurrent->type->hash);
-                                    if (!found) return false;
-                                    if (!extends((Type *) found->type, (Type *) rightCurrent->type->type)) return false;
-                                }
+                        auto valid = true;
+                        forEachChild(right, [&left, &valid](auto child, auto &stop) {
+                            auto leftMember = findChild(left, child->hash);
+                            if (!leftMember || !extends(leftMember, child)) {
+                                stop = true;
+                                valid = false;
                             }
-                            rightCurrent = rightCurrent->next;
-                        }
+                        });
+                        return valid;
+
+                        //auto rightCurrent = (TypeRef *) right->type;
+                        //auto leftStart = (TypeRef *) left->type;
+                        //
+                        //auto i = 0;
+                        //while (rightCurrent) {
+                        //    auto rightName = getPropertyOrMethodName(rightCurrent->type);
+                        //    //if (rightName) {
+                        //        //switch (rightCurrent->type->kind) {
+                        //        //    case TypeKind::Method:
+                        //        //    case TypeKind::MethodSignature:
+                        //        //    case TypeKind::Property:
+                        //        //    case TypeKind::PropertySignature: {
+                        //        //        i++;
+                        //        //        auto found = findMember(leftStart, rightName->hash);
+                        //        //        if (!found) return false;
+                        //        //        if (!extends(getPropertyOrMethodType(found), getPropertyOrMethodType(rightCurrent->type))) return false;
+                        //        //    }
+                        //        //}
+                        //    //}
+                        //    rightCurrent = rightCurrent->next;
+                        //}
+                        //if (i == 0) return false;
 
                         return true;
                     }
@@ -146,21 +155,35 @@ namespace ts::vm2 {
                     }
                     return true;
                 } else {
-                    auto current = (TypeRef *) right->type;
-                    while (current) {
-                        if (extends(left, current->type)) return true;
-                        current = current->next;
+                    //fast path first, if hash exists
+                    if (!right->children.empty()) {
+                        TypeRef *entry = &right->children[left->hash % right->children.size()];
+                        if (entry->type) {
+                            while (entry && entry->type->hash != left->hash) {
+                                //follow collision link
+                                entry = entry->next;
+                            }
+                            if (entry) return true;
+                        }
                     }
-                    return false;
+
+                    //slow path, full scan
+                    auto valid = false;
+                    forEachChild(right, [&left, &valid](Type *child, bool &stop) {
+                        if (extends(left, child)) {
+                            stop = true;
+                            valid = true;
+                        }
+                    });
+                    return valid;
                 }
             }
             case TypeKind::Literal: {
                 switch (left->kind) {
                     case TypeKind::Literal:
-                        //todo: literal type
                         if ((left->flag & TypeFlag::StringLiteral && right->flag & TypeFlag::StringLiteral) || (left->flag & TypeFlag::NumberLiteral && right->flag & TypeFlag::NumberLiteral))
                             return left->hash == right->hash;
-                        return (left->flag & TypeFlag::True && right->flag & TypeFlag::True) || left->flag & TypeFlag::False && right->flag & TypeFlag::False;
+                        return (left->flag & TypeFlag::True && right->flag & TypeFlag::True) || (left->flag & TypeFlag::False && right->flag & TypeFlag::False);
                 }
                 return false;
             }
