@@ -208,9 +208,9 @@ TEST_CASE("gcObject") {
     ts::checker::Program program;
     for (auto i = 0; i<10; i++) {
         program.pushOp(OP::StringLiteral);
-        program.pushStorage("a");
-        program.pushOp(OP::StringLiteral);
         program.pushStorage("foo1");
+        program.pushOp(OP::StringLiteral);
+        program.pushStorage("a");
         program.pushOp(OP::PropertySignature);
     }
     program.pushOp(OP::ObjectLiteral);

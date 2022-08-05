@@ -1099,6 +1099,7 @@ namespace ts::vm2 {
                 case OP::CheckBody: {
                     const auto address = subroutine->parseUint32();
                     auto expectedType = stack[sp - 1];
+                    report("Nope");
                     break;
                 }
                 case OP::InferBody: {
@@ -1441,7 +1442,7 @@ namespace ts::vm2 {
                 }
                 case OP::ObjectLiteral: {
                     const auto size = subroutine->parseUint16();
-                    auto type = allocate(TypeKind::ObjectLiteral);
+                    auto type = allocate(TypeKind::ObjectLiteral, hash::const_hash("object"));
                     if (!size) {
                         push(type);
                         break;
@@ -1449,17 +1450,40 @@ namespace ts::vm2 {
 
                     type->size = size;
                     auto types = subroutine->pop(size);
-                    if (size<5) {
-                        type->type = useAsRef(types[0]);
-                        auto current = (TypeRef *) type->type;
-                        for (unsigned int i = 1; i<size; i++) {
-                            current->next = useAsRef(types[i]);
-                            current = current->next;
-                        }
+                    auto first = types[0];
+
+                    if (first->kind == TypeKind::Rest) {
+                        TypeRef *current = nullptr;
+                        //todo: check if ObjectLiteral, otherwise report error
+                        forEachChild(first, [&type, &current](Type *child, auto) {
+                            if (current) {
+                                current = current->next = useAsRef(child);
+                            } else {
+                                type->type = current = useAsRef(child);
+                            }
+                        });
+                        gc(first);
                     } else {
+                        type->type = useAsRef(first);
+                    }
+
+                    auto current = (TypeRef *) type->type;
+                    for (unsigned int i = 1; i<size; i++) {
+                        if (types[i]->kind == TypeKind::Rest) {
+                            //todo: check if ObjectLiteral, otherwise report error
+                            forEachChild(types[i], [&current](Type *child, auto) {
+                                current = current->next = useAsRef(child);
+                            });
+                            gc(types[i]);
+                        } else {
+                            current = (current->next = useAsRef(types[i]));
+                        }
+                    }
+
+                    if (size>5) {
                         type->children = allocateRefs(size);
                         for (unsigned int i = 0; i<size; i++) {
-                            addHashChild(type, types[i], size);
+                            addHashChildWithoutRefCounter(type, types[i], size);
                         }
                     }
                     push(type);

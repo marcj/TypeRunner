@@ -1,13 +1,10 @@
 import {CompilerOptions, createCompilerHost, createProgram, getPreEmitDiagnostics} from "typescript";
 
 const code = `
-    class MyDate {
-        static now(): number {
-            return 0;
-        }
+    function doIt(): string {
+        return 1;
     }
-    const now: number = MyDate.now();
-    const now2: string = MyDate.now();
+    doIt();
 `;
 
 const options: CompilerOptions = {

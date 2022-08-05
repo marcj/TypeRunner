@@ -176,13 +176,14 @@ namespace ts::vm2 {
         }
 
         /**
-         * Returns true of there is only one child
+         * Returns true if there is only one child
          */
         bool singleChild() {
             return type && ((TypeRef *) type)->next == nullptr;
         }
+
         /**
-         * Returns true of there is only one child
+         * Returns the type if there is only one child
          */
         Type *child() {
             return type ? ((TypeRef *) type)->type : nullptr;
