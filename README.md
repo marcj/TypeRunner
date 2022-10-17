@@ -41,7 +41,7 @@ Once the project gets funding through the community, the development will contin
 `TypeRunner warm` means the bytecode could be directly executed because it was cached. Generally it is assumed
 that only a few files change, for example if you have a project with 100 files and edit one and then rerun 
 type checking, then only the changed one has the slower `cold` timing. Note that compilation has not yet been optimised 
-(it still uses a slow memory allocator which can be improvement by a tenfold). 
+(it still uses a slow memory allocator which can be improvement roughly tenfold). 
 
 Note that `tsc` numbers are after 10 iterations (the JavaScript engine V8 JIT optimises it early already), which somewhat
 leads to a wrong conclusion. Only 1 iteration is 10x slower and a cold `tsc` start even slower because of the initial bootstrap
