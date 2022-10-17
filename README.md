@@ -103,6 +103,85 @@ TypeRunner cold:   0.862534792ms (406x faster)
 TypeRunner warm:   0.839308334ms (417x faster)
 ```
 
+## FAQ
+
+### Why?
+
+TypeScript is cool and all, but also very slow and not usable in other languages. We want to make it fast and type computation accessible to all languages.
+
+We believe that TypeScript can be much faster. There are a lot of workarounds used these days to work around the slow type checking of TypeScript. 
+Some "TypeScript runtimes" even entirely disable type checking (and thus the key selling point of TypeScript) per default and rely on suboptimal editor-only type checking 
+(which is still slow). We think it is possible to build a TypeScript compiler that is so fast, that you can run TypeScript files directly with all its type checking features
+enabled and still having almost instant compile time.
+
+We also believe that TypeScript is more than just a linter. It is a language that is so powerful and can be used for so much more.
+Imagine for example to write a schema like the following and be able to validate data against it in any language, no matter if JavaScript, C++, C, Rust, or Go.
+
+```typescript
+export interface User {
+    id: number & PrimaryKey;
+    name: string & MinLength<3>;
+    password: string;
+}
+export type ReadUser = Omit<User, 'password'>
+export type CreateUser = Omit<User, 'id'>;
+```
+
+With TypeRunner this will be possible and thus has the possibility to replace JSON schema with a much more powerful way of defining schemas.
+It doesn't stop with JSON schema however: ORM, GraphQL, gRPC, Protocol buffer, and many more technologies that rely on schema information can rely
+on the powerful TypeScript type system to increase usability and efficiency dramatically. This brings isomorphic TypeScript to a whole new level.
+
+### Why doesn't Microsoft implement it like that?
+
+Microsoft had (or still has) as goal to get a good and wide adoption of TypeScript. That means to find product-market fit and improve UX, iteration speed is key to success.
+Writing high-performance code usually impacts these goals negatively.
+
+Also, implementing features to make adoption easier and [dogfooding](https://en.wikipedia.org/wiki/Eating_your_own_dog_food) are important strategies to make sure 
+the product you're building actually will be adopted and solves real problems. Since the TypeScript team doesn't have unlimited resources this means however that
+they have to focus on what brings growth. Performance is not something that brings much growth, especially if you take into consideration that the market 
+expands every 4 years or so by 100%, which means that most developers are beginners and have other priorities than performance.
+
+Strategically speaking it makes thus sense for Microsoft to develop TypeScript the way they do it, at least for the moment.
+
+### Why not a drop-in replacement for `tsc`?
+
+TypeScript offers a lot of functionality. Many things are targeted at a smooth transition from JavaScript to TypeScript
+by allowing not-so-strict syntax and alternative type declaration syntax like JSDoc. Although these features
+have a big impact on new TypeScript users they are not so much used in projects where TypeScript is used more strictly.
+TypeScript comes also with a fairly big variety of transpilers/transformers to generate JavaScript for all kind of ECMAScript standards.
+We think that although these features have a big value for new users and adoption, we want to focus more on the enterprise side of things, where
+performance often translates directly to money.
+
+### What is currently supported?
+
+Only very basic type expressions are currently supported: primitives, variable declaration, (generic) function declaration, 
+some type functions like type aliases, (distributive) conditional types, template literals, array/tuples, index access, union, rest, and a few other things.
+They are implemented in a very rough way just enough to proof that the language in its core can be implemented in a fast way.
+
+### When will it be released?
+
+Currently, the development of TypeRunner is almost stalled and was more an experiment/proof of concept. To actually make this a reality, funding is necessary.
+In the next coming weeks, we will set up a kickstarter/funding project, which makes it possible for the community that is interested in high-speed TypeScript to
+make this a reality.
+
+### Why C++ and not Rust?
+
+Because I know C++ much better than Rust. The market of good C++ developers is much bigger. TypeScript code also maps surprisingly good to C++, so porting
+the scanner, parser, and AST structure is actually rather easy, which allows back-porting features from TypeScript tsc to TypeRunner much better. I also find Rust ugly.
+
+### Why not port TypeScript?
+
+Porting TypeScript alone to a faster language won't yield much performance difference since the V8 JIT optimises TypeScript compiler already good enough and the
+current slowdown comes mainly from architectural decisions made to work well in a JavaScript runtime (where optimisation strategies are very limited). 
+To get a much faster compiler you have to do both, use a fast compiling language and use an architecture that utilizes all performance advantages of that language.
+
+That being said, in the current stage the actual TypeScript scanner/parser code is ported from the TypeScript compiler to make back-porting easier.
+It's also at the moment the most complicated and slowest code (with over 20k LoC), which will be improved in the future.
+
+### What can I do to support that project?
+
+Follow me on Twitter and fund it once the funding camping is published: [twitter.com/MarcJSchmidt](https://twitter.com/MarcJSchmidt)
+
 ## Development
 
 TypeRunner is written in modern C++ with cmake, doctest, imgui, tracy, fmt. To work on this project first clone the repository:
@@ -120,4 +199,4 @@ $ cd build
 $ cmake ..
 ```
 
-Now you find in the build folder some binaries you can execute.**
+Now you find in the build folder some binaries you can execute.
