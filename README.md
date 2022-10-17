@@ -127,7 +127,7 @@ export type ReadUser = Omit<User, 'password'>
 export type CreateUser = Omit<User, 'id'>;
 ```
 
-With TypeRunner this will be possible and thus has the possibility to replace JSON schema with a much more powerful way of defining schemas.
+With TypeRunner this will be possible and thus has the potential to replace JSON schema with a much more powerful way of defining schemas.
 It doesn't stop with JSON schema however: ORM, GraphQL, gRPC, Protocol buffer, and many more technologies that rely on schema information can rely
 on the powerful TypeScript type system to increase usability and efficiency dramatically. This brings isomorphic TypeScript to a whole new level.
 
