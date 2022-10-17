@@ -1,4 +1,4 @@
-**# TypeRunner
+# TypeRunner
 
 <center>
 <img src="./docs/logo.png"/>
