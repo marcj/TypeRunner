@@ -2,9 +2,8 @@
 
 <p align="center">
 <img src="./docs/logo.png"/>
-</p>
-
 High-performance TypeScript compiler.
+</p>
 
 ## Goal
 
