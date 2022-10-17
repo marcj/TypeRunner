@@ -131,7 +131,7 @@ With TypeRunner this will be possible and thus has the potential to replace JSON
 It doesn't stop with JSON schema however: ORM, GraphQL, gRPC, Protocol buffer, and many more technologies that rely on schema information can rely
 on the powerful TypeScript type system to increase usability and efficiency dramatically. This brings isomorphic TypeScript to a whole new level.
 
-### Why doesn't Microsoft implement it like that?
+### Why doesn't Microsoft implement it like this?
 
 Microsoft had (or still has) as goal to get a good and wide adoption of TypeScript. That means to find product-market fit and improve UX, iteration speed is key to success.
 Writing high-performance code usually impacts these goals negatively.
@@ -178,7 +178,7 @@ To get a much faster compiler you have to do both, use a fast compiling language
 That being said, in the current stage the actual TypeScript scanner/parser code is ported from the TypeScript compiler to make back-porting easier.
 It's also at the moment the most complicated and slowest code (with over 20k LoC), which will be improved in the future.
 
-### What can I do to support that project?
+### What can I do to support this project?
 
 Follow me on Twitter and fund it once the funding campaign is published: [twitter.com/MarcJSchmidt](https://twitter.com/MarcJSchmidt)
 
