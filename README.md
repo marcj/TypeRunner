@@ -86,7 +86,6 @@ TypeRunner warm: 0.001111333ms (1,709x faster)
 
 ### Complex type
 
-```
 ```typescript
 type StringToNum<T extends string, A extends 0[] = []> = `${A['length']}` extends T ? A['length'] : StringToNum<T, [...A, 0]>;
 const var1: StringToNum<'999'> = 999;
@@ -96,8 +95,6 @@ const var1: StringToNum<'999'> = 999;
 TypeScript tsc:  350.2ms
 TypeRunner cold:   0.862534792ms (406x faster)
 TypeRunner warm:   0.839308334ms (417x faster)
-```
-
 ```
 
 ## Development
