@@ -39,7 +39,7 @@ Once the project gets funding through the community, the development will contin
 
 `TypeRunner cold` means the file was seen for the first time and has to be compiled to bytecode first.
 `TypeRunner warm` means the bytecode could be directly executed because it was cached. Generally it is assumed
-that only a few files change, for example if you have a project with 100 projects and edit one and then rerun 
+that only a few files change, for example if you have a project with 100 files and edit one and then rerun 
 type checking, then only the changed one has the slower `cold` timing. Note that compilation has not yet been optimised 
 (it still uses a slow memory allocator which can be improvement by a tenfold). 
 
