@@ -1,8 +1,8 @@
 # TypeRunner
 
-<center>
+<div style="text-align: center">
 <img src="./docs/logo.png"/>
-</center>
+</div>
 
 High-performance TypeScript compiler.
 
