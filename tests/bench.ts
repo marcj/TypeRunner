@@ -1,11 +1,20 @@
 import {CompilerOptions, createCompilerHost, createProgram, getPreEmitDiagnostics} from "typescript";
+import {readFileSync} from "fs";
+import {execSync} from "child_process";
 
-const code = `
-    function doIt(): string {
-        return 1;
-    }
-    doIt();
-`;
+// const code = `
+//     function doIt(): string {
+//         return 1;
+//     }
+//     doIt();
+// `;
+const file = process.argv[2];
+const code = readFileSync(file).toString('utf8');
+
+console.log('file', file);
+console.log('code:');
+console.log(code);
+console.log();
 
 const options: CompilerOptions = {
     strict: true,
@@ -22,7 +31,6 @@ host.writeFile = () => {
 }
 
 const program = createProgram(['app.ts'], options, host);
-console.log(getPreEmitDiagnostics(program));
 
 const iterations = 10;
 const start = Date.now();
@@ -31,4 +39,6 @@ for (let i = 0; i < iterations; i++) {
     const diagnostics = getPreEmitDiagnostics(program);
 }
 const took = Date.now() - start;
-console.log(iterations, 'iterations took', took, 'ms.', took/iterations, 'ms/op');
+console.log('tsc: ', iterations, 'iterations took', took, 'ms.', took / iterations, 'ms/op');
+
+execSync(__dirname + '/../cmake-build-release/bench ' + file, {stdio: 'inherit'});

@@ -10,7 +10,7 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "bench": "ts-node tests/bench.ts"
   },
   "repository": {
     "type": "git",

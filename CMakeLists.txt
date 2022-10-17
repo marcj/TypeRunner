@@ -31,8 +31,7 @@ include_directories(libs/magic_enum)
 add_subdirectory(src)
 
 add_executable(typescript_main main.cpp)
+target_link_libraries(typescript_main typescript)
 
-target_link_libraries(
-        typescript_main
-        typescript
-)
+add_executable(bench bench.cpp)
+target_link_libraries(bench typescript)

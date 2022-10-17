@@ -12,30 +12,31 @@
 
 using namespace tr;
 
-void run(const string &bytecode, const string &code, const string &fileName) {
+void compileAndRun(const string &code, const string &fileName) {
     ZoneScoped;
-    auto module = std::make_shared<vm2::Module>(bytecode, fileName, code);
-    bench(1, [&]{
+    auto iterations = 1000;
+    auto cold = benchRun(iterations, [&] {
+        checker::Compiler compiler;
+        Parser parser;
+        auto result = parser.parseSourceFile(fileName, code, types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+        auto program = compiler.compileSourceFile(result);
+        auto bin = program.build();
+        auto module = make_shared<vm2::Module>(bin, fileName, code);
         vm2::run(module);
-        module->printErrors();
     });
-}
 
-void compileAndRun(const string &code, const string &file, const string &fileName) {
-    ZoneScoped;
-    auto bytecodePath = file + ".tsb";
-    auto buffer = fileRead(file);
     checker::Compiler compiler;
     Parser parser;
-    auto result = parser.parseSourceFile(file, buffer, types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+    auto result = parser.parseSourceFile(fileName, code, types::ScriptTarget::Latest, false, ScriptKind::TS, {});
     auto program = compiler.compileSourceFile(result);
     auto bin = program.build();
-    fileWrite(bytecodePath, bin);
-    std::filesystem::last_write_time(bytecodePath, std::filesystem::last_write_time(file));
-    checker::printBin(bin);
     auto module = make_shared<vm2::Module>(bin, fileName, code);
-    vm2::run(module);
-    module->printErrors();
+    auto warm = benchRun(iterations, [&] {
+        module->clear();
+        vm2::run(module);
+    });
+
+    std::cout << fmt::format("typerunner: {} iterations (it): cold {:.9f}ms/it, warm {:.9f}ms/it\n", iterations, cold.count() / iterations, warm.count() / iterations);
 }
 
 int main(int argc, char *argv[]) {
@@ -54,13 +55,7 @@ int main(int argc, char *argv[]) {
         return 4;
     }
     auto code = fileRead(file);
-    auto bytecode = file + ".tsb";
     auto relative = std::filesystem::relative(file, cwd);
-
-    if (fileExists(bytecode) && std::filesystem::last_write_time(bytecode) == std::filesystem::last_write_time(file)) {
-        run(fileRead(bytecode), code, relative.string());
-    } else {
-        compileAndRun(code, file, relative.string());
-    }
+    compileAndRun(code, relative.string());
     return 0;
 }

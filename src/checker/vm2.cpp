@@ -1021,7 +1021,7 @@ namespace tr::vm2 {
                 case OP::Assign: {
                     auto rvalue = pop();
                     auto lvalue = pop();
-                    debug("assign {} = {}", stringify(rvalue), stringify(lvalue));
+                    //debug("assign {} = {}", stringify(rvalue), stringify(lvalue));
                     if (!extends(lvalue, rvalue)) {
 //                        auto error = stack.errorMessage();
 //                        error.ip = ip;
