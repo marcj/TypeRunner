@@ -180,7 +180,26 @@ It's also at the moment the most complicated and slowest code (with over 20k LoC
 
 ### What can I do to support that project?
 
-Follow me on Twitter and fund it once the funding camping is published: [twitter.com/MarcJSchmidt](https://twitter.com/MarcJSchmidt)
+Follow me on Twitter and fund it once the funding campaign is published: [twitter.com/MarcJSchmidt](https://twitter.com/MarcJSchmidt)
+
+### How does it work/Why is it so fast?
+
+It is so fast because it does the heavy-lifting only once per file and optimised the type computation/comparison in a custom virtual machine.
+
+The compiler consists of 3 stages: Parsing to AST, compiling to bytecode, and executing the bytecode in a virtual machine.
+The first two stages are the most expensive ones and have to be done for each file once. The resulting bytecode can then be cached on disk.
+
+The compiler has a simple data-flow analysis implemented to generate more efficient bytecode 
+(like tail call/tail rest detection, and detecting usage of potential usage of super instructions).
+It also tries to precompute as much as possible: for example all literal values will have in the bytecode header a precomputed 64bit hash, 
+so that the virtual machine can compare literal types with a simple integer comparison and use it in hash-tables.
+
+The stack based virtual machine tries to be lightweight and high-performant as the most work happens here. 
+It uses multiple memory pools with garbage collection, fix-sized type structure, tail call optimisation, tuple re-use (tail rest optimisation).
+For list structured linked lists and hash-tables (based on precomputed literal hash) are used to make lookups very fast.
+
+The instruction set consists of currently 83 instructions: https://github.com/marcj/TypeRunner/blob/master/src/checker/instructions.h
+and will likely grow in the future.
 
 ## Development
 
