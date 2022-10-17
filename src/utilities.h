@@ -11,18 +11,18 @@
 #include "scanner.h"
 #include "hash.h"
 
-namespace ts {
-    using namespace ts::types;
+namespace tr {
+    using namespace tr::types;
     using std::vector;
     using std::string;
     using std::optional;
-    using ts::types::ScriptKind;
-    using ts::types::SyntaxKind;
-    using ts::types::Extension;
-    using ts::types::LanguageVariant;
-    using ts::utf::charCodeAt;
-    using ts::utf::CharCode;
-    using ts::utf::CharacterCodes;
+    using tr::types::ScriptKind;
+    using tr::types::SyntaxKind;
+    using tr::types::Extension;
+    using tr::types::LanguageVariant;
+    using tr::utf::charCodeAt;
+    using tr::utf::CharCode;
+    using tr::utf::CharacterCodes;
     using types::DiagnosticMessage;
     using types::DiagnosticCategory;
     using types::DiagnosticWithDetachedLocation;

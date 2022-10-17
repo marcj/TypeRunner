@@ -3,7 +3,7 @@
 #include "./types.h"
 #include "../core.h"
 
-namespace ts::vm {
+namespace tr::vm {
     static auto emptyString = HashString("");
 
     HashString &getName(const shared<Type> &member) {

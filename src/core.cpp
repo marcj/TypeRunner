@@ -1,6 +1,6 @@
 #include "core.h"
 
-namespace ts::Debug {
+namespace tr::Debug {
     void asserts(bool v, std::string text) {
         if (!v) throw std::runtime_error("assert: " + text);
     }
@@ -10,7 +10,7 @@ namespace ts::Debug {
     }
 }
 
-namespace ts {
+namespace tr {
     string substr(const string &str, int start, optional<int> len) {
         if (start <= 0 && len && len < 0) return "";
         if (!len || *len < 0 || len > str.size()) *len = str.size();

@@ -8,14 +8,14 @@
 #include "../checker/vm2.h"
 #include "./utils.h"
 
-using namespace ts;
-using namespace ts::vm2;
+using namespace tr;
+using namespace tr::vm2;
 
 using std::string;
 using std::string_view;
 
 TEST_CASE("bigUnion") {
-    ts::checker::Program program;
+    tr::checker::Program program;
 
     auto foos = 300;
 
@@ -55,14 +55,14 @@ TEST_CASE("bigUnion") {
     module->printErrors();
     REQUIRE(module->errors.size() == 0);
 
-    debug("pool.active = {}", ts::vm2::pool.active);
-    debug("poolRef.active = {}", ts::vm2::poolRef.active);
-    ts::vm2::clear(module);
-    ts::vm2::gcStackAndFlush();
-    REQUIRE(ts::vm2::pool.active == 0);
-    REQUIRE(ts::vm2::poolRef.active == 0);
+    debug("pool.active = {}", tr::vm2::pool.active);
+    debug("poolRef.active = {}", tr::vm2::poolRef.active);
+    tr::vm2::clear(module);
+    tr::vm2::gcStackAndFlush();
+    REQUIRE(tr::vm2::pool.active == 0);
+    REQUIRE(tr::vm2::poolRef.active == 0);
 
-    ts::bench("first", 1000, [&] {
+    tr::bench("first", 1000, [&] {
         module->clear();
         run(module);
     });

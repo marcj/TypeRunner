@@ -5,7 +5,7 @@
 
 using namespace std;
 
-namespace ts {
+namespace tr {
 
     enum InvalidPosition {
         Value = -1

@@ -2,12 +2,12 @@
 
 #include "path.h"
 
-namespace ts {
+namespace tr {
     using std::string;
     using std::replace;
     using std::regex;
-    using ts::utf::charCodeAt;
-    using ts::utf::CharacterCodes;
+    using tr::utf::charCodeAt;
+    using tr::utf::CharacterCodes;
 
     bool fileExtensionIs(const string &path, const string &extension) {
         return path.size() > extension.size() && endsWith(path, extension);

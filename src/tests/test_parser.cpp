@@ -4,7 +4,7 @@
 #include "../parser2.h"
 #include <unistd.h>
 
-using namespace ts;
+using namespace tr;
 
 TEST(parser, single) {
     Parser parser;
@@ -22,7 +22,7 @@ SemicolonToken
 EndOfFileToken
      */
 
-    auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+    auto result = parser.parseSourceFile("app.ts", code, tr::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
     debug("done");
 }
 
@@ -37,8 +37,8 @@ TEST(parser, bench) {
     usleep(100'000);
 
     bench(1, [&]{
-        auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
-//        auto sourceFile = parser.createSourceFile("app.ts", ts::types::ScriptTarget::Latest, ScriptKind::TS, false, make_shared<NodeArray>(), make_shared<EndOfFileToken>(), 0, [](auto s) {});
+        auto result = parser.parseSourceFile("app.ts", code, tr::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+//        auto sourceFile = parser.createSourceFile("app.ts", tr::types::ScriptTarget::Latest, ScriptKind::TS, false, make_shared<NodeArray>(), make_shared<EndOfFileToken>(), 0, [](auto s) {});
     });
     fmt::print("parse {} bytes ", code.size());
 
@@ -74,8 +74,8 @@ const thisWorks: RedundantBigAssUnion[] = ["hello", 123]
     usleep(100'000);
 
     bench(1, [&]{
-        auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
-//        auto sourceFile = parser.createSourceFile("app.ts", ts::types::ScriptTarget::Latest, ScriptKind::TS, false, make_shared<NodeArray>(), make_shared<EndOfFileToken>(), 0, [](auto s) {});
+        auto result = parser.parseSourceFile("app.ts", code, tr::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+//        auto sourceFile = parser.createSourceFile("app.ts", tr::types::ScriptTarget::Latest, ScriptKind::TS, false, make_shared<NodeArray>(), make_shared<EndOfFileToken>(), 0, [](auto s) {});
     });
     fmt::print("parse {} bytes ", code.size());
 

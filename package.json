@@ -1,8 +1,11 @@
 {
-  "name": "typescript-cpp",
-  "version": "1.0.0",
+  "name": "typerunner",
+  "version": "0.0.1",
   "description": "",
   "main": "index.js",
+  "files": [
+    "README.md"
+  ],
   "directories": {
     "test": "tests"
   },
@@ -11,15 +14,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/marcj/typescript-cpp.git"
+    "url": "git+https://github.com/marcj/TypeRunner.git"
   },
   "author": "",
-  "license": "ISC",
   "bugs": {
-    "url": "https://github.com/marcj/typescript-cpp/issues"
+    "url": "https://github.com/marcj/TypeRunner/issues"
   },
-  "homepage": "https://github.com/marcj/typescript-cpp#readme",
-  "dependencies": {
+  "homepage": "https://github.com/marcj/TypeRunner#readme",
+  "devDependencies": {
     "ts-node": "^10.9.1",
     "typescript": "^4.7.4"
   }

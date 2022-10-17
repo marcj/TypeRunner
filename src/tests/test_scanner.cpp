@@ -3,7 +3,7 @@
 #include <iostream>
 #include "../scanner.h"
 
-using namespace ts;
+using namespace tr;
 
 TEST(scanner, basisc) {
 
@@ -14,10 +14,10 @@ TEST(scanner, basisc) {
     for (i = 0; i <10000; i++) {
         scanner.setText("const i = 123");
 //        scanner.setOnError([this](auto ...a) { scanError(a...); });
-        scanner.setScriptTarget(ts::types::ScriptTarget::Latest);
-        scanner.setLanguageVariant(ts::types::LanguageVariant::Standard);
+        scanner.setScriptTarget(tr::types::ScriptTarget::Latest);
+        scanner.setLanguageVariant(tr::types::LanguageVariant::Standard);
 
-        while (scanner.scan() != ts::types::SyntaxKind::EndOfFileToken) {
+        while (scanner.scan() != tr::types::SyntaxKind::EndOfFileToken) {
 
         }
 

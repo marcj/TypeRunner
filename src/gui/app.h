@@ -13,7 +13,7 @@
 
 using namespace std;
 
-namespace ts::gui {
+namespace tr::gui {
     class App {
     public:
         int displayWidth = 20;

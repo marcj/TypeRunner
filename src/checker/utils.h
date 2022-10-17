@@ -5,7 +5,7 @@
 #include <string>
 #include "./instructions.h"
 
-namespace ts::vm {
+namespace tr::vm {
     using std::vector;
     using std::string_view;
 
@@ -62,7 +62,7 @@ namespace ts::vm {
         return string_view(reinterpret_cast<const char *>(bin.data() + offset + 2), size);
     }
 
-    using ts::instructions::OP;
+    using tr::instructions::OP;
     inline void eatParams(OP op, unsigned int *i) {
         switch (op) {
             case OP::TailCall:
@@ -98,10 +98,12 @@ namespace ts::vm {
                 *i += 4;
                 break;
             }
+            case OP::ClassRef:
             case OP::FunctionRef: {
                 *i += 4;
                 break;
             }
+            case OP::New:
             case OP::Instantiate: {
                 *i += 2;
                 break;
@@ -123,7 +125,7 @@ namespace ts::vm {
                 break;
             }
             case OP::Loads: {
-                *i += 2;
+                *i += 4;
                 break;
             }
             case OP::Parameter:

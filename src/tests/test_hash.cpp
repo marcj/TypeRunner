@@ -3,7 +3,7 @@
 #include "../hash.h"
 
 using namespace std;
-using namespace ts::hash;
+using namespace tr::hash;
 
 TEST(hash, hash) {
     string_view sv = "foo188";

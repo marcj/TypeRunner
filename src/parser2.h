@@ -18,10 +18,10 @@
 #include "diagnostic_messages.h"
 #include <fmt/core.h>
 
-using namespace ts::types;
-using namespace ts::hash;
+using namespace tr::types;
+using namespace tr::hash;
 
-namespace ts {
+namespace tr {
     using std::string;
     using std::vector;
     using std::function;
@@ -1473,7 +1473,7 @@ namespace ts {
             }
 
             // Otherwise, if this isn't a well-known keyword-like identifier, give the generic fallback message.
-            string expressionText = ts::isIdentifier(node) ? idText(node) : "";
+            string expressionText = tr::isIdentifier(node) ? idText(node) : "";
             if (expressionText == "" || !isIdentifierText(expressionText, languageVersion)) {
                 parseErrorAtCurrentToken(Diagnostics::_0_expected(), tokenToString(SyntaxKind::SemicolonToken));
                 return;
@@ -7085,7 +7085,7 @@ namespace ts {
             shared<NodeUnion(ExpressionStatement, LabeledStatement)> node;
             auto hasParen = token() == SyntaxKind::OpenParenToken;
             auto expression = allowInAnd<shared<Expression>>(CALLBACK(parseExpression));
-            if (ts::isIdentifier(expression) && parseOptional(SyntaxKind::ColonToken)) {
+            if (tr::isIdentifier(expression) && parseOptional(SyntaxKind::ColonToken)) {
                 node = factory.createLabeledStatement(expression, parseStatement());
             } else {
                 if (!tryParseSemicolon()) {

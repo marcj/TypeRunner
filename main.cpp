@@ -41,7 +41,7 @@ void compileAndRun(const string &code, const string &file, const string &fileNam
 
 int main(int argc, char *argv[]) {
     ZoneScoped;
-    std::string file = "/Users/marc/bude/typescript-cpp/tests/basic1.ts";
+    std::string file = "/Users/marc/bude/TypeRunner/tests/basic1.ts";
     auto cwd = std::filesystem::current_path();
 
     if (argc > 1) {

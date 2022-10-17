@@ -9,7 +9,7 @@
 #include "../checker/compiler.h"
 #include "../checker/debug.h"
 
-using namespace ts;
+using namespace tr;
 using std::string;
 using std::make_shared;
 using std::string_view;
@@ -217,10 +217,10 @@ TEST(bench, hashing) {
     string s = "foo188";
 
     bench("hash from view", 100, [&] {
-        ts::hash::runtime_hash(s);
+        tr::hash::runtime_hash(s);
     });
 
     bench("hash from string", 100, [&] {
-        ts::hash::runtime_hash(s);
+        tr::hash::runtime_hash(s);
     });
 }

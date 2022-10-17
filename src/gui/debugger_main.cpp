@@ -5,7 +5,7 @@
 #include "./app.h"
 #include "../parser2.h"
 #include "../checker/compiler.h"
-#include "../checker/vm.h"
+#include "../checker/vm2.h"
 #include "../checker/debug.h"
 #include "../fs.h"
 #include "TextEditor.h"
@@ -13,8 +13,8 @@
 using std::string;
 using std::span;
 
-using namespace ts;
-using namespace ts::gui;
+using namespace tr;
+using namespace tr::gui;
 
 typedef std::chrono::duration<double, std::milli> took;
 
@@ -26,7 +26,7 @@ struct ExecutionData {
 };
 
 int main() {
-    guiApp.title = "Typhoon";
+    guiApp.title = "TypeRunner";
     guiAppInit();
 
     string fileName = "app.ts";
@@ -68,7 +68,7 @@ const v3: NoNumber<Primitive> = 34;
     auto fontMonoSmall = ImGui::GetIO().Fonts->AddFontFromFileTTF("/System/Library/Fonts/SFNSMono.ttf", 26.0);
 
     checker::DebugBinResult debugBinResult;
-    auto module = make_shared<vm::Module>();
+    auto module = make_shared<vm2::Module>();
 
     ExecutionData lastExecution;
 
@@ -84,10 +84,10 @@ const v3: NoNumber<Primitive> = 34;
     {
         checker::Compiler compiler;
         Parser parser;
-        auto result = parser.parseSourceFile(fileName, code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+        auto result = parser.parseSourceFile(fileName, code, tr::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
         auto program = compiler.compileSourceFile(result);
         auto bin = program.build();
-        module = make_shared<vm::Module>(std::move(bin), fileName, code);
+        module = make_shared<vm2::Module>(std::move(bin), fileName, code);
         debugBinResult = checker::parseBin(module->bin);
         extractErrors();
     }
@@ -100,35 +100,34 @@ const v3: NoNumber<Primitive> = 34;
 
         auto start = std::chrono::high_resolution_clock::now();
         shared<SourceFile> result;
-        for (auto i = 0; i < iterations; i++) {
-            result = parser.parseSourceFile(fileName, code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+        for (auto i = 0; i<iterations; i++) {
+            result = parser.parseSourceFile(fileName, code, tr::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
         }
         lastExecution.parseTime = (std::chrono::high_resolution_clock::now() - start) / iterations;
 
         start = std::chrono::high_resolution_clock::now();
 
         checker::Program program;
-        for (auto i = 0; i < iterations; i++) {
+        for (auto i = 0; i<iterations; i++) {
             program = compiler.compileSourceFile(result);
         }
         lastExecution.compileTime = (std::chrono::high_resolution_clock::now() - start) / iterations;
 
         start = std::chrono::high_resolution_clock::now();
         string bin;
-        for (auto i = 0; i < iterations; i++) {
+        for (auto i = 0; i<iterations; i++) {
             bin = program.build();
         }
         lastExecution.binaryTime = (std::chrono::high_resolution_clock::now() - start) / iterations;
 
-        module = make_shared<vm::Module>(std::move(bin), fileName, code);
+        module = make_shared<vm2::Module>(std::move(bin), fileName, code);
         debugBinResult = checker::parseBin(module->bin);
 
         start = std::chrono::high_resolution_clock::now();
 
-        for (auto i = 0; i < iterations; i++) {
+        for (auto i = 0; i<iterations; i++) {
             module->clear();
-            vm::VM vm; //we need to keep Modules alive
-            vm.run(module);
+            vm2::run(module);
         }
         lastExecution.checkTime = (std::chrono::high_resolution_clock::now() - start) / iterations;
 
@@ -138,14 +137,13 @@ const v3: NoNumber<Primitive> = 34;
 
     editor.inlineErrorHover = [](ImVec2 &start, ImVec2 &end, TextEditor::InlineError &inlineError) {
         ImGui::BeginTooltip();
-        vm::DiagnosticMessage *message = (vm::DiagnosticMessage *) inlineError.data;
+        vm2::DiagnosticMessage *message = (vm2::DiagnosticMessage *) inlineError.data;
         ImGui::TextUnformatted(message->message.c_str());
         ImGui::EndTooltip();
     };
 
     auto debugActive = false;
     auto debugEnded = false;
-    vm::VM debugVM;
 
     runProgram();
     guiAppRender([&] {
@@ -226,14 +224,14 @@ const v3: NoNumber<Primitive> = 34;
                 ImGui::TableHeadersRow();
 
 #ifdef TS_PROFILE
-                for (unsigned int type = 0; type < vm::profiler.data.typeCount; type++) {
-                    auto count = vm::profiler.data.instantiations[type];
+                for (unsigned int type = 0; type < vm2::profiler.data.typeCount; type++) {
+                    auto count = vm2::profiler.data.instantiations[type];
                     if (!count) continue;
 
                     ImGui::TableNextRow();
 
                     ImGui::TableNextColumn();
-                    ImGui::Text(string(magic_enum::enum_name((vm::TypeKind)type)).c_str());
+                    ImGui::Text(string(magic_enum::enum_name((vm2::TypeKind)type)).c_str());
 
                     ImGui::TableNextColumn();
                     ImGui::Text("%lld", count);
@@ -250,18 +248,18 @@ const v3: NoNumber<Primitive> = 34;
                 ImGui::TableHeadersRow();
 
 #ifdef TS_PROFILE
-                for (unsigned int left = 0; left < vm::profiler.data.typeCount; left++) {
-                    for (unsigned int right = 0; right < vm::profiler.data.typeCount; right++) {
-                        auto count = vm::profiler.data.comparisons[left][right];
+                for (unsigned int left = 0; left < vm2::profiler.data.typeCount; left++) {
+                    for (unsigned int right = 0; right < vm2::profiler.data.typeCount; right++) {
+                        auto count = vm2::profiler.data.comparisons[left][right];
                         if (!count) continue;
 
                         ImGui::TableNextRow();
 
                         ImGui::TableNextColumn();
-                        ImGui::Text(string(magic_enum::enum_name((vm::TypeKind)left)).c_str());
+                        ImGui::Text(string(magic_enum::enum_name((vm2::TypeKind)left)).c_str());
 
                         ImGui::TableNextColumn();
-                        ImGui::Text(string(magic_enum::enum_name((vm::TypeKind)right)).c_str());
+                        ImGui::Text(string(magic_enum::enum_name((vm2::TypeKind)right)).c_str());
                         ImGui::TableNextColumn();
                         ImGui::Text("%lld", count);
                     }
@@ -269,7 +267,6 @@ const v3: NoNumber<Primitive> = 34;
 #endif
 
                 ImGui::EndTable();
-
 
                 ImGui::PopFont();
 //
@@ -322,34 +319,32 @@ const v3: NoNumber<Primitive> = 34;
             if (ImGui::Begin("Virtual Machine", nullptr)) {
                 if ((!debugActive || debugEnded) && ImGui::Button("Debug")) {
                     if (!debugActive || debugEnded) {
-                        debugVM = vm::VM();
                         module->clear();
                         debugActive = true;
                         debugEnded = false;
                         editor.SetReadOnly(true);
-                        debugVM.stepper = true;
-                        debugVM.prepare(module);
+                        vm2::stepper = true;
+                        vm2::prepare(module);
                     }
                 }
 
-                static vm::Frame *selectedFrame = nullptr;
+                static vm2::ActiveSubroutine *selectedSubroutine = nullptr;
 
                 if (debugActive) {
                     if (debugEnded) {
                         ImGui::Text("Program exited");
                     } else {
                         if (ImGui::Button("Next")) {
-                            static vm::FoundSourceMap lastMap;
-                            selectedFrame = nullptr;
+                            static vm2::FoundSourceMap lastMap;
                             while (true) {
-                                debugVM.process();
-                                if (!debugVM.subroutine) {
+                                vm2::process();
+                                if (!vm2::subroutine) {
                                     debugEnded = true;
                                     editor.SetReadOnly(false);
                                     editor.highlights.clear();
                                     break;
                                 } else {
-                                    auto map = module->findNormalizedMap(debugVM.subroutine->ip);
+                                    auto map = module->findNormalizedMap(vm2::subroutine->ip);
                                     if (!map.found()) continue; //another step please
                                     if (map.pos == lastMap.pos && map.end == lastMap.end) continue; //another step please
                                     lastMap = map;
@@ -366,7 +361,6 @@ const v3: NoNumber<Primitive> = 34;
                                 editor.SetReadOnly(false);
                                 debugActive = false;
                                 debugEnded = true;
-                                debugVM = vm::VM();
                                 runProgram();
                             }
 
@@ -375,43 +369,38 @@ const v3: NoNumber<Primitive> = 34;
                         }
                     }
 
-                    if (debugVM.subroutine) {
-
-                        vector<vm::Frame *> frames;
-//                        auto current = debugVM.frame;
-//                        while (current) {
-//                            frames.push_back(current);
-//                            current = current->previous;
-//                        }
-                        ImGui::Text("Stack (%d/%d)", frames.size(), debugVM.stack.size());
+                    if (vm2::subroutine) {
+                        ImGui::Text("Stack (%d), OP=%s (%d)", vm2::sp, string(magic_enum::enum_name<tr::instructions::OP>(vm2::subroutine->op())).c_str(), vm2::subroutine->ip);
 
                         static auto showNonVariables = false;
 
-                        if (!selectedFrame) selectedFrame = frames.front();
+                        if (!selectedSubroutine) selectedSubroutine = vm2::activeSubroutines.front();
 
                         ImGui::Checkbox("Show all stack entries", &showNonVariables);
 
                         ImGui::PushItemWidth(120);
                         if (ImGui::BeginListBox("###listbox")) {
-                            auto i = 0;
                             string_view lastName = "main";
-                            for (auto it = frames.rbegin(); it != frames.rend(); it++) {
-                                auto frame = (*it);
+                            for (int i = 0; i<vm2::activeSubroutines.size(); i++) {
+                                //for (auto it = frames.rbegin(); it != frames.rend(); it++) {
+                                auto frame = vm2::activeSubroutines.at(i);
                                 ImGui::PushID(i);
 
-//                                if (!frame->subroutine->name.empty()) {
-//                                    lastName = frame->subroutine->name;
-//                                }
-                                if (ImGui::Selectable((string(lastName)).c_str(), selectedFrame == frame)) {
-                                    selectedFrame = frame;
+                                if (!frame->subroutine) {
+                                    break;
+                                }
+                                if (!frame->subroutine->name.empty()) {
+                                    lastName = frame->subroutine->name;
+                                }
+                                if (ImGui::Selectable((string(lastName)).c_str(), selectedSubroutine == frame)) {
+                                    selectedSubroutine = frame;
                                 }
 
                                 ImGui::SameLine();
                                 ImGui::TextColored(grey, to_string(showNonVariables ? frame->size() : frame->variables).c_str());
 
                                 // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-                                if (selectedFrame == frame) ImGui::SetItemDefaultFocus();
-                                i++;
+                                if (selectedSubroutine == frame) ImGui::SetItemDefaultFocus();
                                 ImGui::PopID();
                             }
                             ImGui::EndListBox();
@@ -419,27 +408,39 @@ const v3: NoNumber<Primitive> = 34;
 
                         ImGui::PopItemWidth();
 
-                        if (selectedFrame) {
+                        if (selectedSubroutine) {
                             ImGui::SameLine();
                             ImGui::BeginGroup();
-                            auto start = selectedFrame->initialSp; // + frame->variables;
-                            span<shared<vm::Type>> frameStack{debugVM.stack.data() + start, selectedFrame->sp - start};
-
-                            for (unsigned int i = 0; i < frameStack.size(); i++) {
-                                auto type = frameStack[i];
-                                if (i >= selectedFrame->variables && !showNonVariables) continue;
-
-                                ImGui::Text("    ");
-                                ImGui::SameLine();
-                                if (i < selectedFrame->variables) {
-//                                    auto ip = selectedFrame->variableIPs[i];
-//                                    auto identifier = module->findIdentifier(ip);
-//                                    ImGui::Text(identifier.c_str());
-//                                    ImGui::SameLine();
+                            auto start = selectedSubroutine->initialSp; // + frame->variables;
+                            auto end = vm2::sp;
+                            auto subroutinesEnd = vm2::activeSubroutines.size();
+                            for (int i = 0; i<subroutinesEnd; i++) {
+                                if (vm2::activeSubroutines.at(i) == selectedSubroutine) {
+                                    if (subroutinesEnd == i + 1) break; //end reached
+                                    end = vm2::activeSubroutines.at(i + 1)->initialSp;
+                                    break;
                                 }
-                                auto stype = vm::stringify(type);
-                                if (stype.size() > 20) stype = stype.substr(0, 20) + "...";
-                                ImGui::TextColored(grey, stype.c_str());
+                            }
+
+                            if (end > start) {
+                                span<vm2::Type *> frameStack{vm2::stack.data() + start, end - start};
+
+                                for (unsigned int i = 0; i<frameStack.size(); i++) {
+                                    auto type = frameStack[i];
+                                    if (i>=selectedSubroutine->variables && !showNonVariables) continue;
+
+                                    ImGui::Text("    ");
+                                    ImGui::SameLine();
+                                    if (i<selectedSubroutine->variables) {
+                                        auto ip = selectedSubroutine->variableIPs[i];
+                                        auto identifier = module->findIdentifier(ip);
+                                        ImGui::Text(identifier.c_str());
+                                        ImGui::SameLine();
+                                    }
+                                    auto stype = vm2::stringify(type);
+                                    if (stype.size()>20) stype = stype.substr(0, 20) + "...";
+                                    ImGui::TextColored(grey, stype.c_str());
+                                }
                             }
                             ImGui::EndGroup();
                         }
@@ -499,7 +500,7 @@ const v3: NoNumber<Primitive> = 34;
                     for (auto &&op: s.operations) {
                         ImGui::TextColored(grey, to_string(op.address).c_str());
                         ImGui::SameLine();
-                        if (debugVM.subroutine && debugVM.subroutine->ip == op.address) {
+                        if (vm2::subroutine && vm2::subroutine->ip == op.address) {
                             ImGui::TextColored(yellow, op.text.c_str());
                         } else {
                             ImGui::Text(op.text.c_str());
@@ -528,7 +529,7 @@ const v3: NoNumber<Primitive> = 34;
                     ImGui::Text("%d", m.bytecodePos);
 
                     ImGui::TableNextColumn();
-                    ImGui::Text(string(magic_enum::enum_name<ts::instructions::OP>(m.op)).c_str());
+                    ImGui::Text(string(magic_enum::enum_name<tr::instructions::OP>(m.op)).c_str());
 
                     ImGui::TableNextColumn();
                     ImGui::Text((to_string(m.sourcePos) + ":" + to_string(m.sourceEnd)).c_str());

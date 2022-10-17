@@ -4,7 +4,7 @@
  * Note that an arbitrary `charCodeAt(text, position+1)` does not work since the current code point might be longer than one byte.
  * We probably should introduction `int position, int offset` so that `charCodeAt(text, position, 1)` returns the correct unicode code point.
  */
-ts::utf::CharCode ts::utf::charCodeAt(const std::string &text, int position, int *size) {
+tr::utf::CharCode tr::utf::charCodeAt(const std::string &text, int position, int *size) {
     //from - https://stackoverflow.com/a/40054802/979328
     int length = 1;
     int first = text[position];
@@ -34,7 +34,7 @@ ts::utf::CharCode ts::utf::charCodeAt(const std::string &text, int position, int
     return {-1, position};
 }
 
-std::string ts::utf::fromCharCode(int cp) {
+std::string tr::utf::fromCharCode(int cp) {
     char c[5] = {0x00, 0x00, 0x00, 0x00, 0x00};
     if (cp <= 0x7F) { c[0] = cp; }
     else if (cp <= 0x7FF) {

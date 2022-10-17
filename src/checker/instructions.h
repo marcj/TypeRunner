@@ -2,7 +2,7 @@
 
 #include "../enum.h"
 
-namespace ts::instructions {
+namespace tr::instructions {
     enum OP {
         Noop,
         Jump, //arbitrary jump, used at the beginning to jump over storage-data (storage-data's addresses are constant)
@@ -33,6 +33,7 @@ namespace ts::instructions {
 
         Function,
         FunctionRef, //one parameter, the index of the subroutine of the function that needs to be instantiated
+        ClassRef,
 
         Method,
         MethodSignature,
@@ -157,17 +158,17 @@ namespace ts::instructions {
 
 
 template<>
-struct fmt::formatter<ts::instructions::OP>: formatter<std::string_view> {
+struct fmt::formatter<tr::instructions::OP>: formatter<std::string_view> {
     template<typename FormatContext>
-    auto format(ts::instructions::OP p, FormatContext &ctx) {
-        return formatter<string_view>::format(magic_enum::enum_name<ts::instructions::OP>(p), ctx);
+    auto format(tr::instructions::OP p, FormatContext &ctx) {
+        return formatter<string_view>::format(magic_enum::enum_name<tr::instructions::OP>(p), ctx);
     }
 };
 
 template<>
-struct fmt::formatter<ts::instructions::ErrorCode>: formatter<std::string_view> {
+struct fmt::formatter<tr::instructions::ErrorCode>: formatter<std::string_view> {
     template<typename FormatContext>
-    auto format(ts::instructions::ErrorCode p, FormatContext &ctx) {
-        return formatter<string_view>::format(magic_enum::enum_name<ts::instructions::ErrorCode>(p), ctx);
+    auto format(tr::instructions::ErrorCode p, FormatContext &ctx) {
+        return formatter<string_view>::format(magic_enum::enum_name<tr::instructions::ErrorCode>(p), ctx);
     }
 };

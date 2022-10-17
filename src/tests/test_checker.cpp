@@ -6,7 +6,7 @@
 #include "../checker/debug.h"
 #include "../utils.h"
 
-using namespace ts;
+using namespace tr;
 
 TEST(checker, program) {
     checker::Program program;
@@ -120,7 +120,7 @@ TEST(checker, assign) {
         v = 123; //Assign to 123, change to number
     )";
 
-    auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+    auto result = parser.parseSourceFile("app.ts", code, tr::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
 
     checker::Compiler compiler;
 
@@ -153,7 +153,7 @@ TEST(checker, stackFrame) {
     }
     )";
 
-    auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+    auto result = parser.parseSourceFile("app.ts", code, tr::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
     debug("done");
 }
 
@@ -297,6 +297,6 @@ TEST(checker, basic2) {
     print(i);
     )";
 
-    auto result = parser.parseSourceFile("app.ts", code, ts::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
+    auto result = parser.parseSourceFile("app.ts", code, tr::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
     debug("done");
 }

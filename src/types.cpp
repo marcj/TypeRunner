@@ -1,7 +1,7 @@
 
 #include "types.h"
 
-namespace ts {
+namespace tr {
 //    types::SyntaxKind BaseUnion::kind() {
 //        return node->kind;
 //    }

@@ -12,17 +12,17 @@
 #include <memory>
 #include <unordered_set>
 
-namespace ts::checker {
+namespace tr::checker {
 }
 
-namespace ts::vm {
+namespace tr::vm {
     using std::string_view;
     using std::array;
     using std::to_string;
     using std::make_shared;
     using std::reference_wrapper;
-    using ts::utf::eatWhitespace;
-    using namespace ts::checker;
+    using tr::utf::eatWhitespace;
+    using namespace tr::checker;
 
     struct HashString {
         uint64_t hash;
@@ -312,7 +312,7 @@ namespace ts::vm {
         shared<Type> type;
         sharedOpt<Type> initializer = nullptr;
         bool optional = false;
-        TypeParameter(const string_view &name, const shared<ts::vm::Type> &type): name(name), type(type) {}
+        TypeParameter(const string_view &name, const shared<tr::vm::Type> &type): name(name), type(type) {}
     };
 
     struct TypeFunction: BrandKind<TypeKind::Function, Type> {
@@ -529,9 +529,9 @@ namespace ts::vm {
 }
 
 template<>
-struct fmt::formatter<ts::vm::TypeKind>: formatter<std::string_view> {
+struct fmt::formatter<tr::vm::TypeKind>: formatter<std::string_view> {
     template<typename FormatContext>
-    auto format(ts::vm::TypeKind p, FormatContext &ctx) {
+    auto format(tr::vm::TypeKind p, FormatContext &ctx) {
         return formatter<string_view>::format(magic_enum::enum_name(p), ctx);
     }
 };

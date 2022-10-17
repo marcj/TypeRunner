@@ -1,6 +1,6 @@
 #include "./vm.h"
 
-namespace ts::vm {
+namespace tr::vm {
     shared<Type> stringToNum(VM &vm) {
     }
 }

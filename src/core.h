@@ -15,12 +15,12 @@
 
 #define CALLBACK(name) [this](auto ...a) { return name(a...); }
 
-namespace ts::Debug {
+namespace tr::Debug {
     void asserts(bool v, std::string text = "");
     void fail(std::string text = "");
 }
 
-namespace ts {
+namespace tr {
     using std::string;
     using std::vector;
     using std::function;
@@ -218,6 +218,7 @@ namespace ts {
     template<typename K, typename T>
     inline optional<T> set(unordered_map<K, T> &m, K key, T v) {
 //        m.insert_or_assign(key, v);
+        throw std::runtime_error("not implemented");
         std::cout << "set map: " << key << ", " << v << "\n";
 //        m.insert({key, v});
 //        m[key] = v;

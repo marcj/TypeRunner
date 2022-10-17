@@ -5,9 +5,9 @@
 #include "../core.h"
 #include "./utils.h"
 
-namespace ts::checker {
+namespace tr::checker {
     using std::string_view;
-    using ts::instructions::OP;
+    using tr::instructions::OP;
 
     struct PrintSubroutineOp {
         string text;
@@ -151,11 +151,13 @@ namespace ts::checker {
                     vm::eatParams(op, &i);
                     break;
                 }
+                case OP::ClassRef:
                 case OP::FunctionRef: {
                     params += fmt::format(" &{}", vm::readUint32(bin, i + 1));
                     vm::eatParams(op, &i);
                     break;
                 }
+                case OP::New:
                 case OP::Instantiate: {
                     params += fmt::format(" {}", vm::readUint16(bin, i + 1));
                     vm::eatParams(op, &i);
@@ -178,9 +180,13 @@ namespace ts::checker {
                 case OP::TemplateLiteral:
                 case OP::Class:
                 case OP::ObjectLiteral:
-                case OP::Slots:
-                case OP::Loads: {
+                case OP::Slots: {
                     params += fmt::format(" {}", vm::readUint16(bin, i + 1));
+                    vm::eatParams(op, &i);
+                    break;
+                }
+                case OP::Loads: {
+                    params += fmt::format(" {} {}", vm::readUint16(bin, i + 1), vm::readUint16(bin, i + 3));
                     vm::eatParams(op, &i);
                     break;
                 }

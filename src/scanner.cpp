@@ -7,14 +7,14 @@
 #include "diagnostic_messages.h"
 #include <optional>
 
-using namespace ts;
+using namespace tr;
 using namespace std;
 
-namespace ts {
-    using ts::utf::charCodeAt;
-    using ts::utf::CharacterCodes;
-    using ts::utf::fromCharCode;
-    using namespace ts::hash;
+namespace tr {
+    using tr::utf::charCodeAt;
+    using tr::utf::CharacterCodes;
+    using tr::utf::fromCharCode;
+    using namespace tr::hash;
 
     bool isShebangTrivia(const string &text, int pos) {
         // Shebangs check must only be done at the start of the file

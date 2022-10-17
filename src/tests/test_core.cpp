@@ -11,7 +11,7 @@
 #include "../factory.h"
 
 using namespace std;
-using namespace ts;
+using namespace tr;
 
 TEST(core, regexp) {
     std::regex regex("^///?\\s*@(ts-expect-error|ts-ignore)");

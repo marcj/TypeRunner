@@ -7,7 +7,7 @@
 #include "../enum.h"
 #include "../hash.h"
 
-namespace ts::vm2 {
+namespace tr::vm2 {
     using std::string;
     using std::string_view;
 
@@ -29,6 +29,7 @@ namespace ts::vm2 {
         Property,
         PropertySignature,
         Class,
+        ClassRef,
         ClassInstance,
         ObjectLiteral,
         Union,
@@ -250,7 +251,7 @@ namespace ts::vm2 {
 
     inline Type *findChild(Type *type, uint64_t hash) {
         if (type->children.empty()) {
-            auto current = (TypeRef *)type->type;
+            auto current = (TypeRef *) type->type;
             while (current) {
                 if (current->type->hash == hash) return current->type;
                 current = current->next;
@@ -270,7 +271,7 @@ namespace ts::vm2 {
     inline void forEachChild(Type *type, const std::function<void(Type *child, bool &stop)> &callback) {
         if (type->type) {
             auto stop = false;
-            auto current = (TypeRef *)type->type;
+            auto current = (TypeRef *) type->type;
             while (!stop && current) {
                 callback(current->type, stop);
                 current = current->next;
@@ -351,9 +352,9 @@ namespace ts::vm2 {
                 break;
             }
             case TypeKind::PropertySignature: {
-                stringifyType(((TypeRef*)type->type)->type, r);
+                stringifyType(((TypeRef *) type->type)->type, r);
                 r += ": ";
-                stringifyType(((TypeRef*)type->type)->next->type, r);
+                stringifyType(((TypeRef *) type->type)->next->type, r);
                 break;
             }
             case TypeKind::ObjectLiteral: {
@@ -397,7 +398,10 @@ namespace ts::vm2 {
                 break;
             }
             case TypeKind::Parameter: {
-                stringifyType((Type *) type->type, r);
+                auto parameterType = (Type *) type->type;
+                r += type->text;
+                r += ": ";
+                stringifyType(parameterType, r);
                 break;
             }
             case TypeKind::Tuple: {
@@ -444,6 +448,24 @@ namespace ts::vm2 {
                     current = current->next;
                 }
                 r += "`";
+                break;
+            }
+            case TypeKind::Function: {
+                auto first = (TypeRef *) type->type;
+                auto nameType = first->type;
+                auto second = (TypeRef *) first->next;
+                auto returnType = second->type;
+
+                r += "(";
+                auto current = (TypeRef *) second->next;
+                while (current) {
+                    stringifyType(current->type, r);
+                    current = current->next;
+                    if (current) r += ", ";
+                }
+                r += ") => (";
+                stringifyType(returnType, r);
+                r += ")";
                 break;
             }
             case TypeKind::Literal: {
@@ -534,9 +556,9 @@ namespace ts::vm2 {
 }
 
 template<>
-struct fmt::formatter<ts::vm2::TypeKind>: formatter<string_view> {
+struct fmt::formatter<tr::vm2::TypeKind>: formatter<string_view> {
     template<typename FormatContext>
-    auto format(ts::vm2::TypeKind p, FormatContext &ctx) {
+    auto format(tr::vm2::TypeKind p, FormatContext &ctx) {
         return formatter<string_view>::format(magic_enum::enum_name(p), ctx);
     }
 };

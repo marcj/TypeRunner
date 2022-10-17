@@ -1,6 +1,6 @@
 #include "syntax_cursor.h"
 
-using namespace ts;
+using namespace tr;
 
 Node SyntaxCursor::currentNode(int position) {
     // Only compute the current node if the position is different than the last time

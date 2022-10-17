@@ -9,7 +9,7 @@
 #include "node_test.h"
 #include "parenthesizer.h"
 
-namespace ts {
+namespace tr {
 
     struct Parenthesizer;
 

@@ -5,7 +5,7 @@
 #include <locale>
 #include <codecvt>
 
-namespace ts::utf {
+namespace tr::utf {
     enum CharacterCodes {
         nullCharacter = 0,
         maxAsciiCharacter = 0x7F,

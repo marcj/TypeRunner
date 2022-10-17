@@ -1,8 +1,8 @@
 #include "factory.h"
 #include <fmt/core.h>
 
-namespace ts {
-    int Factory::propagatePropertyNameFlagsOfChild(shared<ts::Node> &node, int transformFlags) {
+namespace tr {
+    int Factory::propagatePropertyNameFlagsOfChild(shared<tr::Node> &node, int transformFlags) {
         return transformFlags | (node->transformFlags & (int) TransformFlags::PropertyNamePropagatingFlags);
     }
 

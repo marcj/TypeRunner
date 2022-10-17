@@ -14,7 +14,7 @@
 #include "./module2.h"
 #include "./instructions.h"
 
-namespace ts::vm2 {
+namespace tr::vm2 {
     using instructions::OP;
     using std::string_view;
 
@@ -62,7 +62,7 @@ namespace ts::vm2 {
     };
 
     enum SubroutineFlag: uint16_t {
-        InferBody = 1 << 0,
+        InferBody = 1<<0,
     };
 
     /**
@@ -78,6 +78,7 @@ namespace ts::vm2 {
         //the amount of registered variable slots on the stack. will be subtracted when doing popFrame()
         //type arguments of type functions and variables like for mapped types
         unsigned int variables = 0;
+        vector<unsigned int> variableIPs; //only used when stepper is active
         uint16_t typeArguments = 0;
 
         /** @see SubroutineFlag */
@@ -93,6 +94,10 @@ namespace ts::vm2 {
             return sp - initialSp;
         }
 
+        OP op() {
+            return (OP) module->bin[ip];
+        }
+
         std::span<Type *> pop(unsigned int size) {
             sp -= size;
             return {stack.data() + sp, size};
@@ -104,7 +109,7 @@ namespace ts::vm2 {
         }
 
         bool isMain() {
-            return !subroutine;
+            return subroutine->main;
         }
 
         int32_t parseInt32() {
@@ -121,12 +126,25 @@ namespace ts::vm2 {
     };
 
     template<class T, int Size>
-    struct StackPool {
+    class StackPool {
+    private:
         std::array<T, Size> values;
         unsigned int i;
-
+    public:
         T *at(unsigned int pos) {
             return &values[pos];
+        }
+
+        T *front() {
+            return &values[i];
+        }
+
+        unsigned int index() {
+            return i;
+        }
+
+        unsigned int size() {
+            return i + 1;
         }
 
         T *reset() {
@@ -150,15 +168,17 @@ namespace ts::vm2 {
     };
 
     constexpr auto stackSize = 1024;
+    //aka frames
     inline StackPool<ActiveSubroutine, stackSize> activeSubroutines;
     inline StackPool<LoopHelper, stackSize> loops;
 
+    inline bool stepper = false;
     inline ActiveSubroutine *subroutine = nullptr;
 
     void process();
 
-    void clear(shared<ts::vm2::Module> &module);
-    void prepare(shared<ts::vm2::Module> &module);
+    void clear(shared<tr::vm2::Module> &module);
+    void prepare(shared<tr::vm2::Module> &module);
     void drop(Type *type);
     void drop(std::span<TypeRef> *types);
     void gc(std::span<TypeRef> *types);
@@ -184,7 +204,6 @@ namespace ts::vm2 {
         poolRefs.clear();
 
         sp = 0;
-        subroutine = activeSubroutines.reset();
         loops.reset();
 
         prepare(module);

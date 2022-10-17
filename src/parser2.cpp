@@ -1,7 +1,7 @@
 
 #include "parser2.h"
 
-namespace ts {
+namespace tr {
     SyntaxKind Parser::token() {
         return currentToken;
     }

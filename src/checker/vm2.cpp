@@ -4,11 +4,15 @@
 #include "./vm2_utils.h"
 #include "Tracy.hpp"
 
-namespace ts::vm2 {
+namespace tr::vm2 {
     void prepare(shared<Module> &module) {
         parseHeader(module);
+        subroutine = activeSubroutines.reset();
         subroutine->module = module.get();
-        subroutine->ip = module->subroutines[0].address; //first is main
+        //first is main
+        subroutine->subroutine = &module->subroutines[0];
+        subroutine->ip = module->subroutines[0].address;
+        subroutine->initialSp = sp;
         subroutine->depth = 0;
     }
 
@@ -290,7 +294,7 @@ namespace ts::vm2 {
     /**
      * Unuse all cached types of subroutines and make them available for GC.
      */
-    void clear(shared<ts::vm2::Module> &module) {
+    void clear(shared<tr::vm2::Module> &module) {
         for (auto &&subroutine: module->subroutines) {
             if (subroutine.result) drop(subroutine.result);
             if (subroutine.narrowed) drop(subroutine.narrowed);
@@ -407,6 +411,7 @@ namespace ts::vm2 {
     }
 
     inline ActiveSubroutine *pushSubroutine(ModuleSubroutine *routine, unsigned int arguments) {
+        if (!routine) throw std::runtime_error("no routine given");
         auto nextSubroutine = activeSubroutines.push(); //&activeSubroutines[++activeSubroutineIdx];
         //important to reset necessary stuff, since we reuse
         nextSubroutine->ip = routine->address;
@@ -825,7 +830,9 @@ namespace ts::vm2 {
             //auto frameName = new string_view(fmt::format("[{}] {}", subroutine->ip, (OP) bin[subroutine->ip]));
             //ZoneName(frameName->begin(), frameName->size());
 
-            switch ((OP) bin[subroutine->ip]) {
+            auto ip = subroutine->ip;
+            auto op = (OP) bin[subroutine->ip];
+            switch (op) {
                 case OP::Halt: {
 //                    subroutine = activeSubroutines.reset();
 //                    frame = frames.reset();
@@ -892,11 +899,22 @@ namespace ts::vm2 {
                     stack[sp++] = type;
                     break;
                 }
+                case OP::ClassRef: {
+                    const auto address = subroutine->parseUint32();
+                    auto type = allocate(TypeKind::ClassRef, hash::const_hash("class"));
+                    type->size = address;
+                    stack[sp++] = type;
+                    break;
+                }
                 case OP::Instantiate: {
                     const auto arguments = subroutine->parseUint16();
                     auto ref = pop(); //FunctionRef/Class
 
                     switch (ref->kind) {
+                        case TypeKind::ClassRef: {
+                            call(ref->size, arguments);
+                            break;
+                        }
                         case TypeKind::FunctionRef: {
                             call(ref->size, arguments);
                             break;
@@ -917,6 +935,7 @@ namespace ts::vm2 {
                             break;
                         }
                         case TypeKind::Class: {
+                            //todo: convert to ClassInstance. Do we really have to copy all TypeRef?
                             //push()
                         }
                     }
@@ -1002,7 +1021,7 @@ namespace ts::vm2 {
                 case OP::Assign: {
                     auto rvalue = pop();
                     auto lvalue = pop();
-                    //debug("assign {} = {}", stringify(rvalue), stringify(lvalue));
+                    debug("assign {} = {}", stringify(rvalue), stringify(lvalue));
                     if (!extends(lvalue, rvalue)) {
 //                        auto error = stack.errorMessage();
 //                        error.ip = ip;
@@ -1020,7 +1039,8 @@ namespace ts::vm2 {
                 }
                 case OP::Return: {
                     if (subroutine->isMain()) {
-                        subroutine = activeSubroutines.reset();
+                        activeSubroutines.reset();
+                        subroutine = nullptr;
                         return;
                     }
 
@@ -1099,7 +1119,8 @@ namespace ts::vm2 {
                 case OP::CheckBody: {
                     const auto address = subroutine->parseUint32();
                     auto expectedType = stack[sp - 1];
-                    report("Nope");
+                    //todo implement
+                    //report("Nope");
                     break;
                 }
                 case OP::InferBody: {
@@ -1237,14 +1258,13 @@ namespace ts::vm2 {
                     break;
                 }
                 case OP::Loads: {
+                    const auto frameOffset = subroutine->parseUint16();
                     const auto varIndex = subroutine->parseUint16();
-                    push(stack[subroutine->initialSp + varIndex]);
-                    //debug("Loads {}:{} -> {}", frameOffset, varIndex, stringify(stack[index]));
-                    //if (frameOffset == 0) {
-                    //    push(stack[subroutine->initialSp + varIndex]);
-                    //} else {
-                    //    push(stack[frames.at(frames.i - frameOffset)->initialSp + varIndex]);
-                    //}
+                    if (frameOffset == 0) {
+                        push(stack[subroutine->initialSp + varIndex]);
+                    } else {
+                        push(stack[activeSubroutines.at(activeSubroutines.index() - frameOffset)->initialSp + varIndex]);
+                    }
                     break;
                 }
                 case OP::Slots: {
@@ -1692,6 +1712,20 @@ namespace ts::vm2 {
                 default: {
                     debug("[{}] OP {} not handled!", subroutine->ip, (OP) bin[subroutine->ip]);
                 }
+            }
+
+            if (stepper) {
+                if (op == instructions::TypeArgument) {
+                    subroutine->variableIPs.push_back(ip);
+                }
+                subroutine->ip++;
+////                        debug("Routine {} (ended={})", subroutine->depth, subroutine->ip == subroutine->end);
+//                if (subroutine->ip == subroutine->end) {
+//                    //subroutine is done
+//                    subroutine = subroutine->previous;
+//                }
+                //process() needs to be executed for each step
+                return;
             }
             subroutine->ip++;
         }

@@ -5,7 +5,7 @@
 #include <vector>
 #include <fmt/ranges.h>
 
-using namespace ts;
+using namespace tr;
 
 TEST(mem, unint) {
     std::vector<unsigned char> bin;

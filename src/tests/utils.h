@@ -4,7 +4,7 @@
 #include "../checker/vm2.h"
 #include "Tracy.hpp"
 
-namespace ts {
+namespace tr {
     std::string compile(std::string code, bool print = true) {
         Parser parser;
         auto result = parser.parseSourceFile("app.ts", code, ScriptTarget::Latest, false, ScriptKind::TS, {});

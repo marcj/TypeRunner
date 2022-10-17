@@ -5,7 +5,7 @@
 #include "../core.h"
 
 using namespace std;
-using namespace ts;
+using namespace tr;
 
 enum class SyntaxKind {
     Unknown,

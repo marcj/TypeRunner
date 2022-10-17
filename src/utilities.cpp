@@ -6,8 +6,8 @@
 #include "hash.h"
 #include <fmt/core.h>
 
-namespace ts {
-    using namespace ts::hash;
+namespace tr {
+    using namespace tr::hash;
 
     LanguageVariant getLanguageVariant(ScriptKind scriptKind) {
         // .tsx and .jsx files are treated as jsx language variant.

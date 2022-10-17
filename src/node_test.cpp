@@ -1,7 +1,7 @@
 #include "node_test.h"
 #include <fmt/core.h>
 
-namespace ts {
+namespace tr {
     /**
      * Gets flags that control emit behavior of a node.
      */

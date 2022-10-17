@@ -8,8 +8,8 @@
 #include "../checker/vm2.h"
 #include "./utils.h"
 
-using namespace ts;
-using namespace ts::vm2;
+using namespace tr;
+using namespace tr::vm2;
 
 using std::string;
 using std::string_view;
@@ -40,12 +40,12 @@ TEST_CASE("vm2Base1") {
 const v1: string = "abc";
 const v2: number = 123;
     )";
-    auto module = std::make_shared<vm2::Module>(ts::compile(code), "app.ts", "");
+    auto module = std::make_shared<vm2::Module>(tr::compile(code), "app.ts", "");
     run(module);
     REQUIRE(module->errors.size() == 0);
-    ts::vm2::gcStackAndFlush();
+    tr::vm2::gcStackAndFlush();
     //only v1, v2
-    REQUIRE(ts::vm2::pool.active == 2);
+    REQUIRE(tr::vm2::pool.active == 2);
 
     testBench(code, 0);
 }
@@ -84,14 +84,14 @@ const v1: a<true> = 'yes';
 const v2: a<true> = true;
 const v3: a<true> = false;
 )";
-    auto module = std::make_shared<vm2::Module>(ts::compile(code), "app.ts", code);
+    auto module = std::make_shared<vm2::Module>(tr::compile(code), "app.ts", code);
     run(module);
     module->printErrors();
 
     REQUIRE(module->errors.size() == 1);
-    ts::vm2::gcStackAndFlush();
+    tr::vm2::gcStackAndFlush();
     //only v1, v2, v3 plus for each 4 because union + (true | string | number)
-    REQUIRE(ts::vm2::pool.active == 3 * 4);
+    REQUIRE(tr::vm2::pool.active == 3 * 4);
 
     testBench(code, 1);
 }
@@ -103,14 +103,14 @@ const v1: a<number> = 'no';
 const v2: a<string> = 'yes';
 const v3: a<string> = 'nope';
 )";
-    auto module = std::make_shared<vm2::Module>(ts::compile(code), "app.ts", code);
+    auto module = std::make_shared<vm2::Module>(tr::compile(code), "app.ts", code);
     run(module);
     module->printErrors();
 
     REQUIRE(module->errors.size() == 1);
     //only v1, v2, v3 subroutine cached value should live
-    ts::vm2::gcStackAndFlush();
-    REQUIRE(ts::vm2::pool.active == 3);
+    tr::vm2::gcStackAndFlush();
+    REQUIRE(tr::vm2::pool.active == 3);
 
     testBench(code, 1);
 }
@@ -124,7 +124,7 @@ const v3: a<true, string> = true;
 const v4: a<true, string|number> = 'yes';
 const v5: a<true, string> = 'nope';
 )";
-    auto module = std::make_shared<vm2::Module>(ts::compile(code), "app.ts", code);
+    auto module = std::make_shared<vm2::Module>(tr::compile(code), "app.ts", code);
     run(module);
     module->printErrors();
 
@@ -149,21 +149,21 @@ type a<T> = b<T>;
 const var1: a<string> = false;
 )";
 
-    auto module = std::make_shared<vm2::Module>(ts::compile(code), "app.ts", code);
+    auto module = std::make_shared<vm2::Module>(tr::compile(code), "app.ts", code);
     run(module);
     module->printErrors();
     REQUIRE(module->errors.size() == 1);
 
-    ts::vm2::gcFlush();
+    tr::vm2::gcFlush();
     //only var1 cached value should live
-    REQUIRE(ts::vm2::pool.active == 1);
+    REQUIRE(tr::vm2::pool.active == 1);
 
-    ts::vm2::clear(module);
-    ts::vm2::gcStackAndFlush();
-    REQUIRE(ts::vm2::pool.active == 0);
+    tr::vm2::clear(module);
+    tr::vm2::gcStackAndFlush();
+    REQUIRE(tr::vm2::pool.active == 0);
 
-    ts::bench("first", 1000, [&] {
-//        ts::vm2::clear(module);
+    tr::bench("first", 1000, [&] {
+//        tr::vm2::clear(module);
         module->clear();
         //no vm2::clear necessary sine run() resets the type pool anyways
         run(module);
@@ -171,7 +171,7 @@ const var1: a<string> = false;
 }
 
 TEST_CASE("gcUnion") {
-    ts::checker::Program program;
+    tr::checker::Program program;
     for (auto i = 0; i<10; i++) {
         program.pushOp(OP::StringLiteral);
         program.pushStorage("a" + to_string(i));
@@ -183,12 +183,12 @@ TEST_CASE("gcUnion") {
     auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
     run(module);
     REQUIRE(module->errors.size() == 0);
-    ts::vm2::gcStackAndFlush();
-    REQUIRE(ts::vm2::pool.active == 0);
+    tr::vm2::gcStackAndFlush();
+    REQUIRE(tr::vm2::pool.active == 0);
 }
 
 TEST_CASE("gcTuple") {
-    ts::checker::Program program;
+    tr::checker::Program program;
     for (auto i = 0; i<10; i++) {
         program.pushOp(OP::String);
         program.pushOp(OP::TupleMember);
@@ -200,12 +200,12 @@ TEST_CASE("gcTuple") {
     auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
     run(module);
     REQUIRE(module->errors.size() == 0);
-    ts::vm2::gcStackAndFlush();
-    REQUIRE(ts::vm2::pool.active == 0);
+    tr::vm2::gcStackAndFlush();
+    REQUIRE(tr::vm2::pool.active == 0);
 }
 
 TEST_CASE("gcObject") {
-    ts::checker::Program program;
+    tr::checker::Program program;
     for (auto i = 0; i<10; i++) {
         program.pushOp(OP::StringLiteral);
         program.pushStorage("foo1");
@@ -220,8 +220,8 @@ TEST_CASE("gcObject") {
     auto module = std::make_shared<vm2::Module>(program.build(), "app.ts", "");
     run(module);
     REQUIRE(module->errors.size() == 0);
-    ts::vm2::gcStackAndFlush();
-    REQUIRE(ts::vm2::pool.active == 0);
+    tr::vm2::gcStackAndFlush();
+    REQUIRE(tr::vm2::pool.active == 0);
 }
 
 TEST_CASE("vm2TemplateLiteral1") {
@@ -230,7 +230,7 @@ type L = `${string}`;
 const var1: L = 'abc';
 const var2: L = 22;
 )";
-    ts::testBench(code, 1);
+    tr::testBench(code, 1);
 }
 
 TEST_CASE("vm2TemplateLiteral2") {
@@ -239,7 +239,7 @@ type L = `${34}`;
 const var1: L = '34';
 const var2: L = 34;
 )";
-    ts::testBench(code, 1);
+    tr::testBench(code, 1);
 }
 
 TEST_CASE("vm2TemplateLiteral3") {
@@ -249,7 +249,7 @@ const var1: L = 'abc';
 const var2: L = 'bbc';
 )";
     //not implemented yet
-    ts::testBench(code, 1);
+    tr::testBench(code, 1);
 }
 
 TEST_CASE("vm2TemplateLiteralSize") {
@@ -259,7 +259,7 @@ type L = `${A['length']}`;
 const var1: L = "1";
 const var2: L = "10";
 )";
-    ts::testBench(code, 1);
+    tr::testBench(code, 1);
 }
 
 TEST_CASE("vm2TemplateLiteralSizeGc") {
@@ -268,9 +268,9 @@ type A = [1];
 type L = `${A['length']}`;
 const var1: L = "1";
 )";
-    ts::test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == 4); //A|var1 (literal+tupleMember+tuple) + L (literal)
+    tr::test(code, 0);
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == 4); //A|var1 (literal+tupleMember+tuple) + L (literal)
 }
 
 TEST_CASE("vm2TupleMerge") {
@@ -282,8 +282,8 @@ const var2: L = [1, 2]; // Error
 const var3: A = [1, 2];
 )";
     test(code, 1);
-    debug("active {}", ts::vm2::pool.active);
-    ts::test(code, 1);
+    debug("active {}", tr::vm2::pool.active);
+    tr::test(code, 1);
 }
 
 TEST_CASE("vm2Tuple2") {
@@ -292,8 +292,8 @@ type A = [1, 2];
 const var1: A = [1, 2];
 )";
     test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == 1 + (2 + 2));
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == 1 + (2 + 2));
 }
 
 TEST_CASE("vm2Tuple3") {
@@ -303,8 +303,8 @@ type A = [...T, 2];
 const var1: A = [1, 2];
 )";
     auto module = test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == (1 + 2) + (1 + 2)); //[1], [1, 2], where "1" in second tuple is shared with first "1" in [1]
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == (1 + 2) + (1 + 2)); //[1], [1, 2], where "1" in second tuple is shared with first "1" in [1]
     testBench(code);
 }
 
@@ -315,8 +315,8 @@ type A = [T, 2];
 const var1: A = [1, 2];
 )";
     auto module = test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == (1 + 2 + 2)); //$1, [$1, 2]
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == (1 + 2 + 2)); //$1, [$1, 2]
 }
 
 TEST_CASE("vm2Tuple31") {
@@ -326,8 +326,8 @@ type A<B> = [...B, 2];
 const var1: A<T> = [1, 2];
 )";
     test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == (1 + 2) + (1 + 2)); //[1], [1, 2], where "1" in second tuple is shared with first "1" in [1]
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == (1 + 2) + (1 + 2)); //[1], [1, 2], where "1" in second tuple is shared with first "1" in [1]
 }
 
 TEST_CASE("vm2Tuple32") {
@@ -336,8 +336,8 @@ type A<B> = [...B, 2];
 const var1: A<[1]> = [1, 2];
 )";
     test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == (1 + 2 + 2)); //[1, 2]
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == (1 + 2 + 2)); //[1, 2]
 }
 
 TEST_CASE("vm2Tuple33") {
@@ -346,8 +346,8 @@ type A<B> = [...B, 2];
 const var1: A<[]> = [2];
 )";
     test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == (1 + 2)); // [2]
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == (1 + 2)); // [2]
 }
 
 TEST_CASE("vm2Fn1") {
@@ -356,9 +356,9 @@ type F<T> = T;
 const var1: F<string> = 'abc';
 )";
     test(code, 0);
-    //REQUIRE(ts::vm2::pool.active == 2);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == 1);
+    //REQUIRE(tr::vm2::pool.active == 2);
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == 1);
 }
 
 TEST_CASE("vm2Fn2") {
@@ -368,9 +368,9 @@ const var1: F<string> = 'abc';
 )";
     //todo extends not added yet
     test(code, 0);
-    //REQUIRE(ts::vm2::pool.active == 3);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == 1);
+    //REQUIRE(tr::vm2::pool.active == 3);
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == 1);
 }
 
 TEST_CASE("vm2Fn3") {
@@ -379,9 +379,9 @@ type F<T = string> = T;
 const var1: F = 'abc';
 )";
     test(code, 0);
-    //REQUIRE(ts::vm2::pool.active == 2);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == 1);
+    //REQUIRE(tr::vm2::pool.active == 2);
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == 1);
 }
 
 TEST_CASE("vm2Fn4") {
@@ -390,8 +390,8 @@ type F1 = [0];
 const var1: F1 = [0];
 )";
     test(code, 0);
-    ts::vm2::gcStackAndFlush();
-    REQUIRE(ts::vm2::pool.active == 3); //[0]
+    tr::vm2::gcStackAndFlush();
+    REQUIRE(tr::vm2::pool.active == 3); //[0]
 }
 
 TEST_CASE("vm2Fn4_1") {
@@ -400,8 +400,8 @@ type F1<T> = [0];
 const var1: F1<false> = [0];
 )";
     test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == 3); //[0]
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == 3); //[0]
 }
 
 TEST_CASE("vm2Fn4_2") {
@@ -410,8 +410,8 @@ type F1<T> = [...T, 0];
 const var1: F1<[]> = [0];
 )";
     test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == 3); //[0]
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == 3); //[0]
 }
 
 TEST_CASE("vm2Fn5") {
@@ -420,8 +420,8 @@ type F1<T> = T extends any ? [...T, 0] : never;
 const var1: F1<[]> = [0];
 )";
     test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == 3); //[0]
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == 3); //[0]
 }
 
 TEST_CASE("vm2Fn7") {
@@ -432,9 +432,9 @@ const var1: F1<T> = [0];
 const var2: T = [];
 )";
     test(code, 0);
-    ts::vm2::gcFlush();
+    tr::vm2::gcFlush();
     //a new tuple is generated, but the same amount of active elements is active
-    REQUIRE(ts::vm2::pool.active == 1 + 3); //[] + [0]
+    REQUIRE(tr::vm2::pool.active == 1 + 3); //[] + [0]
 }
 
 TEST_CASE("vm2FnArg") {
@@ -445,12 +445,12 @@ const var1: F1<[]> = [0];
 const var2: F2<[]> = [0];
 )";
     test(code, 0);
-    ts::vm2::gcFlush();
+    tr::vm2::gcFlush();
 
     //The idea is that for F1<[]> the [] is refCount=0, and for each argument in `type F1<>` the refCount is increased
     // and dropped at the end (::Return). This makes sure that [] in F1<[]> does not get stolen in F1.
     // To support stealing in tail calls, the drop (and frame cleanup) happens before the next function is called.
-    REQUIRE(ts::vm2::pool.active == 3 + 3); //two tuples
+    REQUIRE(tr::vm2::pool.active == 3 + 3); //two tuples
 }
 
 TEST_CASE("vm2FnTailCall") {
@@ -460,8 +460,8 @@ type F2<T> = F1<T, []>;
 const var1: F1<[]> = [0];
 )";
     test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == 3);
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == 3);
 }
 
 TEST_CASE("vm2FnTailCallConditional1") {
@@ -526,12 +526,12 @@ type F2<T2> = T2 extends any ? T2 extends any ? F1<T2> : 1 : 2;
 const var1: F2<[]> = [0];
 )";
     test(code, 0);
-    ts::vm2::gcFlush();
-    REQUIRE(ts::vm2::pool.active == 3);
+    tr::vm2::gcFlush();
+    REQUIRE(tr::vm2::pool.active == 3);
 }
 
 TEST_CASE("vm2BenchOverhead") {
-    ts::bench("nothing", 1000, [&] {
+    tr::bench("nothing", 1000, [&] {
     });
 }
 
@@ -665,8 +665,8 @@ TEST_CASE("class2") {
             return 0;
         }
     }
-    const now: number = new MyDate.now();
-    const now2: string = new MyDate.now();
+    const now: number = new MyDate().now();
+    const now2: string = new MyDate().now();
 )";
     test(code, 1);
     testBench(code, 1);
@@ -679,15 +679,36 @@ TEST_CASE("class3") {
             return 0;
         }
     }
-    const now: number = new MyDate<number>.now();
-    const now2: string = new MyDate<string>.now();
+    const now: number = new MyDate<number>().now();
+    const now2: string = new MyDate<string>().now();
+)";
+    test(code, 1);
+    testBench(code, 1);
+}
+
+//todo: requires handling Constructor, ThisKeyword, ThisType
+// this['item'] relies on `item`, since we can't enforce the order in compile time, we convert all properties/methods to subroutines and call them however they are referenced,
+// and detect circular dependencies in the runtime.
+// How do we pass `this`? As first TypeArgument, or in a Slot?
+// `this` could change, e.g. `new (MyDate & {now: () => string})`
+// https://www.typescriptlang.org/play?#code/FAMwrgdgxgLglgewgAggCgJQC5VgLYBGApgE7IDewy1yJRMYJKADANzAC+wwUANgIYBnQcgCyATwAi-GEQpUaEBAHdMOCPmJlKNXbXqMW7XVwXUYCNchgALOCIBkFJauzJBMEnAgBzDvL0aOgYmazsRIWR+CHFjGlNdAHpEsPtkKCQAN1IYEVs5YMNrcQAHOQso5AATIhBSOirkJDk4GDNkAgErACUDJgAVUqIAHlt7AG0AchdJgF0APgDA-RCjdq5TZOKyyuQAXjEpGTknchccTH3Fjy9fLi2MiA9q4-3UImVD6Vl2HiRnghvCAfL7HTAAOgsmF+j2e51whFIbwI4Jc0O4sJgqBUACZ1JokQcUZ1+NCgA
+TEST_CASE("class4") {
+    string code = R"(
+    class MyDate<T> {
+        constructor(public item: T) {}
+        now(): this['item'] {
+            return this.item;
+        }
+    }
+    const now: number = new MyDate<number>(123).now();
+    const now2: string = new MyDate<string>('123').now();
 )";
     test(code, 1);
     testBench(code, 1);
 }
 
 //todo: instance class from value arguments. does this work for functions already?
-TEST_CASE("class4") {
+TEST_CASE("class41") {
     string code = R"(
     class MyDate<T> {
         constructor(public item: T) {}
@@ -697,6 +718,43 @@ TEST_CASE("class4") {
     }
     const now: number = new MyDate(123).now();
     const now2: string = new MyDate('123').now();
+)";
+    test(code, 1);
+    testBench(code, 1);
+}
+
+TEST_CASE("class5") {
+    string code = R"(
+    class Data<T> {
+        constructor(public item: T) {}
+    }
+
+    class MyDate extends Data<string> {
+        now(): this['item'] {
+            return this.item;
+        }
+    }
+    const now: number = new MyDate('123').now();
+    const now2: string = new MyDate('123').now();
+)";
+    test(code, 1);
+    testBench(code, 1);
+}
+
+TEST_CASE("class6") {
+    string code = R"(
+    class Data<T> {
+        constructor(public item: T) {}
+    }
+
+    class MyDate extends Data<string> {
+        public item: number;
+        now(): this['item'] {
+            return this.item;
+        }
+    }
+    const now: number = new MyDate<number>(123).now();
+    const now2: string = new MyDate<string>('123').now();
 )";
     test(code, 1);
     testBench(code, 1);

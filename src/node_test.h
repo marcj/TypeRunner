@@ -2,7 +2,7 @@
 
 #include "types.h"
 
-namespace ts {
+namespace tr {
     // Literals
 
     using types::ModifierFlags;

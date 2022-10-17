@@ -24,8 +24,7 @@ inline void fileWrite(const string &file, const string_view &content) {
     t << content;
 }
 
-inline bool fileExists(const string &file)
-{
+inline bool fileExists(const string &file) {
     std::ifstream infile(file);
     return infile.good();
 }

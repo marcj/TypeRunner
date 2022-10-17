@@ -6,8 +6,8 @@
 #include "scanner.h"
 #include "node_test.h"
 
-namespace ts {
-    using namespace ts::types;
+namespace tr {
+    using namespace tr::types;
 
     struct Factory;
 

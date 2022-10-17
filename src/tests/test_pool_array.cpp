@@ -14,7 +14,7 @@ struct Item {
 };
 
 TEST_CASE("basic") {
-    ts::debug("std::span<Item> = {}", sizeof(std::span<Item>));
+    tr::debug("std::span<Item> = {}", sizeof(std::span<Item>));
 }
 
 TEST_CASE("block creation") {

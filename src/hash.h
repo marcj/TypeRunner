@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <stddef.h>
 
-namespace ts::hash {
+namespace tr::hash {
 
     //https://github.com/ekpyron/xxhashct
     struct xxh64 {

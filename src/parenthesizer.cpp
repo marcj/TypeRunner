@@ -5,7 +5,7 @@
 #include "parenthesizer.h"
 #include "factory.h"
 
-namespace ts {
+namespace tr {
 
     template<typename T>
     shared<NodeArray> sameMap(const sharedOpt<NodeArray> &array, const function<shared<T>(shared<T>, int)> &callback) {

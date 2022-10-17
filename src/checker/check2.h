@@ -2,7 +2,7 @@
 
 #include "./types2.h"
 
-namespace ts::vm2 {
+namespace tr::vm2 {
 
     namespace check {
         struct Check {
@@ -28,6 +28,37 @@ namespace ts::vm2 {
                 if (!extends((Type *) left->type, (Type *) right->type)) return false;
 
                 return true;
+            }
+            case TypeKind::Function: {
+                switch (left->kind) {
+                    case TypeKind::Function: {
+                        auto leftFirst = (TypeRef *) left->type;
+                        auto leftSecond = (TypeRef *) leftFirst->next;
+                        auto leftReturnType = leftSecond->type;
+
+                        auto rightFirst = (TypeRef *) right->type;
+                        auto rightSecond = (TypeRef *) rightFirst->next;
+                        auto rightReturnType = rightSecond->type;
+
+                        auto leftCurrent = leftSecond->next;
+                        auto rightCurrent = rightSecond->next;
+                        while (leftCurrent) {
+                            if (!rightCurrent) return false;
+
+                            auto leftParameter = leftCurrent->type;
+                            auto rightParameter = rightCurrent->type;
+
+                            if (!extends(leftParameter, rightParameter)) return false;
+
+                            leftCurrent = leftCurrent->next;
+                            rightCurrent = rightCurrent->next;
+                        }
+
+                        return extends(leftReturnType, rightReturnType);
+                    }
+                }
+                return false;
+                break;
             }
             case TypeKind::Tuple: {
                 switch (left->kind) {

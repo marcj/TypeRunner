@@ -14,11 +14,11 @@
 #include <fmt/core.h>
 #include <fmt/format.h>
 
-namespace ts {
+namespace tr {
     struct SourceFile;
 }
 
-namespace ts::types {
+namespace tr::types {
     using namespace std;
     struct CompilerOptions;
 
@@ -1070,14 +1070,14 @@ namespace ts::types {
 }
 
 template<>
-struct fmt::formatter<ts::types::SyntaxKind>: formatter<std::string_view> {
+struct fmt::formatter<tr::types::SyntaxKind>: formatter<std::string_view> {
     template<typename FormatContext>
-    auto format(ts::types::SyntaxKind p, FormatContext &ctx) {
+    auto format(tr::types::SyntaxKind p, FormatContext &ctx) {
         return formatter<string_view>::format(magic_enum::enum_name(p), ctx);
     }
 };
 
-namespace ts {
+namespace tr {
     using namespace std;
 
     using types::SyntaxKind;

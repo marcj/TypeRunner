@@ -15,8 +15,8 @@
 #include <iostream>
 #include <algorithm>
 
-namespace ts::vm {
-    using namespace ts::checker;
+namespace tr::vm {
+    using namespace tr::checker;
     using std::string_view;
     using std::span;
     using std::vector;

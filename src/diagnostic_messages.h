@@ -5,7 +5,7 @@
 #include <memory>
 #include <type_traits>
 
-namespace ts {
+namespace tr {
     using types::DiagnosticMessage;
     using types::DiagnosticCategory;
 

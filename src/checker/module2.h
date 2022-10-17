@@ -7,20 +7,21 @@
 #include "./instructions.h"
 #include "../utf.h"
 
-namespace ts::vm2 {
+namespace tr::vm2 {
     using std::string;
     using std::string_view;
-    using ts::instructions::OP;
-    using ts::utf::eatWhitespace;
+    using tr::instructions::OP;
+    using tr::utf::eatWhitespace;
 
     struct ModuleSubroutine {
         string_view name;
+        bool main = false;
         unsigned int address;
         unsigned int flags;
         bool exported = false;
         Type *result = nullptr;
         Type *narrowed = nullptr; //when control flow analysis sets a new value
-        ModuleSubroutine(string_view name, unsigned int address, unsigned int flags): name(name), address(address), flags(flags) {}
+        ModuleSubroutine(string_view name, unsigned int address, unsigned int flags, bool main): name(name), address(address), flags(flags), main(main) {}
     };
 
     struct FoundSourceMap {
@@ -163,6 +164,7 @@ namespace ts::vm2 {
     inline void parseHeader(shared<Module> &module) {
         auto &bin = module->bin;
         auto end = bin.size();
+        bool main = true;
         for (unsigned int i = 0; i < end; i++) {
             const auto op = (OP) bin[i];
             switch (op) {
@@ -183,7 +185,8 @@ namespace ts::vm2 {
                     unsigned int address = vm::readUint32(bin, i + 5);
                     unsigned int flags = vm::readUint32(bin, i + 5 + 4);
                     vm::eatParams(op, &i);
-                    module->subroutines.push_back(ModuleSubroutine(name, address, flags));
+                    module->subroutines.push_back(ModuleSubroutine(name, address, flags, main));
+                    main = false;
                     break;
                 }
                 case OP::Main: {

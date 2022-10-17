@@ -5,11 +5,11 @@
 #include "core.h"
 #include "utf.h"
 
-namespace ts {
+namespace tr {
     using std::string;
     using std::replace;
     using std::regex;
-    using ts::utf::CharCode;
+    using tr::utf::CharCode;
 
     constexpr static auto directorySeparator = "/";
     constexpr static auto altDirectorySeparator = "\\";

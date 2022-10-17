@@ -8,10 +8,10 @@
 #include "utf.h"
 #include "hash.h"
 
-namespace ts {
-    using namespace ts::types;
+namespace tr {
+    using namespace tr::types;
     using namespace std;
-    using ts::utf::CharCode;
+    using tr::utf::CharCode;
 
     struct ScanNumber {
         SyntaxKind type;
