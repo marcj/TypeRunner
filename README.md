@@ -1,4 +1,8 @@
-# TypeRunner
+**# TypeRunner
+
+<center>
+<img src="./docs/logo.png"/>
+</center>
 
 High-performance TypeScript compiler.
 
@@ -114,4 +118,4 @@ $ cd build
 $ cmake ..
 ```
 
-Now you find in the build folder some binaries you can execute.
+Now you find in the build folder some binaries you can execute.**
