@@ -29,7 +29,7 @@ We focus on the more strict TS part which means TypeRunner won't support JSDoc a
 
 The source code in the initial version is really only a proof of concept. It consists of roughly 30k LoC and shows very promising results.
 The approach is a TS-to-bytecode compiler and then run the bytecode in a custom virtual machine.
-The data show that this approach can lead to a hundred- to several-thousand-fold improvement in speed.
+The data shows that this approach can lead to a hundred- to several-thousand-fold improvement in speed.
 
 ![TypeRunner Debugger](./docs/typerunner-debugger.png)
 
