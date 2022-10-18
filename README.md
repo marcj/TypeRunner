@@ -206,7 +206,7 @@ and will likely grow in the future.
 TypeRunner is written in modern C++ with cmake, doctest, imgui, tracy, fmt. To work on this project first clone the repository:
 
 ```sh
-$ git clone git@github.com:marcj/TypeRunner.git
+$ git clone --recurse-submodules git@github.com:marcj/TypeRunner.git
 $ cd TypeRunner
 ```
 
@@ -216,6 +216,7 @@ then make sure cmake and a C++ compiler is installed. We use LLVM toolchain per 
 $ mkdir build
 $ cd build
 $ cmake ..
+$ make
 ```
 
 Now you find in the build folder some binaries you can execute.
