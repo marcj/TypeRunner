@@ -187,4 +187,4 @@ $ cmake ..
 $ make
 ```
 
-Now you find in the build folder some binaries you can execute.
+Binaries are created in the build folder, which can now be executed.
