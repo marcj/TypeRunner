@@ -23,10 +23,11 @@ Additionally, making TypeScript type checking as fast as possible and providing 
 
 ### Non-goals
 
-- Drop-in replacement for the official TypeScript compiler
+- Drop-in replacement for the *entire* official TypeScript compiler
 - Runtime
 
-Being a drop-in replacement for the entire official TypeScript compiler (tsc) would require copying design limitations, bugs, and legacy decisions of tsc. Because of TypeScript's 10-year history there are many features that are unnecessary today but kept for compatibility. We focus on a stricter subset of TypeScript, which means TypeRunner won't support some features such as JSDoc and several compiler options.
+TypeRunner could be a drop-in for strict TypeScript-only projects.   
+Being a drop-in replacement for the entire official TypeScript compiler (tsc) would require copying design limitations, bugs, and legacy decisions of tsc. Because of TypeScript's 10-year history there are many features that are unnecessary today but kept for compatibility. We focus on a stricter subset of TypeScript, which means TypeRunner won't support some features such as JSDoc type definitions in js files and several non-strict compiler options.
 
 ## Status
 
@@ -130,9 +131,13 @@ Also, implementing features to make adoption easier and [dogfooding](https://en.
 
 Strategically speaking it makes sense for Microsoft to develop TypeScript the way they do it, at least for the moment.
 
-### Why not a drop-in replacement for `tsc`?
+### Why not a drop-in replacement for the entire `tsc`?
 
-TypeScript offers a lot of functionality. Many things are targeted at a smooth transition from JavaScript to TypeScript by allowing not-so-strict syntax and alternative type declaration syntax like JSDoc. Although these features have a big impact on new TypeScript users they are not so much used in projects where TypeScript is used more strictly. TypeScript comes also with a fairly big variety of transpilers/transformers to generate JavaScript for all the different versions of of ECMAScript standards. While we think that although these features have a big value for new users and adoption, we want to focus more on the enterprise side of things where performance often translates directly to money.
+We want to focus more on the enterprise side of things where performance often translates directly to money.
+TypeScript offers a lot of functionality outside of that score:
+Many things are targeted at a smooth transition from JavaScript to TypeScript by allowing not-so-strict syntax and alternative type declaration syntax like JSDoc.
+TypeScript comes also with a fairly big variety of transpilers/transformers to generate JavaScript for all the different versions of of ECMAScript standards.
+Although these features have a big impact on new TypeScript users they are not so much used in projects where TypeScript is used more strictly, and can be replaced using other tools like .d.ts generators and a compiler without typechecking.
 
 ### What is currently supported?
 
@@ -146,6 +151,8 @@ Currently, the development of TypeRunner is almost stalled and was more an exper
 
 Because I know C++ much better than Rust. The market of good C++ developers is much bigger. TypeScript code also maps surprisingly well to C++, so porting
 the scanner, parser, and AST structure is actually rather easy, which allows back-porting features from TypeScript tsc to TypeRunner much easier. I also find Rust ugly.
+
+Rust doesn't work well with multiple mutable references to the same object, so big part of code would be `unsafe`, meaning that Rust features would not be used well. (insert link to swc dev's post where they say that rust won't work)
 
 ### Why not port TypeScript?
 
