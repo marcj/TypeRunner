@@ -210,11 +210,16 @@ $ git clone git@github.com:marcj/TypeRunner.git
 $ cd TypeRunner
 ```
 
-then make sure cmake and a C++ compiler is installed. We use LLVM toolchain per default. To build the project run the usual cmake command:
+To compile using Docker:
 
 ```sh
-$ git clone https://github.com/marcj/TypeRunner.git
-$ cd TypeRunner
+$ docker build -t typerunner -f Dockerfile .
+$ docker run typerunner build/bench tests/objectLiterals1.ts
+```
+
+To compile natively use make sure cmake and a C++ compiler is installed. We use LLVM toolchain per default. To build the project run the usual cmake command:
+
+```sh
 $ git submodule update --init --recursive
 $ mkdir build
 $ cd build
