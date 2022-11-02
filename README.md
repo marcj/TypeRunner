@@ -55,9 +55,9 @@ const v2: number = 123;
 ```
 
 ```
-TypeScript tsc:  1.1ms
-TypeRunner cold: 0.008374167ms (131x faster)
-TypeRunner warm: 0.000104375ms (10,576x faster)
+TypeScript tsc:  0.8ms
+TypeRunner cold: 0.004688500ms (170x faster)
+TypeRunner warm: 0.000079584ms (10,052x faster)
 ```
 
 ### Generic function
@@ -85,9 +85,9 @@ const b: Person = {name: 'Peter', age: '52'};
 ```
 
 ```
-TypeScript tsc:  1.9ms
-TypeRunner cold: 0.021316125ms (89x faster)
-TypeRunner warm: 0.001111333ms (1,709x faster)
+TypeScript tsc:  1.5ms
+TypeRunner cold: 0.009106375ms (164x faster)
+TypeRunner warm: 0.000836959ms (1,795x faster)
 ```
 
 ### Complex type
@@ -208,6 +208,7 @@ TypeRunner is written in modern C++ with cmake, doctest, imgui, tracy, fmt. To w
 ```sh
 $ git clone git@github.com:marcj/TypeRunner.git
 $ cd TypeRunner
+$ git submodule update --init --recursive
 ```
 
 To compile using Docker:
@@ -217,10 +218,9 @@ $ docker build -t typerunner -f Dockerfile .
 $ docker run typerunner build/bench tests/objectLiterals1.ts
 ```
 
-To compile natively use make sure cmake and a C++ compiler is installed. We use LLVM toolchain per default. To build the project run the usual cmake command:
+To compile natively make sure cmake and a C++ compiler is installed. We use LLVM toolchain per default. To build the project run the usual cmake command:
 
 ```sh
-$ git submodule update --init --recursive
 $ mkdir build
 $ cd build
 $ cmake -DCMAKE_CXX_COMPILER=clang++-14 -DCMAKE_C_COMPILER=clang-14 -DCMAKE_BUILD_TYPE=Release ..
