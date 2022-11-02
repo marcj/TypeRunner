@@ -1,6 +1,6 @@
 #include "./vm.h"
 
 namespace tr::vm {
-    shared<Type> stringToNum(VM &vm) {
+    node<Type> stringToNum(VM &vm) {
     }
 }

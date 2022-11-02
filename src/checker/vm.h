@@ -24,13 +24,13 @@ namespace tr::vm {
     using instructions::OP;
     using instructions::ErrorCode;
 
-    inline bool isConditionTruthy(shared<Type> node) {
+    inline bool isConditionTruthy(node<Type> node) {
         if (auto n = to<TypeLiteral>(node)) return n->text() == "true";
         return false;
     }
 
     struct CStack {
-        vector<shared<Type>> iterator;
+        vector<node<Type>> iterator;
         unsigned int i;
         unsigned int round;
     };
@@ -39,7 +39,7 @@ namespace tr::vm {
         vector<CStack> stack;
     public:
 
-        shared<Type> current(CStack &s) {
+        node<Type> current(CStack &s) {
             return s.iterator[s.i];
         }
 
@@ -47,7 +47,7 @@ namespace tr::vm {
             return (++s.i == s.iterator.size()) ? (s.i = 0, false) : true;
         }
 
-        vector<shared<Type>> toGroup(shared<Type> &type) {
+        vector<node<Type>> toGroup(node<Type> &type) {
             if (type->kind == TypeKind::Boolean) {
                 return {make_shared<TypeLiteral>("false", TypeLiteralType::String), make_shared<TypeLiteral>("true", TypeLiteralType::String)};
             } else if (type->kind == TypeKind::Null) {
@@ -66,7 +66,7 @@ namespace tr::vm {
                 //
                 //     return result;
             } else if (type->kind == TypeKind::Union) {
-                vector<shared<Type>> result;
+                vector<node<Type>> result;
                 for (auto &&v: to<TypeUnion>(type)->types) {
                     auto g = toGroup(v);
                     for (auto &&s: g) result.push_back(s);
@@ -78,16 +78,16 @@ namespace tr::vm {
             }
         }
 
-        void add(shared<Type> &item) {
+        void add(node<Type> &item) {
             stack.push_back({.iterator=toGroup(item), .i= 0, .round= 0});
         }
 
-        vector<vector<shared<Type>>> calculate() {
-            vector<vector<shared<Type>>> result;
+        vector<vector<node<Type>>> calculate() {
+            vector<vector<node<Type>>> result;
 
             outer:
             while (true) {
-                vector<shared<Type>> row;
+                vector<node<Type>> row;
                 for (auto &&s: stack) {
                     auto item = current(s);
                     if (item->kind == TypeKind::TemplateLiteral) {
@@ -126,7 +126,7 @@ namespace tr::vm {
      * e.g. [string, number][0] => string
      * e.g. [string, number][number] => string | number
      */
-    shared<Type> indexAccess(shared<Type> &container, shared<Type> &index) {
+    node<Type> indexAccess(node<Type> &container, node<Type> &index) {
         if (container->kind == TypeKind::Array) {
 //            if ((index.kind == TypeKind::literal && 'number' == typeof index.literal) || index.kind == TypeKind::number) return container.type;
 //            if (index.kind == TypeKind::literal && index.literal == 'length') return { kind: TypeKind::number };
@@ -224,10 +224,10 @@ namespace tr::vm {
     }
 
     struct LoopHelper {
-        vector<shared<Type>> types;
+        vector<node<Type>> types;
         unsigned int i = 0;
 
-        LoopHelper(const shared<Type> &type) {
+        LoopHelper(const node<Type> &type) {
             if (auto t = to<TypeUnion>(type)) {
                 types = t->types;
             } else {
@@ -235,7 +235,7 @@ namespace tr::vm {
             }
         }
 
-        sharedOpt<Type> next() {
+        optionalNode<Type> next() {
             if (i == types.size()) return nullptr;
             return types[i++];
         }
@@ -245,7 +245,7 @@ namespace tr::vm {
      * For each active subroutine this object is created.
      */
     struct ProgressingSubroutine {
-        shared<Module> module;
+        node<Module> module;
         ModuleSubroutine *subroutine;
 
         unsigned int ip = 0; //instruction pointer
@@ -256,9 +256,9 @@ namespace tr::vm {
         bool active = true;
         unsigned int typeArguments = 0;
 
-        sharedOpt<ProgressingSubroutine> previous = nullptr;
+        optionalNode<ProgressingSubroutine> previous = nullptr;
 
-        explicit ProgressingSubroutine(shared<Module> module, ModuleSubroutine *subroutine): module(module), subroutine(subroutine) {}
+        explicit ProgressingSubroutine(node<Module> module, ModuleSubroutine *subroutine): module(module), subroutine(subroutine) {}
 
         uint32_t parseUint32() {
             auto val = readUint32(module->bin, ip + 1);
@@ -278,7 +278,7 @@ namespace tr::vm {
         unsigned int initialSp = 0; //initial stack pointer
         unsigned int variables = 0; //the amount of registered variable slots on the stack. will be subtracted when doing popFrame()
 //        vector<unsigned int> variableIPs; //only used when stepper is active
-        sharedOpt<LoopHelper> loop = nullptr;
+        optionalNode<LoopHelper> loop = nullptr;
 //        ModuleSubroutine *subroutine;
 
         unsigned int size() {
@@ -317,16 +317,16 @@ namespace tr::vm {
 
     class VM;
 
-    shared<Type> stringToNum(VM &vm);
+    node<Type> stringToNum(VM &vm);
 
     class MemoryPool {
     public:
         vector<TypeLiteral> typeLiterals;
-        shared<TypeLiteral> defaultTypeLiteral = make_shared<TypeLiteral>();
-        shared<TypeTupleMember> defaultTypeTupleMember = make_shared<TypeTupleMember>();
-        shared<TypeObjectLiteral> defaultTypeObjectLiteral = make_shared<TypeObjectLiteral>();
-        shared<TypePropertySignature> defaultPropertySignature = make_shared<TypePropertySignature>();
-        shared<TypeUnknown> defaultUnknown = make_shared<TypeUnknown>();
+        node<TypeLiteral> defaultTypeLiteral = make_shared<TypeLiteral>();
+        node<TypeTupleMember> defaultTypeTupleMember = make_shared<TypeTupleMember>();
+        node<TypeObjectLiteral> defaultTypeObjectLiteral = make_shared<TypeObjectLiteral>();
+        node<TypePropertySignature> defaultPropertySignature = make_shared<TypePropertySignature>();
+        node<TypeUnknown> defaultUnknown = make_shared<TypeUnknown>();
 
         vector<TypeUnknown> unknowns;
 
@@ -341,21 +341,21 @@ namespace tr::vm {
 //            return make_shared<TypeUnknown>();
         }
 
-        shared<TypePropertySignature> makePropertySignature(const shared<Type> &type) {
+        node<TypePropertySignature> makePropertySignature(const node<Type> &type) {
             defaultPropertySignature->type = type;
             return defaultPropertySignature;
         }
 
-        shared<TypeTupleMember> makeTupleMember(const shared<Type> &type) {
+        node<TypeTupleMember> makeTupleMember(const node<Type> &type) {
             defaultTypeTupleMember->type = type;
             return defaultTypeTupleMember;
         }
 
-        shared<TypeObjectLiteral> makeObjectLiteral() {
+        node<TypeObjectLiteral> makeObjectLiteral() {
             return defaultTypeObjectLiteral;
         }
 
-        shared<TypeLiteral> makeTypeLiteral(const string_view &literal, TypeLiteralType type) {
+        node<TypeLiteral> makeTypeLiteral(const string_view &literal, TypeLiteralType type) {
 //            return make_shared<vm::TypeLiteral>(literal, type);
             return defaultTypeLiteral;
 //            auto t = make_shared<TypeLiteral>(std::move(typeLiterals.emplace_back(literal, type)));
@@ -369,19 +369,19 @@ namespace tr::vm {
         /**
          * Linked list of subroutines to execute. For each external call this subroutine will be changed.
          */
-        sharedOpt<ProgressingSubroutine> subroutine = nullptr;
+        optionalNode<ProgressingSubroutine> subroutine = nullptr;
         MemoryPool pool;
         vector<Frame> frames;
-        vector<shared<Type>> stack;
+        vector<node<Type>> stack;
         //when a OP is processes, its instruction pointer is stores here, and used in push() to set the ip to the new type generated by this OP.
         //diagnostics/debugger can use this information to map the type to the sourcecode.
         unsigned int ip{};
 
         bool stepper = false;
 
-        vector<shared<Module>> modules;
+        vector<node<Module>> modules;
 
-        unordered_map<unsigned int, function<shared<Type>(VM &)>> optimised;
+        unordered_map<unsigned int, function<node<Type>(VM &)>> optimised;
 
         VM() {
 //            stack.reserve(1000);
@@ -404,7 +404,7 @@ namespace tr::vm {
             return errors;
         }
 
-        void prepare(shared<Module> module) {
+        void prepare(node<Module> module) {
             parseHeader(module);
             modules.push_back(module);
 
@@ -419,13 +419,13 @@ namespace tr::vm {
             if (frames.size() > 1) frames.back().fromFrame(frames[frames.size() - 2]);
         }
 
-        void run(shared<Module> module) {
+        void run(node<Module> module) {
             profiler.clear();
             prepare(module);
             process();
         }
 
-        void call(shared<Module> &module, unsigned int index = 0, unsigned int arguments = 0) {
+        void call(node<Module> &module, unsigned int index = 0, unsigned int arguments = 0) {
             const auto loopRunning = !!subroutine;
 
             auto routine = module->getSubroutine(index);
@@ -465,17 +465,17 @@ namespace tr::vm {
         /**
          * Read frame types without popping frame.
          */
-        span<shared<Type>> readFrame() {
+        span<node<Type>> readFrame() {
             auto start = frames.back().initialSp + frames.back().variables;
             return {stack.data() + start, frames.back().sp - start};
         }
 
-        span<shared<Type>> popFrame() {
+        span<node<Type>> popFrame() {
 //            auto frameSize = frame->initialSp - frame->sp;
 //            while (frameSize--) stack.pop();
             auto start = frames.back().initialSp + frames.back().variables;
-            span<shared<Type>> sub{stack.data() + start, frames.back().sp - start};
-//            std::span<shared<Type>> sub{stack.begin() + frame->initialSp, frameSize};
+            span<node<Type>> sub{stack.data() + start, frames.back().sp - start};
+//            std::span<node<Type>> sub{stack.begin() + frame->initialSp, frameSize};
             frames.pop_back();
             return sub;
         }
@@ -490,12 +490,12 @@ namespace tr::vm {
 //            frames.back().subroutine = subroutine->subroutine;
         }
 
-        shared<Type> &last() {
+        node<Type> &last() {
             if (frames.back().sp == 0) throw runtime_error("stack is empty. Can not return last");
             return stack[frames.back().sp - 1];
         }
 
-        shared<Type> pop() {
+        node<Type> pop() {
             if (frames.back().sp == 0) throw runtime_error("stack is empty. Can not pop");
             frames.back().sp--;
             if (frames.back().sp < frames.back().initialSp) {
@@ -504,13 +504,13 @@ namespace tr::vm {
             return std::move(stack[frames.back().sp]);
         }
 
-        sharedOpt<Type> frameEntryAt(unsigned int position) {
+        optionalNode<Type> frameEntryAt(unsigned int position) {
             auto i = frames.back().initialSp + position;
             if (i > frames.back().sp) return nullptr;
             return stack[i];
         }
 
-        void push(const shared<Type> &type) {
+        void push(const node<Type> &type) {
 //            type->ip = ip;
 //            if (frames.back().sp >= stack.size()) {
 //                stack.push_back(type);
@@ -554,7 +554,7 @@ namespace tr::vm {
             subroutine->module->errors.push_back(message);
         }
 
-        void report(const string &message, const shared<Type> node) {
+        void report(const string &message, const node<Type> node) {
             report(DiagnosticMessage(message, node->ip));
         }
 
@@ -763,7 +763,7 @@ namespace tr::vm {
 //                        case OP::CallExpression: {
 //                            const auto parameterAmount = subroutine->parseUint16();
 //
-//                            span<shared<Type>> parameters{stack.data() + frames.back().sp - parameterAmount, parameterAmount};
+//                            span<node<Type>> parameters{stack.data() + frames.back().sp - parameterAmount, parameterAmount};
 //                            frames.back().sp -= parameterAmount;
 //
 //                            auto typeToCall = pop();
@@ -1075,7 +1075,7 @@ namespace tr::vm {
                 auto templateType = make_shared<TypeTemplateLiteral>();
                 bool hasPlaceholder = false;
 //                let lastLiteral: { kind: TypeKind::literal, literal: string, parent?: Type } | undefined = undefined;
-                sharedOpt<TypeLiteral> lastLiteral;
+                optionalNode<TypeLiteral> lastLiteral;
 
                 //merge a combination of types, e.g. [string, 'abc', '3'] as template literal => `${string}abc3`.
                 for (auto &&item: combination) {
@@ -1120,7 +1120,7 @@ namespace tr::vm {
             push(t);
         }
 
-        void pushObjectLiteralTypes(shared<TypeObjectLiteral> &type, const span<shared<Type>> &types) {
+        void pushObjectLiteralTypes(node<TypeObjectLiteral> &type, const span<node<Type>> &types) {
             for (auto &&member: types) {
                 switch (member->kind) {
                     case TypeKind::Never: {

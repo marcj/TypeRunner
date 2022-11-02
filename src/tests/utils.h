@@ -15,7 +15,7 @@ namespace tr {
         return bin;
     }
 
-    shared<vm2::Module> test(string code, unsigned int expectedErrors = 0) {
+    shared_ptr<vm2::Module> test(string code, unsigned int expectedErrors = 0) {
         auto bin = compile(code);
         auto module = make_shared<vm2::Module>(bin, "app.ts", code);
         vm2::run(module);

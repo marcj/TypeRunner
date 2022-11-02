@@ -1,4 +1,3 @@
-cmake_minimum_required(VERSION 3.22)
 project(typescript)
 
 #add_definitions(-DTRACY_ENABLE)
@@ -17,4 +16,4 @@ add_library(typescript utf.h utf.cpp core.h core.cpp utilities.h utilities.cpp n
 target_link_libraries(typescript fmt)
 #target_link_libraries(typescript asmjit::asmjit)
 
-add_subdirectory(gui)
+#add_subdirectory(gui)

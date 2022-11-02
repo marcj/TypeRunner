@@ -14,6 +14,13 @@ using namespace tr::vm2;
 using std::string;
 using std::string_view;
 
+TEST_CASE("union1") {
+    string code = R"(
+const v1: string | number = 'nope';
+)";
+    testBench(code, 0);
+}
+
 TEST_CASE("bigUnion") {
     tr::checker::Program program;
 

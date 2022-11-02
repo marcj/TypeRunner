@@ -100,11 +100,12 @@ namespace tr::vm {
             }
             case OP::ClassRef:
             case OP::FunctionRef: {
-                *i += 4;
+                *i += 4 + 4;
                 break;
             }
             case OP::New:
-            case OP::Instantiate: {
+            case OP::Instantiate:
+            case OP::InferTypeArguments: {
                 *i += 2;
                 break;
             }

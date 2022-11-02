@@ -99,7 +99,7 @@ const v3: NoNumber<Primitive> = 34;
         auto iterations = 100;
 
         auto start = std::chrono::high_resolution_clock::now();
-        shared<SourceFile> result;
+        node<SourceFile> result;
         for (auto i = 0; i<iterations; i++) {
             result = parser.parseSourceFile(fileName, code, tr::types::ScriptTarget::Latest, false, ScriptKind::TS, {});
         }

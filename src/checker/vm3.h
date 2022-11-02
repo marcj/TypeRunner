@@ -59,7 +59,7 @@ namespace tr::vm3 {
 ////            Main
 ////    };
 //
-//    void jump(shared<tr::vm::Module> &module) {
+//    void jump(node<tr::vm::Module> &module) {
 //        //https://christopherschwaab.wordpress.com/2018/04/13/generating-a-threaded-arm-interpreter-with-templates/
 //        // We're using the GNU C, labels-as-values extension here.
 //        void *prog[] = {&&PUSH, (void*)6,
@@ -92,7 +92,7 @@ namespace tr::vm3 {
 //        return;
 //    }
 //
-//    void run(shared<tr::vm::Module> &module) {
+//    void run(node<tr::vm::Module> &module) {
 //        program[0] = Noop;
 //        program[1] = Jump;
 //        program[2] = Halt;
@@ -107,7 +107,7 @@ namespace tr::vm3 {
 //        (*program[*ip])();
 //    }
 //
-//    void naive(shared<tr::vm::Module> &module) {
+//    void naive(node<tr::vm::Module> &module) {
 //        prepare(module);
 //        auto end = module->bin.size();
 //        auto &bin = module->bin;
@@ -278,7 +278,7 @@ namespace tr::vm3 {
 ////        int result = func();
 //    }
 //
-//    void jit(shared<tr::vm::Module> &module) {
+//    void jit(node<tr::vm::Module> &module) {
 ////        a64::Compiler c;
 ////        c.add(Jump);
 //

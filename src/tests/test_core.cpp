@@ -61,13 +61,13 @@ struct OptionalRef: public optional<T> {
 //};
 
 TEST(core, optionalNode) {
-    sharedOpt<Identifier> i;
+    optionalNode<Identifier> i;
     EXPECT_EQ(!!i, false);
 
     i = make_shared<Identifier>();
     EXPECT_EQ(!!i, true);
 
-    auto fn = [](sharedOpt<Node> node) {
+    auto fn = [](optionalNode<Node> node) {
         node->to<Identifier>().escapedText = "changed";
     };
 
@@ -121,7 +121,7 @@ TEST(core, switchString) {
     EXPECT_EQ(i, 2);
 }
 
-shared<Node> visitNode(const function<shared<Node>(shared<Node>)> &cbNode, sharedOpt<Node> node) {
+node<Node> visitNode(const function<node<Node>(node<Node>)> &cbNode, optionalNode<Node> node) {
     if (! node) return nullptr;
     return cbNode(node);
 }
@@ -147,7 +147,7 @@ TEST(core, nodeVisitAlternative) {
 //    return nullopt;
 //};
 
-void acceptShared(shared<Node> node) {
+void acceptShared(node<Node> node) {
     if (node->is<Identifier>()) {
         node->to<Identifier>().escapedText = "changed";
     }
@@ -168,10 +168,10 @@ TEST(core, passNodeToShared) {
 }
 
 TEST(core, logicalOrOverload) {
-    sharedOpt<Node> empty;
-    sharedOpt<Node> a = make_shared<Identifier>();
-    sharedOpt<Node> b = make_shared<SourceFile>();
-    sharedOpt<Node> c = make_shared<FunctionDeclaration>();
+    optionalNode<Node> empty;
+    optionalNode<Node> a = make_shared<Identifier>();
+    optionalNode<Node> b = make_shared<SourceFile>();
+    optionalNode<Node> c = make_shared<FunctionDeclaration>();
 
     EXPECT_EQ(a.get(), a.get());
     EXPECT_EQ(a.get(), (a || b).get());
@@ -201,20 +201,20 @@ TEST(core, logicalOrOverload) {
 
 
 //NodeUnion has no type related semantics, just meta-data
-SyntaxKind takeUnion(shared<NodeUnion(Identifier, SourceFile)> node) {
+SyntaxKind takeUnion(node<NodeUnion(Identifier, SourceFile)> node) {
     return node->kind;
 }
 
-SyntaxKind takeNode(shared<Node> node) {
+SyntaxKind takeNode(node<Node> node) {
     return node->kind;
 }
 
-SyntaxKind takeOptionalNode(sharedOpt<Node> node) {
+SyntaxKind takeOptionalNode(optionalNode<Node> node) {
     if (node) return node->kind;
     return SyntaxKind::Unknown;
 }
 
-SyntaxKind takeOptionalNodeUnion(sharedOpt<NodeUnion(Identifier, SourceFile)> node) {
+SyntaxKind takeOptionalNodeUnion(optionalNode<NodeUnion(Identifier, SourceFile)> node) {
     if (node) return node->kind;
     return SyntaxKind::Unknown;
 }
@@ -246,25 +246,25 @@ TEST(core, ParameterDeclaration) {
 }
 
 TEST(core, nodeUnion) {
-    shared<NodeUnion(Identifier, SourceFile)> i1 = make_shared<Identifier>();
+    node<NodeUnion(Identifier, SourceFile)> i1 = make_shared<Identifier>();
     EXPECT_EQ(takeUnion(i1), SyntaxKind::Identifier);
     EXPECT_EQ(takeNode(i1), SyntaxKind::Identifier);
     EXPECT_EQ(takeOptionalNode(i1), SyntaxKind::Identifier);
     EXPECT_EQ(takeOptionalNodeUnion(i1), SyntaxKind::Identifier);
 
-    shared<NodeUnion(Identifier, SourceFile)> i2(new SourceFile);
+    node<NodeUnion(Identifier, SourceFile)> i2(new SourceFile);
     EXPECT_EQ(takeUnion(i2), SyntaxKind::SourceFile);
     EXPECT_EQ(takeNode(i2), SyntaxKind::SourceFile);
     EXPECT_EQ(takeOptionalNode(i2), SyntaxKind::SourceFile);
     EXPECT_EQ(takeOptionalNodeUnion(i2), SyntaxKind::SourceFile);
 
-    sharedOpt<NodeUnion(Identifier, SourceFile)> o1(new Identifier);
+    optionalNode<NodeUnion(Identifier, SourceFile)> o1(new Identifier);
     EXPECT_EQ(takeUnion(o1), SyntaxKind::Identifier);
     EXPECT_EQ(takeNode(o1), SyntaxKind::Identifier);
     EXPECT_EQ(takeOptionalNode(o1), SyntaxKind::Identifier);
     EXPECT_EQ(takeOptionalNodeUnion(o1), SyntaxKind::Identifier);
 
-    sharedOpt<NodeUnion(Identifier, SourceFile)> o2;
+    optionalNode<NodeUnion(Identifier, SourceFile)> o2;
     EXPECT_EQ(takeOptionalNode(o2), SyntaxKind::Unknown);
     EXPECT_EQ(takeOptionalNodeUnion(o2), SyntaxKind::Unknown);
 }

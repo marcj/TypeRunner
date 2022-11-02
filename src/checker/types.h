@@ -141,7 +141,7 @@ namespace tr::vm {
 #endif
         }
 
-        void compare(const shared<Type> &left, const shared<Type> &right) {
+        void compare(const node<Type> &left, const node<Type> &right) {
 #ifdef TS_PROFILE
             data.comparisons[(int)left->kind][(int)right->kind]++;
 #endif
@@ -162,7 +162,7 @@ namespace tr::vm {
     struct Module;
 
     template<class T>
-    sharedOpt<T> to(const sharedOpt<Type> &p) {
+    optionalNode<T> to(const optionalNode<Type> &p) {
         if (!p) return nullptr;
         if (T::KIND != TypeKind::Unknown && p->kind != T::KIND) return nullptr;
         return reinterpret_pointer_cast<T>(p);
@@ -185,38 +185,38 @@ namespace tr::vm {
 
     struct TypeTemplateLiteral: BrandKind<TypeKind::TemplateLiteral, Type> {
 //        types: (TypeString | TypeAny | TypeNumber | TypeStringLiteral | TypeInfer)[]
-        vector<shared<Type>> types;
+        vector<node<Type>> types;
 
         explicit TypeTemplateLiteral() {}
-        explicit TypeTemplateLiteral(const vector<shared<Type>> &types): types(types) {}
+        explicit TypeTemplateLiteral(const vector<node<Type>> &types): types(types) {}
     };
 
     struct TypeRest: BrandKind<TypeKind::Rest, Type> {
-        shared<Type> type;
-        explicit TypeRest(shared<Type> type): type(std::move(type)) {
+        node<Type> type;
+        explicit TypeRest(node<Type> type): type(std::move(type)) {
         }
     };
 
     struct TypeArray: BrandKind<TypeKind::Array, Type> {
-        shared<Type> type;
-        explicit TypeArray(shared<Type> type): type(std::move(type)) {
+        node<Type> type;
+        explicit TypeArray(node<Type> type): type(std::move(type)) {
         }
     };
 
     struct TypeTupleMember: BrandKind<TypeKind::TupleMember, Type> {
-        shared<Type> type;
+        node<Type> type;
         bool optional = false;
         string_view name = "";
 
         explicit TypeTupleMember() {
         }
 
-        explicit TypeTupleMember(shared<Type> type): type(std::move(type)) {
+        explicit TypeTupleMember(node<Type> type): type(std::move(type)) {
         }
     };
 
     struct TypeTuple: BrandKind<TypeKind::Tuple, Type> {
-        vector<shared<TypeTupleMember>> types;
+        vector<node<TypeTupleMember>> types;
     };
 
     enum class TypeLiteralType {
@@ -258,7 +258,7 @@ namespace tr::vm {
             delete dynamicString;
         }
 
-        bool equal(const shared<TypeLiteral> &other) {
+        bool equal(const node<TypeLiteral> &other) {
             return type == other->type && literal.getHash() == other->literal.getHash();
 //            if (type != other->type) return false;
 //            if (!literalText && !other->literalText) return literal == other->literal;
@@ -273,7 +273,7 @@ namespace tr::vm {
     };
 
     struct TypeUnion: BrandKind<TypeKind::Union, Type> {
-        vector<shared<Type>> types;
+        vector<node<Type>> types;
         bool indexed = false;
         bool onlyLiterals = false;
         std::unordered_set<uint64_t> literalIndex;
@@ -298,7 +298,7 @@ namespace tr::vm {
             return onlyLiterals;
         }
 
-        bool includes(const shared<Type> &type) {
+        bool includes(const node<Type> &type) {
             if (type->kind == TypeKind::Literal) {
                 return literalIndex.contains(to<TypeLiteral>(type)->literal.hash);
             }
@@ -309,16 +309,16 @@ namespace tr::vm {
 
     struct TypeParameter: BrandKind<TypeKind::Parameter, Type> {
         string_view name; //number, string, symbol
-        shared<Type> type;
-        sharedOpt<Type> initializer = nullptr;
+        node<Type> type;
+        optionalNode<Type> initializer = nullptr;
         bool optional = false;
-        TypeParameter(const string_view &name, const shared<tr::vm::Type> &type): name(name), type(type) {}
+        TypeParameter(const string_view &name, const node<tr::vm::Type> &type): name(name), type(type) {}
     };
 
     struct TypeFunction: BrandKind<TypeKind::Function, Type> {
         string_view name; //number, string, symbol
-        vector<shared<TypeParameter>> parameters;
-        shared<Type> returnType;
+        vector<node<TypeParameter>> parameters;
+        node<Type> returnType;
     };
 
     struct TypeFunctionRef: BrandKind<TypeKind::FunctionRef, Type> {
@@ -330,45 +330,45 @@ namespace tr::vm {
         HashString name; //todo change to something that is number | string | symbol, same for MethodSignature
         bool optional = false;
         bool readonly = false;
-        shared<Type> type;
-        TypeProperty(const shared<Type> &type): type(type) {}
+        node<Type> type;
+        TypeProperty(const node<Type> &type): type(type) {}
     };
 
     struct TypePropertySignature: BrandKind<TypeKind::PropertySignature, Type> {
         HashString name; //todo change to something that is number | string | symbol, same for MethodSignature
         bool optional = false;
         bool readonly = false;
-        shared<Type> type;
+        node<Type> type;
         TypePropertySignature() {}
-        TypePropertySignature(const shared<Type> &type): type(type) {}
+        TypePropertySignature(const node<Type> &type): type(type) {}
     };
 
     struct TypeMethodSignature: BrandKind<TypeKind::MethodSignature, Type> {
         HashString name;
         bool optional = false;
-        vector<shared<Type>> parameters;
-        shared<Type> returnType;
+        vector<node<Type>> parameters;
+        node<Type> returnType;
     };
 
     struct TypeMethod: BrandKind<TypeKind::MethodSignature, Type> {
         HashString name;
         bool optional = false;
-        vector<shared<Type>> parameters;
-        shared<Type> returnType;
+        vector<node<Type>> parameters;
+        node<Type> returnType;
     };
 
     struct TypeIndexSignature: BrandKind<TypeKind::IndexSignature, Type> {
-        shared<Type> index;
-        shared<Type> type;
+        node<Type> index;
+        node<Type> type;
     };
 
     struct TypeObjectLiteral: BrandKind<TypeKind::ObjectLiteral, Type> {
-        vector<shared<Type>> types; //TypeIndexSignature | TypePropertySignature | TypeMethodSignature
+        vector<node<Type>> types; //TypeIndexSignature | TypePropertySignature | TypeMethodSignature
         explicit TypeObjectLiteral() {}
-        explicit TypeObjectLiteral(vector<shared<Type>> types): types(types) {}
+        explicit TypeObjectLiteral(vector<node<Type>> types): types(types) {}
     };
 
-    string stringify(shared<Type> type) {
+    string stringify(node<Type> type) {
         //todo: recursive types
 
         switch (type->kind) {
@@ -474,7 +474,7 @@ namespace tr::vm {
         return fmt::format("error-{}", type->kind);
     }
 
-    shared<Type> unboxUnion(shared<Type> type) {
+    node<Type> unboxUnion(node<Type> type) {
         if (type->kind == TypeKind::Union) {
             auto types = to<TypeUnion>(type)->types;
             if (types.size() == 0) return make_shared<TypeNever>(); //{ kind: ReflectionKind.never };
@@ -483,7 +483,7 @@ namespace tr::vm {
         return type;
     }
 
-    bool isOptional(shared<Type> type) {
+    bool isOptional(node<Type> type) {
         switch (type->kind) {
             case TypeKind::Union: {
                 auto a = to<TypeUnion>(type);
@@ -511,7 +511,7 @@ namespace tr::vm {
         return false;
     }
 
-    shared<Type> widen(shared<Type> type) {
+    node<Type> widen(node<Type> type) {
         switch (type->kind) {
             case TypeKind::Literal: {
                 auto a = to<TypeLiteral>(type);

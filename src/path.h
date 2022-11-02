@@ -14,7 +14,6 @@ namespace tr {
     constexpr static auto directorySeparator = "/";
     constexpr static auto altDirectorySeparator = "\\";
     constexpr static auto urlSchemeSeparator = "://";
-    constexpr static auto urlSchemeSeparatorSize = sizeof(urlSchemeSeparator) / sizeof(char);
     static const regex relativePathSegmentRegExp("/(?:\\/\\/)|(?:^|\\/)\\.\\.?(?:$|\\/)/");
 
 

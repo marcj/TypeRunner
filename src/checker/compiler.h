@@ -64,7 +64,7 @@ namespace tr::checker {
         unsigned int pos{};
         unsigned int end{};
         unsigned int declarations = 1;
-        sharedOpt<Subroutine> routine = nullptr;
+        shared_ptr<Subroutine> routine = nullptr;
     };
 
     struct FoundSymbol {
@@ -274,7 +274,7 @@ namespace tr::checker {
         OP op;
     };
 
-    inline void visitOps2(vector<shared<Subroutine>> &subroutines, Visit &visit, const function<void(Visit &)> &callback) {
+    inline void visitOps2(vector<shared_ptr<Subroutine>> &subroutines, Visit &visit, const function<void(Visit &)> &callback) {
         const auto ops = subroutines[visit.index]->ops;
         for (unsigned int i = 0; visit.active && i<ops.size(); i++) {
             visit.op = (OP) ops[i];
@@ -314,15 +314,15 @@ namespace tr::checker {
         }
     }
 
-    inline void visitOps(vector<shared<Subroutine>> &subroutines, unsigned int index, const function<void(Visit &)> &callback) {
+    inline void visitOps(vector<shared_ptr<Subroutine>> &subroutines, unsigned int index, const function<void(Visit &)> &callback) {
         auto current = subroutines[index];
         Visit visit;
         visit.index = index;
         visitOps2(subroutines, visit, callback);
     }
 
-    //shared<Subroutine> findOuterTypeFunction(vector<shared<Subroutine>> &subroutines, shared<Subroutine> &subroutine) {
-    //    shared<Subroutine> typeFunction = subroutine;
+    //shared_ptr<Subroutine> findOuterTypeFunction(vector<shared_ptr<Subroutine>> &subroutines, shared_ptr<Subroutine> &subroutine) {
+    //    shared_ptr<Subroutine> typeFunction = subroutine;
     //
     //    while (typeFunction->type == SymbolType::Inline) {
     //        if (typeFunction->index == 0) {
@@ -336,7 +336,7 @@ namespace tr::checker {
     //    return typeFunction;
     //}
 
-//    inline void optimiseRestReuse(vector<shared<Subroutine>> &subroutines, shared<Subroutine> &subroutine) {
+//    inline void optimiseRestReuse(vector<shared_ptr<Subroutine>> &subroutines, shared_ptr<Subroutine> &subroutine) {
 //        for (auto &&variable: subroutine->argumentUsages) {
 //            if (!variable.lastIp) continue;
 //
@@ -384,9 +384,9 @@ namespace tr::checker {
 //    }
 
 //    struct Optimiser {
-//        vector<shared<Subroutine>> *subroutines;
+//        vector<shared_ptr<Subroutine>> *subroutines;
 //
-//        explicit Optimiser(vector<shared<Subroutine>> *subroutines): subroutines(subroutines) {}
+//        explicit Optimiser(vector<shared_ptr<Subroutine>> *subroutines): subroutines(subroutines) {}
 //
 //        void optimise(unsigned int index) {
 //            auto current = (*subroutines)[index];
@@ -434,8 +434,8 @@ namespace tr::checker {
         unsigned int storageIndex{};
 
         //tracks which subroutine is active (end() is), so that pushOp calls are correctly assigned.
-        vector<shared<Subroutine>> activeSubroutines;
-        vector<shared<Subroutine>> subroutines;
+        vector<shared_ptr<Subroutine>> activeSubroutines;
+        vector<shared_ptr<Subroutine>> subroutines;
 
         Program() {
             pushSubroutineNameLess(); //main
@@ -455,7 +455,7 @@ namespace tr::checker {
             return routine->index;
         }
 
-        //shared<Subroutine> getOuterTypeFunction() {
+        //shared_ptr<Subroutine> getOuterTypeFunction() {
         //    return findOuterTypeFunction(subroutines, activeSubroutines.empty() ? subroutines[0] : activeSubroutines.back());
         //}
 
@@ -474,7 +474,7 @@ namespace tr::checker {
             return symbol.routine->index;
         }
 
-        shared<Subroutine> popSubroutine() {
+        shared_ptr<Subroutine> popSubroutine() {
             if (activeSubroutines.empty()) throw runtime_error("No active subroutine found");
             auto subroutine = activeSubroutines.back();
             if (subroutine->ops.empty()) {
@@ -494,7 +494,7 @@ namespace tr::checker {
             return subroutine;
         }
 
-        shared<Subroutine> &currentSubroutine() {
+        shared_ptr<Subroutine> &currentSubroutine() {
             return activeSubroutines.back();
         }
 
@@ -540,11 +540,11 @@ namespace tr::checker {
             vm::writeUint16(ops, offset == 0 ? ops.size() : offset, v);
         }
 
-        shared<Subroutine> mainSubroutine() {
+        shared_ptr<Subroutine> mainSubroutine() {
             return subroutines[0];
         }
 
-        void pushError(ErrorCode code, const shared<Node> &node) {
+        void pushError(ErrorCode code, const node<Node> &node) {
             auto main = mainSubroutine();
             //errors need to be part of main
             main->sourceMap.push(0, node->pos, node->end);
@@ -558,7 +558,7 @@ namespace tr::checker {
             pushUint16(foundSymbol.symbol->index);
         }
 
-        void pushSourceMap(const shared<Node> &node) {
+        void pushSourceMap(const node<Node> &node) {
             activeSubroutines.back()->pushSourceMap(node->pos, node->end);
         }
 
@@ -609,13 +609,13 @@ namespace tr::checker {
             return activeSubroutines.back()->ops.size();
         }
 
-        void pushOp(OP op, const sharedOpt<Node> &node) {
+        void pushOp(OP op, const optionalNode<Node> &node) {
             if (node) pushSourceMap(node);
             pushOp(op);
         }
 
         //needed for variables
-//        void pushOpAtFrameInHead(shared<Frame> frame, OP op, std::vector<unsigned int> params = {}) {
+//        void pushOpAtFrameInHead(shared_ptr<Frame> frame, OP op, std::vector<unsigned int> params = {}) {
 //            auto &ops = getOPs();
 //
 //            //an earlier known frame could be referenced, in which case we have to put ops between others.
@@ -645,7 +645,7 @@ namespace tr::checker {
          * Symbols will be created first before a body is extracted. This makes sure all
          * symbols are known before their reference is used.
          */
-        Symbol &pushSymbol(string_view name, SymbolType type, const shared<Node> &node) {
+        Symbol &pushSymbol(string_view name, SymbolType type, const node<Node> &node) {
             auto subroutine = currentSubroutine();
             for (auto &&v: subroutine->symbols) {
                 if (type != SymbolType::TypeVariable && v.name == name) {
@@ -665,7 +665,7 @@ namespace tr::checker {
             return subroutine->symbols.back();
         }
 
-        Symbol &pushSymbolForRoutine(string_view name, SymbolType type, const shared<Node> &node) {
+        Symbol &pushSymbolForRoutine(string_view name, SymbolType type, const node<Node> &node) {
             auto &symbol = pushSymbol(name, type, node);
             if (symbol.routine) return symbol;
 
@@ -697,7 +697,7 @@ namespace tr::checker {
             pushAddress(registerStorage(s));
         }
 
-        void pushStringLiteral(string_view s, const shared<Node> &node) {
+        void pushStringLiteral(string_view s, const node<Node> &node) {
             pushOp(OP::StringLiteral, node);
             pushStorage(s);
         }
@@ -776,17 +776,17 @@ namespace tr::checker {
 
     class Compiler {
     public:
-        Program compileSourceFile(const shared<SourceFile> &file) {
+        Program compileSourceFile(const shared_ptr<SourceFile> &file) {
             Program program;
 
-            handle(file, program);
+            handle(file.get(), program);
 
             program.popSubroutine(); //main
 
             return program;
         }
 
-        void pushName(sharedOpt<Node> name, Program &program) {
+        void pushName(optionalNode<Node> name, Program &program) {
             if (!name) {
                 program.pushOp(OP::Never);
                 return;
@@ -800,11 +800,11 @@ namespace tr::checker {
             }
         }
 
-        void pushFunction(OP op, sharedOpt<Node> node, Program &program, sharedOpt<Node> withName) {
-            sharedOpt<Node> body;
-            sharedOpt<Node> type;
-            sharedOpt<NodeArray> typeParameters;
-            sharedOpt<NodeArray> parameters;
+        void pushFunction(OP op, optionalNode<Node> node, Program &program, optionalNode<Node> withName) {
+            optionalNode<Node> body = nullptr;
+            optionalNode<Node> type = nullptr;
+            optionalNode<NodeArray> typeParameters = nullptr;
+            optionalNode<NodeArray> parameters = nullptr;
             if (auto a = to<FunctionDeclaration>(node)) {
                 body = a->body;
                 type = a->type;
@@ -865,30 +865,50 @@ namespace tr::checker {
                 //when there are type parameters, FunctionDeclaration returns a FunctionRef
                 //which indicates the VM that the function needs to be instantiated first.
 
-                auto subroutineIndex = program.pushSubroutineNameLess();
-                unsigned int size = 0;
-                for (auto &&param: typeParameters->list) {
-                    handle(param, program);
-                }
-                program.pushSlots();
+                auto functionDef = program.pushSubroutineNameLess();
+                {
+                    unsigned int size = 0;
+                    for (auto param: *typeParameters) {
+                        handle(param, program);
+                    }
+                    program.pushSlots();
 
-                //first comes the return type
-                size++;
-
-                pushBodyType();
-
-                for (auto &&param: parameters->list) {
+                    //first comes the return type
                     size++;
-                    handle(param, program);
+
+                    pushBodyType();
+
+                    for (auto param: *parameters) {
+                        size++;
+                        handle(param, program);
+                    }
+
+                    pushName(withName, program);
+                    program.pushOp(op, reinterpret_node<Node>(node));
+                    program.pushUint16(size);
+                    program.popSubroutine();
                 }
 
-                pushName(withName, program);
-                program.pushOp(op, reinterpret_pointer_cast<Node>(node));
-                program.pushUint16(size);
-                program.popSubroutine();
+                auto inferTypes = program.pushSubroutineNameLess();
+                {
+                    //todo implement inferring type arguments from parameters
+                    //https://www.typescriptlang.org/play?#code/PTAEBMFMGMBsEMBOlQDMCuA7aAXAlgPaYQECSOAPACoB8AFPAFyhUA0oARs1QJTcDcAKEEhQsSDlAFQAXlABvAF7MARCoC+QkWGhEAzpPiyS5OvKagAzOvZLVGnkNG7MBzsfBkcZi9fYFHbVAXN2gPLzoCW191QKDnfUkOcNNLaOZrONEE10kwuU9Tc2YAFhsFRFLYrVEoOCQUDGx8IjRMalBIAA8cSExwPQULAGly4foLNk5mYtBRvhYnHUTQIzlUTB8M8tnLMqywOoRkNCxcQmINgEYO7t7+wdnR9mHOnr6B0Ex0AFsOSEQE247C4Q2Y8wEQRChiuxmuWysO18+xqhxgx0aZxal0wACZbu8HmC5mM3vdPt8-gCgSwQdwFlQlsEVvBcXC8Qi-MS9tVhEcGqdmhc2pZqDSpqDeJDoatLAAGdmWOhpUBqQIy+Dy2HrTBK3Y7UFqXka+VsnVKgDalgAuuwLWprXF+ScmudWhtLDdaHQAHR+iwWqZUR3SlmexVXZXsNVCE1XbUiyP69KqhyxsNXM2JuhW22ge0qR1aZ2YoXu3X470B4N0-PBhnp3KyrMe3E5m12h3qsO4hOtnP6vMW2ZGouCE24lsVnO5ocF61jwQlwVunGWUXev0+gOBofBkOLcdhyyKy0d-NdxtuTXh82Wwd2kcaMcmyxT9czm1zh2L5eu7FtCUXpkh8jwjGM4q1lKh4akB7JAZySL2Ly2g4AAngADpABCoKsIFEnQABCBBdBQeCYKgAIsPhnxPOoNA8KhmHYbhyR3KBoB0ORlGINR7FEnRjEgOhWE4cENGDFxFFUcMjHaHo6AcIgBDoPgmAoNxVEAGKYCUuLMBapDSYgiDkQA5lQzEAIKIGZvx9JIABkwb5kZPGmZgFnWbZ9mYE5wzWq5xmWVhNl2T8Dl6Na8mKcpqnkSgVAGQAwvAsCwHMgUWgACspWGIOhqrwIW+YAPIcAAVjAOAADJ4L0iBpdFIAKUpKlqSgwwGVZmBoc1wCtXFHWrAZ2VIPAPxXFlblUc5WWpeloDEV0oBTUFPEAKKEgM0XaBaADKOBIDgM2ICFkBhb5OCBcgODoIgridEgsBoaAADuAAWfSgDgX0sN54UOe98CDKgeBdJA4AxW18XqSN+ZjY1k1ZYdx2nedl0RX581pRlAUI3lAKFSoxVZeVVW4HVDVNetALJYkjXkU5LkWgtGXLat03GVt5JRdDQ0JdMCPjcj+aowV6MA1dOOLfjOWEwVr0kyVFrk9VVMAjThnGfTuSM35oBzbTiA86B-WDe1gvQvrOCjSLa0HUdEvBVLWPXcbhty6dpsPP1RjW-ATNiHgADWKAAAavPxFK-P8iDh6ABgEBhgyvKgyk-JwkDme9eBQJg6ngGgGdWLINBfLHVF0Ho0j1YnR1oYM8CSJYQlgCJKDLWKxhUBJxIGB5Zm1pScfsNAzCabxhHqKAAD8CgAG7cIbCjj0tfc4Ig6AoPPsLMHK6gz8wWBQGDheoh3S0kd3ci99HgyT3Mc9P-f-eb+Zw+V4gY-MBwBAEOIeAmAZ7z3kEvFgR9QAn0gGfSGoBj79BgQlcAF9mJXy6JWdgAA1cut8+6P1eKA8BUwQ7MCwZA6BsCobCTQctTBoAcHGHkBaTAE1IDMAHuZa03B1DCFEDIcupAfofXIiHd6X1LjkXADnaAQDpHgGbpAUGBAp7X1oOwKg+1E5vXqtAL6gwXDSOxGleuii3aDBwNIBS+UAC0GECB6HqhcPQ7Aa7CObkEOut17qPT-r9TgjVsD6NAORVYxAsAXFcdIN6KAPrwAXigXGoB7F6EcRwcQwQ5F50UXoH0S1VJSEwC9cR31e54CbrgdAuNXroD0HA0J-sCA-AwkgcpRAfRBFILhXub0QZQLqUXOgMSviQDgUYdSb00AIDMmgFR7jJAdx4CE4guhmmtJrpgdgddHFmVYbACxf1DFOKICYy+ljQDeIepwAg-ilJAL0UojpNCsLoPocMSAjc+6cM8rg4kVAZ6v1mN8syICFAsLYcsuYHyoo8PgWgNKdT+CgGEqZMyZkASDH2tlTi1iAR2IccczAbdL50OoC8aFXz34-OMOpBJvFAWTFBcw1hEVIXvMbtwiBcLUAIsgEikAn1XqeCUcI8pP1UXot4rixA+LHHYlnkxF5pKpjssGK-YFvygGvQZbC0B4LWWhNVZy-53LeX8uAIKkgIrfpivfmiqi0rZWEoVSSkibyKXqqpWZX5WAQ6YAIG9YgOquV6pZRpYgRrYXMB5fsvlyLgD+tAFixVnc3VkqhZ8z1g9fkEEqtVPuswTWhohYa6FxrIExsRfGxNybnmpowem1VlLs1MIsMCgF20wK6rBWGtlZao3wtjea2twBXUNpVR6zt9cW1yHkKCdtBbGXP2ZSWiN-auXRrNdW6QI6x3uszVOjVPd8HGRflOkeVFi0GrXRygdla+V8LAAACQ2gAJQ2gAQg-doGQv7y42seOA0YATIDwBDgclAyAEDYj0CIjCWccAxNKWEouRh7H3HwCY2R-Rsm9CiaKh+gwPoBpCZIN6KjwN5J+B9D6Kb0E3z4lOghz8o5TqBV6z+VJv7BF-v-QBwDl3EIoYgqhcLKHIKWABi5EgfGDBUP6rCKgs6yNqRHVjvNQBdATpcx6aVemfPvTYu5QTlPwFU0-OJgxE2OpSYSqZ8Ah7CNqW8DCyBUnCj0-AAzvKghyNAOHO+THT3DATnayVgwbMEuxOwHTOc-EfQCfc-RIICn+rhj8ZuDym7ECQIDA2Oj-HhzAcwLc6gE5uLrhhPA0BwPCMgEEMGiA3ARNaA5RAr06DyeTpAFQSy-OqYOc3DpY6GOBY08x+e6mOLscHpx0ePHrkANAwJoh4JIFdcU3C5V7AADkC8ds0FRKgOZ4cLBd1oAnMpgxfX+sDSlyQ9UDEM0DgbMVfqA2bMTtILudFy5itkelSGQQbHl39Qsm51SLl4DMh9HA7A+k9LwItf4yz3JwPTk0-zkpw55M+t9ZIYqEXSHDqCc7NAE5EGKb9RKO2nt6xew967Azgeg5ueK7erjyLQA0pIKAWEiRiWWrTiASDMCEtxxI6ioSOaWa+NII5AFWj1XYBsPSO3e7YazqjgEyBqFgBB3LhZW8UDZ2p1KrnKBqezPSgGnO5HEC1ZrhFYjb08lUBEYMe3tX-gqbqfR2goBZf+yyQo3oi9YWfWqwl21kvVPgCeWANxwz1JjMTrFS2cMxKgb0T9NB-5hSwFDvW+Z0m7oPSbotFJaSMnYfkTkhVf4sTClV5WRda2Xg0jJ7WLvC3ZKhibPAPS8E2zFeJGoWsABWFUa9N7b0PrYcBT5J8lB-oOup8-UxOnRAKfP5YSgbjbySF4BbJT0QYMCIWUw1595giyff8E9QxBTEaaMvXUTMgH3sPsuoSiIWf2mKEMMIfc0X-XMO0ecRcWobfF0JvPfMUc-P5coUEQtWISEHIa8EoeCP-MfNMIAA
+                    //for functions with type arguments <T>fn(a: T)
+                    //we need a subroutine to infer them from passed arguments.
+                    for (auto param: *typeParameters) {
+                        //put TypeArgument for each type parameter on the stack
+                        //handle(param, program);
+                        //const auto p = to<TypeParameterDeclaration>(param);
+                        //p->constraint
+                        //auto &symbol = program.pushSymbol(->name->escapedText, SymbolType::TypeArgument, n);
+                    }
+                    program.pushOp(OP::InferTypeArguments);
+                    program.popSubroutine();
+                }
 
-                program.pushOp(OP::FunctionRef, reinterpret_pointer_cast<Node>(node));
-                program.pushAddress(subroutineIndex);
+                program.pushOp(OP::FunctionRef, reinterpret_node<Node>(node));
+                program.pushAddress(functionDef);
+                program.pushAddress(inferTypes);
             } else {
                 unsigned int size = 0;
                 //first comes the return type
@@ -896,21 +916,21 @@ namespace tr::checker {
 
                 pushBodyType();
 
-                for (auto &&param: parameters->list) {
+                for (auto param: *parameters) {
                     size++;
                     handle(param, program);
                 }
 
                 pushName(withName, program);
-                program.pushOp(op, reinterpret_pointer_cast<Node>(node));
+                program.pushOp(op, reinterpret_node<Node>(node));
                 program.pushUint16(size);
             }
         }
 
-        void handle(const shared<Node> &node, Program &program) {
+        void handle(const node<Node> &node, Program &program) {
             switch (node->kind) {
                 case SyntaxKind::SourceFile: {
-                    for (auto &&statement: to<SourceFile>(node)->statements->list) {
+                    for (auto statement: *to<SourceFile>(node)->statements) {
                         handle(statement, program);
                     }
                     break;
@@ -987,7 +1007,7 @@ namespace tr::checker {
                         program.pushStorage(*t->head->rawText);
                     }
 
-                    for (auto &&sub: t->templateSpans->list) {
+                    for (auto sub: *t->templateSpans) {
                         auto span = to<TemplateLiteralTypeSpan>(sub);
                         size++;
                         handle(to<TemplateLiteralTypeSpan>(span)->type, program);
@@ -1015,7 +1035,7 @@ namespace tr::checker {
                 case SyntaxKind::UnionType: {
                     const auto n = to<UnionTypeNode>(node);
                     unsigned int size = 0;
-                    for (auto &&s: n->types->list) {
+                    for (auto s: *n->types) {
                         size++;
                         handle(s, program);
                     }
@@ -1043,7 +1063,7 @@ namespace tr::checker {
                             }
                         } else {
                             if (n->typeArguments) {
-                                for (auto &&p: n->typeArguments->list) {
+                                for (auto p: *n->typeArguments) {
                                     handle(p, program);
                                 }
                             }
@@ -1077,7 +1097,7 @@ namespace tr::checker {
                         }
 
                         if (n->typeParameters) {
-                            for (auto &&p: n->typeParameters->list) {
+                            for (auto p: *n->typeParameters) {
                                 handle(p, program);
                             }
                         }
@@ -1117,14 +1137,14 @@ namespace tr::checker {
                         program.pushSlots();
                         handle(n->defaultType, program);
                         auto routine = program.popSubroutine();
-                        program.pushOp(instructions::TypeArgumentDefault, n->name);
+                        program.pushOp(OP::TypeArgumentDefault, n->name);
                         program.pushAddress(routine->index);
                     } else {
-                        program.pushOp(instructions::TypeArgument, n->name);
+                        program.pushOp(OP::TypeArgument, n->name);
                     }
                     if (n->constraint) {
                         handle(n->constraint, program);
-                        program.pushOp(instructions::TypeArgumentConstraint);
+                        program.pushOp(OP::TypeArgumentConstraint);
                     }
                     break;
                 }
@@ -1163,7 +1183,7 @@ namespace tr::checker {
                             program.pushSymbolAddress(foundSymbol);
                         } else {
                             if (n->typeArguments) {
-                                for (auto &&p: n->typeArguments->list) {
+                                for (auto p: *n->typeArguments) {
                                     handle(p, program);
                                 }
                             }
@@ -1214,10 +1234,10 @@ namespace tr::checker {
 
                     //first all extend expressions
                     if (n->heritageClauses) {
-                        for (auto &&node: n->heritageClauses->list) {
+                        for (auto node: *n->heritageClauses) {
                             auto heritage = to<HeritageClause>(node);
                             if (heritage->token == SyntaxKind::ExtendsKeyword) {
-                                for (auto &&extendType: heritage->types->list) {
+                                for (auto extendType: *heritage->types) {
                                     size++;
                                     handle(extendType, program);
                                 }
@@ -1225,7 +1245,7 @@ namespace tr::checker {
                         }
                     }
 
-                    for (auto &&member: n->members->list) {
+                    for (auto member: *n->members) {
                         size++;
                         handle(member, program);
                     }
@@ -1238,7 +1258,7 @@ namespace tr::checker {
                     const auto n = to<TypeLiteralNode>(node);
                     unsigned int size = 0;
 
-                    for (auto &&member: n->members->list) {
+                    for (auto member: *n->members) {
                         size++;
                         handle(member, program);
                     }
@@ -1265,7 +1285,7 @@ namespace tr::checker {
                     const auto n = to<ExpressionWithTypeArguments>(node);
                     auto typeArgumentsCount = n->typeArguments ? n->typeArguments->length() : 0;
                     if (n->typeArguments) {
-                        for (auto &&sub: n->typeArguments->list) handle(sub, program);
+                        for (auto sub: *n->typeArguments) handle(sub, program);
                     }
 
                     handle(n->expression, program);
@@ -1279,7 +1299,7 @@ namespace tr::checker {
                 case SyntaxKind::ObjectLiteralExpression: {
                     const auto n = to<ObjectLiteralExpression>(node);
                     unsigned int size = 0;
-                    for (auto &&sub: n->properties->list) {
+                    for (auto sub: *n->properties) {
                         size++;
                         handle(sub, program);
                     }
@@ -1289,20 +1309,23 @@ namespace tr::checker {
                 }
                 case SyntaxKind::NewExpression: {
                     const auto n = to<NewExpression>(node);
+
+                    auto argumentsCount = n->arguments ? n->arguments->length() : 0;
+                    if (n->arguments) for (auto sub: *n->arguments) handle(sub, program);
+
                     auto typeArgumentsCount = n->typeArguments ? n->typeArguments->length() : 0;
                     if (n->typeArguments) {
-                        for (auto &&sub: n->typeArguments->list) handle(sub, program);
+                        for (auto sub: *n->typeArguments) handle(sub, program);
                     }
-
                     handle(n->expression, program);
 
                     if (n->typeArguments) {
                         program.pushOp(OP::Instantiate, node);
                         program.pushUint16(typeArgumentsCount);
+                    } else if (argumentsCount) {
+                        program.pushOp(OP::StartInferTypeArguments, node);
+                        program.pushUint16(argumentsCount);
                     }
-
-                    auto argumentsCount = n->arguments ? n->arguments->length() : 0;
-                    if (n->arguments) for (auto &&sub: n->arguments->list) handle(sub, program);
 
                     program.pushOp(OP::New, node);
                     program.pushUint16(argumentsCount);
@@ -1310,9 +1333,12 @@ namespace tr::checker {
                 }
                 case SyntaxKind::CallExpression: {
                     const auto n = to<CallExpression>(node);
+                    auto argumentsCount = n->arguments->length();
+                    for (auto sub: *n->arguments) handle(sub, program);
+
                     auto typeArgumentsCount = n->typeArguments ? n->typeArguments->length() : 0;
                     if (n->typeArguments) {
-                        for (auto &&sub: n->typeArguments->list) handle(sub, program);
+                        for (auto sub: *n->typeArguments) handle(sub, program);
                     }
 
                     handle(n->expression, program);
@@ -1320,10 +1346,10 @@ namespace tr::checker {
                     if (n->typeArguments) {
                         program.pushOp(OP::Instantiate, node);
                         program.pushUint16(typeArgumentsCount);
+                    } else {
+                        program.pushOp(OP::StartInferTypeArguments, node);
+                        program.pushUint16(argumentsCount);
                     }
-
-                    auto argumentsCount = n->arguments->length();
-                    for (auto &&sub: n->arguments->list) handle(sub, program);
 
                     program.pushOp(OP::CallExpression, node);
                     program.pushUint16(argumentsCount);
@@ -1338,7 +1364,7 @@ namespace tr::checker {
                 }
                 case SyntaxKind::Block: {
                     const auto n = to<Block>(node);
-                    for (auto &&statement: n->statements->list) {
+                    for (auto statement: *n->statements) {
                         handle(statement, program);
                     }
                     break;
@@ -1377,7 +1403,7 @@ namespace tr::checker {
                     //so it can be executed for each union member.
                     // - the `checkType` is a simple identifier (just `T`, no `[T]`, no `T | x`, no `{a: T}`, etc)
 //                    let distributiveOverIdentifier: Identifier | undefined = isTypeReferenceNode(narrowed.checkType) && isIdentifier(narrowed.checkType.typeName) ? narrowed.checkType.typeName : undefined;
-                    sharedOpt<Identifier> distributiveOverIdentifier = isTypeReferenceNode(n->checkType) && isIdentifier(to<TypeReferenceNode>(n->checkType)->typeName) ? to<Identifier>(to<TypeReferenceNode>(n->checkType)->typeName) : nullptr;
+                    optionalNode<Identifier> distributiveOverIdentifier = isTypeReferenceNode(n->checkType) && isIdentifier(to<TypeReferenceNode>(n->checkType)->typeName) ? to<Identifier>(to<TypeReferenceNode>(n->checkType)->typeName) : nullptr;
 
                     program.pushSection();
                     auto symbolCheckpoint = program.createSymbolCheckout();
@@ -1404,7 +1430,7 @@ namespace tr::checker {
                     //checkType and trueType share symbols (from infer)
                     handle(n->checkType, program);
                     handle(n->extendsType, program);
-                    program.pushOp(instructions::Extends, n);
+                    program.pushOp(OP::Extends, n);
 
                     program.pushOp(OP::JumpCondition);
                     auto relativeTo = program.ip();
@@ -1467,7 +1493,7 @@ namespace tr::checker {
                     //value inference
                 case SyntaxKind::ArrayLiteralExpression: {
                     unsigned int size = 0;
-                    for (auto &&v: to<ArrayLiteralExpression>(node)->elements->list) {
+                    for (auto v: *to<ArrayLiteralExpression>(node)->elements) {
                         size++;
                         handle(v, program);
                         program.pushOp(OP::TupleMember, v);
@@ -1512,14 +1538,14 @@ namespace tr::checker {
                         if (n->typeParameters) {
                             auto subroutineIndex = program.pushSubroutineNameLess();
                             program.blockTailCall();
-                            for (auto &&p: n->typeParameters->list) {
+                            for (auto p: *n->typeParameters) {
                                 handle(p, program);
                             }
 
                             program.pushSlots();
 
                             unsigned int size = 0;
-                            for (auto &&member: n->members->list) {
+                            for (auto member: *n->members) {
                                 size++;
                                 handle(member, program);
                             }
@@ -1527,13 +1553,36 @@ namespace tr::checker {
                             program.pushUint16(size);
                             program.popSubroutine();
 
-                            program.pushOp(OP::ClassRef, reinterpret_pointer_cast<Node>(node));
+                            //unsigned int constructorInfer = 0;
+                            //for (auto member: *n->members) {
+                            //    //could be multiple constructors with constructor signature
+                            //    if (member->kind == SyntaxKind::Constructor) {
+                            //        //todo: How do we encode it?
+                            //    }
+                            //}
+                            auto inferTypes = program.pushSubroutineNameLess();
+                            {
+                                //for functions with type arguments <T>fn(a: T)
+                                //we need a subroutine to infer them from passed arguments.
+                                for (auto param: *n->typeParameters) {
+                                    //put TypeArgument for each type parameter on the stack
+                                    handle(param, program);
+                                    //const auto p = to<TypeParameterDeclaration>(param);
+                                    //p->constraint
+                                    //auto &symbol = program.pushSymbol(->name->escapedText, SymbolType::TypeArgument, n);
+                                }
+                                program.pushOp(OP::InferTypeArguments);
+                                program.popSubroutine();
+                            }
+
+                            program.pushOp(OP::ClassRef, reinterpret_node<Node>(node));
                             program.pushAddress(subroutineIndex);
+                            program.pushAddress(inferTypes);
                         } else {
                             program.pushSlots();
 
                             unsigned int size = 0;
-                            for (auto &&member: n->members->list) {
+                            for (auto member: *n->members) {
                                 size++;
                                 handle(member, program);
                             }
@@ -1563,7 +1612,7 @@ namespace tr::checker {
                 case SyntaxKind::TupleType: {
                     unsigned int size = 0;
                     auto n = to<TupleTypeNode>(node);
-                    for (auto &&e: n->elements->list) {
+                    for (auto e: *n->elements) {
                         if (auto tm = to<NamedTupleMember>(e)) {
                             size++;
                             handle(tm->type, program);
@@ -1617,7 +1666,7 @@ namespace tr::checker {
                     break;
                 }
                 case SyntaxKind::VariableStatement: {
-                    for (auto &&s: to<VariableStatement>(node)->declarationList->declarations->list) {
+                    for (auto s: *to<VariableStatement>(node)->declarationList->declarations) {
                         handle(s, program);
                     }
                     break;

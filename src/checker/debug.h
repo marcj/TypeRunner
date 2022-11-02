@@ -153,12 +153,13 @@ namespace tr::checker {
                 }
                 case OP::ClassRef:
                 case OP::FunctionRef: {
-                    params += fmt::format(" &{}", vm::readUint32(bin, i + 1));
+                    params += fmt::format(" &{} &{}", vm::readUint32(bin, i + 1), vm::readUint32(bin, i + 5));
                     vm::eatParams(op, &i);
                     break;
                 }
                 case OP::New:
-                case OP::Instantiate: {
+                case OP::Instantiate:
+                case OP::InferTypeArguments: {
                     params += fmt::format(" {}", vm::readUint16(bin, i + 1));
                     vm::eatParams(op, &i);
                     break;

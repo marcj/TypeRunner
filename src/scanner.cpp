@@ -424,7 +424,7 @@ namespace tr {
         return false;
     }
 
-    int Scanner::error(const shared<DiagnosticMessage> &message, int errPos, int length) {
+    int Scanner::error(const shared_ptr<DiagnosticMessage> &message, int errPos, int length) {
         if (errPos == -1) errPos = pos;
 
         cout << "Error: " << message->code << ": " << message->message << " at " << errPos << "\n";
@@ -752,6 +752,7 @@ namespace tr {
             if (match[1] == "ts-expect-error") return CommentDirectiveType::ExpectError;
             if (match[1] == "ts-ignore") return CommentDirectiveType::Ignore;
         }
+        return nullopt;
     }
 
     SyntaxKind Scanner::scanJsxAttributeValue() {

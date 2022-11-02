@@ -161,7 +161,7 @@ namespace tr::vm2 {
         }
     };
 
-    inline void parseHeader(shared<Module> &module) {
+    inline void parseHeader(shared_ptr<Module> &module) {
         auto &bin = module->bin;
         auto end = bin.size();
         bool main = true;

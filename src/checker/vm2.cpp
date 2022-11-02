@@ -5,7 +5,7 @@
 #include "Tracy.hpp"
 
 namespace tr::vm2 {
-    void prepare(shared<Module> &module) {
+    void prepare(shared_ptr<Module> &module) {
         parseHeader(module);
         subroutine = activeSubroutines.reset();
         subroutine->module = module.get();
@@ -156,6 +156,11 @@ namespace tr::vm2 {
                 gc((Type *) type->type);
                 break;
             }
+            case TypeKind::ClassInstance: {
+                ((Type *) type->type)->refCount--;
+                gc((Type *) type->type);
+                break;
+            }
         }
     }
 
@@ -294,7 +299,7 @@ namespace tr::vm2 {
     /**
      * Unuse all cached types of subroutines and make them available for GC.
      */
-    void clear(shared<tr::vm2::Module> &module) {
+    void clear(shared_ptr<tr::vm2::Module> &module) {
         for (auto &&subroutine: module->subroutines) {
             if (subroutine.result) drop(subroutine.result);
             if (subroutine.narrowed) drop(subroutine.narrowed);
@@ -427,6 +432,7 @@ namespace tr::vm2 {
         for (unsigned int i = 0; i<arguments; i++) {
             use(stack[subroutine->initialSp + i]);
         }
+        return nextSubroutine;
     }
 
     inline bool call(unsigned int address, unsigned int arguments) {
@@ -461,7 +467,8 @@ namespace tr::vm2 {
     Type *resolveObjectIndexType(Type *object, Type *index) {
         switch (index->kind) {
             case TypeKind::Literal: {
-                auto member = findChild(object, index->hash);
+                auto container = object->kind == TypeKind::ClassInstance ?  (Type *) object->type : object;
+                auto member = findChild(container, index->hash);
                 if (!member) {
                     return allocate(TypeKind::Never);
                 }
@@ -496,6 +503,9 @@ namespace tr::vm2 {
                     current = current->next;
                 }
                 return allocate(TypeKind::Never);
+            }
+            default: {
+                throw std::runtime_error("Cannot resolve object index");
             }
         }
     }
@@ -823,7 +833,7 @@ namespace tr::vm2 {
         auto &bin = subroutine->module->bin;
         while (true) {
             ZoneScoped;
-            //std::chrono::duration<double, std::milli> took = std::chrono::high_resolution_clock::now() - start;
+            //std::cron::duration<double, std::milli> took = std::chrono::high_resolution_clock::now() - start;
             //fmt::print(" - took {:.9f}ms\n", took.count());
             //start = std::chrono::high_resolution_clock::now();
             //fmt::print("[{}:{}] OP {} {}\n", subroutine->depth, subroutine->depth, subroutine->ip, (OP) bin[subroutine->ip]);
@@ -921,22 +931,6 @@ namespace tr::vm2 {
                         }
                         default: {
                             throw std::runtime_error(fmt::format("Can not instantiate {}", ref->kind));
-                        }
-                    }
-                    break;
-                }
-                case OP::New: {
-                    const auto arguments = subroutine->parseUint16();
-                    auto ref = pop(); //Class/Object with constructor signature
-
-                    switch (ref->kind) {
-                        case TypeKind::ClassInstance: {
-                            report("Can not call new on a class instance.");
-                            break;
-                        }
-                        case TypeKind::Class: {
-                            //todo: convert to ClassInstance. Do we really have to copy all TypeRef?
-                            //push()
                         }
                     }
                     break;
@@ -1413,8 +1407,8 @@ namespace tr::vm2 {
                     auto container = pop();
                     //e.g. container.name
                     switch (container->kind) {
+                        case TypeKind::ClassInstance:
                         case TypeKind::Class: {
-                            //MyClass.name, static access
                             auto type = indexAccess(container, name);
                             push(type);
                             break;
@@ -1441,6 +1435,68 @@ namespace tr::vm2 {
                     ((TypeRef *) type->type)->next = useAsRef(propertyType);
                     type->hash = name->hash;
                     push(type);
+                    break;
+                }
+                case OP::InferTypeArguments: {
+                    break;
+                }
+                case OP::StartInferTypeArguments: {
+                    const auto arguments = subroutine->parseUint16();
+                    auto ref = pop(); //Class/Object with constructor signature
+
+                    switch (ref->kind) {
+                        case TypeKind::ClassRef: {
+                            //instantiate class from constructor arguments
+                            //`new MyClass(123)`
+                            //ref->size contains the address to the subroutine of the class itself
+                            //ref->type the address of the type inferring subroutine of the constructor
+                            break;
+                        }
+                        case TypeKind::FunctionRef: {
+                            //instantiate class from constructor arguments
+                            //`doIt(123)`
+                            //ref->size contains the address to the subroutine of the class itself
+                            //ref->type the address of the type inferring subroutine of the constructor
+                            break;
+                        }
+                        default: {
+                            //todo look for constructor signature
+                            report("Can not infer type arguments from given type");
+                        }
+                    }
+                    break;
+                    break;
+                }
+                case OP::New: {
+                    const auto arguments = subroutine->parseUint16();
+                    auto ref = pop(); //Class/Object with constructor signature
+
+                    switch (ref->kind) {
+                        case TypeKind::ClassInstance: {
+                            report("Can not call new on a class instance.");
+                            break;
+                        }
+                        case TypeKind::Class: {
+                            //todo: validate constructor arguments
+                            auto type = allocate(TypeKind::ClassInstance);
+                            type->type = use(ref);
+                            push(type);
+                            break;
+                        }
+                        case TypeKind::ClassRef: {
+                            //instantiate class from constructor arguments
+                            //`new MyClass(123)`
+                            //todo: simply calling the ClassRef is not right. We need to transformer ClassRef to a ClassInstance
+                            // and while doing so infer from passed JS `arguments` all type arguments.
+                            call(ref->size, arguments);
+
+                            break;
+                        }
+                        default: {
+                            //todo look for constructor signature
+                            report("Can not 'new' given type");
+                        }
+                    }
                     break;
                 }
                 case OP::Class: {

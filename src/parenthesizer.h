@@ -14,7 +14,7 @@ namespace tr {
     struct Parenthesizer {
         Factory *factory;
 
-//    shared<Expression> getParenthesizeLeftSideOfBinaryForOperator(SyntaxKind operatorKind) {
+//    node<Expression> getParenthesizeLeftSideOfBinaryForOperator(SyntaxKind operatorKind) {
 ////        binaryLeftOperandParenthesizerCache ||= new Map();
 ////        let parenthesizerRule = binaryLeftOperandParenthesizerCache.get(operatorKind);
 ////        if (!parenthesizerRule) {
@@ -42,7 +42,7 @@ namespace tr {
          * @param isLeftSideOfBinary A value indicating whether the operand is the left side of the
          *                           BinaryExpression.
          */
-        bool binaryOperandNeedsParentheses(SyntaxKind binaryOperator, shared<Expression> operand, bool isLeftSideOfBinary, sharedOpt<Expression> leftOperand = nullptr) {
+        bool binaryOperandNeedsParentheses(SyntaxKind binaryOperator, node<Expression> operand, bool isLeftSideOfBinary, optionalNode<Expression> leftOperand = nullptr) {
             // If the operand has lower precedence, then it needs to be parenthesized to preserve the
             // intent of the expression. For example, if the operand is `a + b` and the operator is
             // `*`, then we need to parenthesize the operand to preserve the intended order of
@@ -163,7 +163,7 @@ namespace tr {
          * It is used to determine whether the right-hand operand of a binary plus expression can be
          * emitted without parentheses.
          */
-        SyntaxKind getLiteralKindOfBinaryPlusOperand(shared<Expression> node) {
+        SyntaxKind getLiteralKindOfBinaryPlusOperand(node<Expression> node) {
             node = to<Expression>(skipPartiallyEmittedExpressions(node));
 
             if (isLiteralKind(node->kind)) {
@@ -199,19 +199,19 @@ namespace tr {
          * @param isLeftSideOfBinary A value indicating whether the operand is the left side of the
          *                           BinaryExpression.
          */
-        shared<Expression> parenthesizeBinaryOperand(SyntaxKind binaryOperator, shared<Expression> operand, bool isLeftSideOfBinary, sharedOpt<Expression> leftOperand = nullptr);
+        node<Expression> parenthesizeBinaryOperand(SyntaxKind binaryOperator, node<Expression> operand, bool isLeftSideOfBinary, optionalNode<Expression> leftOperand = nullptr);
 
-        shared<Expression> parenthesizeLeftSideOfBinary(SyntaxKind binaryOperator, shared<Expression> leftSide);
+        node<Expression> parenthesizeLeftSideOfBinary(SyntaxKind binaryOperator, node<Expression> leftSide);
 
-        shared<Expression> parenthesizeRightSideOfBinary(SyntaxKind binaryOperator, sharedOpt<Expression> leftSide, shared<Expression> rightSide) {
+        node<Expression> parenthesizeRightSideOfBinary(SyntaxKind binaryOperator, optionalNode<Expression> leftSide, node<Expression> rightSide) {
             return parenthesizeBinaryOperand(binaryOperator, rightSide, /*isLeftSideOfBinary*/ false, leftSide);
         }
 
-        shared<Expression> parenthesizeExpressionOfComputedPropertyName(shared<Expression> expression);
+        node<Expression> parenthesizeExpressionOfComputedPropertyName(node<Expression> expression);
 
-        shared<Expression> parenthesizeConditionOfConditionalExpression(shared<Expression> condition);
+        node<Expression> parenthesizeConditionOfConditionalExpression(node<Expression> condition);
 
-        shared<Expression> parenthesizeBranchOfConditionalExpression(shared<Expression> branch);
+        node<Expression> parenthesizeBranchOfConditionalExpression(node<Expression> branch);
 
 //    /**
 //     *  [Per the spec](https://tc39.github.io/ecma262/#prod-ExportDeclaration), `export default` accepts _AssigmentExpression_ but
@@ -224,7 +224,7 @@ namespace tr {
 //     * - FunctionExpression
 //     * - ClassExpression
 //     */
-//    function parenthesizeExpressionOfExportDefault(shared<Expression> expression): Expression {
+//    function parenthesizeExpressionOfExportDefault(node<Expression> expression): Expression {
 //        auto check = skipPartiallyEmittedExpressions(expression);
 //        let needsParens = isCommaSequence(check);
 //        if (!needsParens) {
@@ -242,27 +242,27 @@ namespace tr {
          * Wraps an expression in parentheses if it is needed in order to use the expression for
          * property or element access.
          */
-        shared<LeftHandSideExpression> parenthesizeLeftSideOfAccess(shared<Expression> expression);
+        node<LeftHandSideExpression> parenthesizeLeftSideOfAccess(node<Expression> expression);
 
         /**
          * Wraps an expression in parentheses if it is needed in order to use the expression
          * as the expression of a `NewExpression` node->
          */
-        shared<LeftHandSideExpression> parenthesizeExpressionOfNew(shared<Expression> expression);
+        node<LeftHandSideExpression> parenthesizeExpressionOfNew(node<Expression> expression);
 
-        shared<LeftHandSideExpression> parenthesizeOperandOfPostfixUnary(shared<Expression> operand);
+        node<LeftHandSideExpression> parenthesizeOperandOfPostfixUnary(node<Expression> operand);
 
-        shared<UnaryExpression> parenthesizeOperandOfPrefixUnary(shared<Expression> operand);
+        node<UnaryExpression> parenthesizeOperandOfPrefixUnary(node<Expression> operand);
 
-        shared<Expression> parenthesizeExpressionForDisallowedComma(shared<Expression> expression, int = 0);
+        node<Expression> parenthesizeExpressionForDisallowedComma(node<Expression> expression, int = 0);
 
-        shared<NodeArray> parenthesizeExpressionsOfCommaDelimitedList(shared<NodeArray> elements);
+        node<NodeArray> parenthesizeExpressionsOfCommaDelimitedList(node<NodeArray> elements);
 
-        shared<Expression> parenthesizeExpressionOfExpressionStatement(shared<Expression> expression);
+        node<Expression> parenthesizeExpressionOfExpressionStatement(node<Expression> expression);
 
 //    function parenthesizeConciseBodyOfArrowFunction(body: Expression): Expression;
 //    function parenthesizeConciseBodyOfArrowFunction(body: ConciseBody): ConciseBody;
-        shared<Node> parenthesizeConciseBodyOfArrowFunction(shared<Node> body);
+        node<Node> parenthesizeConciseBodyOfArrowFunction(node<Node> body);
 
         // Type[Extends] :
         //     FunctionOrConstructorType
@@ -275,27 +275,27 @@ namespace tr {
         // - The check type (the `UnionType`, above) does not allow function, constructor, or conditional types (they must be parenthesized)
         // - The extends type (the first `Type`, above) does not allow conditional types (they must be parenthesized). Function and constructor types are fine.
         // - The true and false branch types (the second and third `Type` non-terminals, above) allow any type
-        shared<TypeNode> parenthesizeCheckTypeOfConditionalType(shared<TypeNode> checkType);
+        node<TypeNode> parenthesizeCheckTypeOfConditionalType(node<TypeNode> checkType);
 
-        shared<TypeNode> parenthesizeExtendsTypeOfConditionalType(shared<TypeNode> extendsType);
+        node<TypeNode> parenthesizeExtendsTypeOfConditionalType(node<TypeNode> extendsType);
 
         // UnionType[Extends] :
         //     `|`? IntersectionType[?Extends]
         //     UnionType[?Extends] `|` IntersectionType[?Extends]
         //
         // - A union type constituent has the same precedence as the check type of a conditional type
-        shared<TypeNode> parenthesizeConstituentTypeOfUnionType(shared<TypeNode> type, int = 0);
+        node<TypeNode> parenthesizeConstituentTypeOfUnionType(node<TypeNode> type, int = 0);
 
-        shared<NodeArray> parenthesizeConstituentTypesOfUnionType(shared<NodeArray> members);
+        node<NodeArray> parenthesizeConstituentTypesOfUnionType(node<NodeArray> members);
 
         // IntersectionType[Extends] :
         //     `&`? TypeOperator[?Extends]
         //     IntersectionType[?Extends] `&` TypeOperator[?Extends]
         //
         // - An intersection type constituent does not allow function, constructor, conditional, or union types (they must be parenthesized)
-        shared<TypeNode> parenthesizeConstituentTypeOfIntersectionType(shared<TypeNode> type, int = 0);
+        node<TypeNode> parenthesizeConstituentTypeOfIntersectionType(node<TypeNode> type, int = 0);
 
-        shared<NodeArray> parenthesizeConstituentTypesOfIntersectionType(shared<NodeArray> members);
+        node<NodeArray> parenthesizeConstituentTypesOfIntersectionType(node<NodeArray> members);
 
         // TypeOperator[Extends] :
         //     PostfixType
@@ -304,9 +304,9 @@ namespace tr {
         //     `unique` TypeOperator[?Extends]
         //     `readonly` TypeOperator[?Extends]
         //
-        shared<TypeNode> parenthesizeOperandOfTypeOperator(shared<TypeNode> type);
+        node<TypeNode> parenthesizeOperandOfTypeOperator(node<TypeNode> type);
 
-        shared<TypeNode> parenthesizeOperandOfReadonlyTypeOperator(shared<TypeNode> type);
+        node<TypeNode> parenthesizeOperandOfReadonlyTypeOperator(node<TypeNode> type);
 
         // PostfixType :
         //     NonArrayType
@@ -321,9 +321,9 @@ namespace tr {
         // ArrayType :
         //     NonArrayType `[` `]`
         //
-        shared<TypeNode> parenthesizeNonArrayTypeOfPostfixType(shared<TypeNode> type);
+        node<TypeNode> parenthesizeNonArrayTypeOfPostfixType(node<TypeNode> type);
 
-        shared<TypeNode> parenthesizeElementTypeOfTupleType(shared<TypeNode> type, int = 0) {
+        node<TypeNode> parenthesizeElementTypeOfTupleType(node<TypeNode> type, int = 0) {
 //        if (hasJSDocPostfixQuestion(type)) return factory->createParenthesizedType(type);
             return type;
         }
@@ -358,9 +358,9 @@ namespace tr {
         // RestType :
         //     `...` Type[~Extends]
         //
-        shared<NodeArray> parenthesizeElementTypesOfTupleType(shared<NodeArray> types);
+        node<NodeArray> parenthesizeElementTypesOfTupleType(node<NodeArray> types);
 
-        bool hasJSDocPostfixQuestion(shared<TypeNode> type) {
+        bool hasJSDocPostfixQuestion(node<TypeNode> type) {
             if (isJSDocNullableType(type)) return to<JSDocNullableType>(type)->postfix;
             if (isNamedTupleMember(type)) return hasJSDocPostfixQuestion(to<NamedTupleMember>(type)->type);
 
@@ -373,15 +373,15 @@ namespace tr {
             }
 
             if (isConditionalTypeNode(type)) return hasJSDocPostfixQuestion(to<ConditionalTypeNode>(type)->falseType);
-            if (isUnionTypeNode(type)) return hasJSDocPostfixQuestion(reinterpret_pointer_cast<TypeNode>(last(to<UnionTypeNode>(type)->types)));
-            if (isIntersectionTypeNode(type)) return hasJSDocPostfixQuestion(reinterpret_pointer_cast<TypeNode>(last(to<IntersectionTypeNode>(type)->types)));
+            if (isUnionTypeNode(type)) return hasJSDocPostfixQuestion(reinterpret_cast<TypeNode*>(last(to<UnionTypeNode>(type)->types)));
+            if (isIntersectionTypeNode(type)) return hasJSDocPostfixQuestion(reinterpret_cast<TypeNode*>(last(to<IntersectionTypeNode>(type)->types)));
             if (auto infer = to<InferTypeNode>(type)) {
                 return infer->typeParameter->constraint && hasJSDocPostfixQuestion(infer->typeParameter->constraint);
             }
             return false;
         }
 
-        shared<TypeNode> parenthesizeTypeOfOptionalType(shared<TypeNode> type);
+        node<TypeNode> parenthesizeTypeOfOptionalType(node<TypeNode> type);
 
 //    // function parenthesizeMemberOfElementType(member: TypeNode): TypeNode {
 //    //     switch (member.kind) {
@@ -404,12 +404,12 @@ namespace tr {
 //    //     return parenthesizeMemberOfElementType(member);
 //    // }
 //
-        shared<TypeNode> parenthesizeLeadingTypeArgument(shared<TypeNode> node);
+        node<TypeNode> parenthesizeLeadingTypeArgument(node<TypeNode> node);
 
-        shared<TypeNode> parenthesizeOrdinalTypeArgument(shared<TypeNode> node, int i) {
+        node<TypeNode> parenthesizeOrdinalTypeArgument(node<TypeNode> node, int i) {
             return i == 0 ? parenthesizeLeadingTypeArgument(node) : node;
         }
 
-        sharedOpt<NodeArray> parenthesizeTypeArguments(sharedOpt<NodeArray> typeArguments);
+        optionalNode<NodeArray> parenthesizeTypeArguments(optionalNode<NodeArray> typeArguments);
     };
 }

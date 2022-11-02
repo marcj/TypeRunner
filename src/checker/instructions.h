@@ -69,6 +69,8 @@ namespace tr::instructions {
 
         CallExpression, //JS call expression, with 1 parameter (amount of parameters)
         Instantiate, //instantiates a type on the stack (FunctionRef for example), ExpressionWithTypeArguments
+        StartInferTypeArguments, //calling generic function/class with only value arguments, infer type arguments from it
+        InferTypeArguments,
         New,
 
         /**

@@ -6,7 +6,7 @@
 namespace tr::vm {
     static auto emptyString = HashString("");
 
-    HashString &getName(const shared<Type> &member) {
+    HashString &getName(const node<Type> &member) {
         switch (member->kind) {
             case TypeKind::MethodSignature: return to<TypeMethodSignature>(member)->name;
             case TypeKind::Method: return to<TypeMethod>(member)->name;
@@ -16,7 +16,7 @@ namespace tr::vm {
         return emptyString;
     }
 
-    sharedOpt<Type> findMember(const vector<shared<Type>> &members, HashString &name) {
+    optionalNode<Type> findMember(const vector<node<Type>> &members, HashString &name) {
         for (auto &&member: members) {
             switch (member->kind) {
                 case TypeKind::MethodSignature: if (to<TypeMethodSignature>(member)->name == name) return member;
@@ -33,14 +33,14 @@ namespace tr::vm {
         return nullptr;
     }
 
-    bool isMember(const shared<Type> &type) {
+    bool isMember(const node<Type> &type) {
         return type->kind == TypeKind::PropertySignature || type->kind == TypeKind::Property
                || type->kind == TypeKind::MethodSignature || type->kind == TypeKind::Method;
     }
 
     struct StackEntry {
-        const shared<Type> left;
-        const shared<Type> right;
+        const node<Type> left;
+        const node<Type> right;
     };
 
     struct ExtendableStack {
@@ -77,7 +77,7 @@ namespace tr::vm {
             return DiagnosticMessage(message, left->ip);
         }
 
-        void push(const shared<Type> &left, const shared<Type> &right) {
+        void push(const node<Type> &left, const node<Type> &right) {
             stack.push_back({left, right});
         }
 
@@ -108,7 +108,7 @@ namespace tr::vm {
             return true;
         }
 
-        bool has(const shared<Type> &left, const shared<Type> &right) {
+        bool has(const node<Type> &left, const node<Type> &right) {
             for (auto &&entry: stack) {
                 if (entry.left == left && entry.right == right) return true;
             }
@@ -123,7 +123,7 @@ namespace tr::vm {
      *
      * `left extends right ? true : false`
      */
-    bool isExtendable(shared<Type> &left, shared<Type> &right, ExtendableStack &stack) {
+    bool isExtendable(node<Type> &left, node<Type> &right, ExtendableStack &stack) {
         if (right->kind == TypeKind::Parameter) {
             if (left->kind == TypeKind::Undefined && isOptional(right)) return true;
             right = to<TypeParameter>(right)->type;
@@ -290,7 +290,7 @@ namespace tr::vm {
         return false;
     }
 
-    bool isExtendable2(shared<Type> &left, shared<Type> &right, ExtendableStack &stack) {
+    bool isExtendable2(node<Type> &left, node<Type> &right, ExtendableStack &stack) {
 //        if (stack.has(left, right)) return true;
 //        stack.push(left, right);
         if (stack.stack.empty()) stack.push(left, right);
@@ -504,7 +504,7 @@ namespace tr::vm {
 //        return false;
     }
 
-    bool isExtendable(shared<Type> &left, shared<Type> &right) {
+    bool isExtendable(node<Type> &left, node<Type> &right) {
         ExtendableStack stack;
         return isExtendable(left, right, stack);
     }

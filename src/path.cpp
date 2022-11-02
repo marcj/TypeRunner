@@ -1,5 +1,3 @@
-#pragma once
-
 #include "path.h"
 
 namespace tr {
@@ -78,7 +76,7 @@ namespace tr {
         // URL
         auto schemeEnd = path.find(urlSchemeSeparator);
         if (schemeEnd != string::npos) {
-            auto authorityStart = schemeEnd + urlSchemeSeparatorSize;
+            auto authorityStart = schemeEnd + 3;
             auto authorityEnd = path.find(directorySeparator, authorityStart);
             if (authorityEnd != string::npos) { // URL: "file:///", "file://server/", "file://server/path"
                 // For local "file" URLs, include the leading DOS volume (if present).

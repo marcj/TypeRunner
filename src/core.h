@@ -38,17 +38,21 @@ namespace tr {
     string substring(const string &str, int start, optional<int> end = {});
 
     /**
-     * shared_ptr has optional semantic already built-in, so we use it instead of std::optional<shared_ptr<>>,
-     * but instead of using shared_ptr directly, we use sharedOpt<T> to make it clear that it can be empty.
+     * Used for AST optional nodes that are manually memory managed. It's necessary to check if(node) to make sure not to access invalid memory.
      */
     template<typename T>
-    using sharedOpt = shared_ptr<T>;
+    using optionalNode = T*;
 
     /**
-     * Because shared_ptr<T> is ugly.
+     * Used for AST nodes that are manually memory managed.
      */
     template<typename T>
-    using shared = shared_ptr<T>;
+    using node = T*;
+
+    template<typename T, typename N>
+    T *reinterpret_node(node<N> node) {
+        return reinterpret_cast<T*>(node);
+    }
 
     string replaceLeading(const string &text, const string &from, const string &to);
 
@@ -145,7 +149,7 @@ namespace tr {
                     }
                 }
             } else {
-                return (*array).size() > 0;
+                return (*array).size()>0;
             }
         }
         return false;
@@ -173,105 +177,116 @@ namespace tr {
     }
 
     template<typename T>
-    inline bool has(std::set<T> &s, T item) {
-        return s.find(item) != s.end();
+    inline bool has(std::set<T>&s, T
+    item) {
+    return s.
+    find(item)
+    != s.
+    end();
+}
+
+template<typename T>
+inline bool has(vector <T> &vector, T item) {
+    return find(vector.begin(), vector.end(), item) != vector.end();
+};
+
+template<typename T>
+inline bool has(const vector <T> &vector, T item) {
+    return find(vector.begin(), vector.end(), item) != vector.end();
+};
+
+template<typename T>
+inline unordered_map <string, T> combine(
+        const unordered_map <string, T> &map1,
+        const unordered_map <string, T> &map2
+) {
+    unordered_map <string, T> res(map1);
+    res.insert(map2.begin(), map2.end());
+    return res;
+}
+
+template<typename K, typename V>
+inline unordered_map <V, K> reverse(
+        const unordered_map <K, V> &map1
+) {
+    unordered_map <V, K> res;
+    for (auto &&i: map1) {
+        res[i.second] = i.first;
     }
+    return res;
+}
 
-    template<typename T>
-    inline bool has(vector<T> &vector, T item) {
-        return find(vector.begin(), vector.end(), item) != vector.end();
-    };
+template<typename K, typename T>
+inline optional <T> get(const unordered_map <K, T> &m, K key) {
+    auto v = m.find(key);
+    if (v == m.end()) return std::nullopt;
+    return v->second;
+}
 
-    template<typename T>
-    inline bool has(const vector <T> &vector, T item) {
-        return find(vector.begin(), vector.end(), item) != vector.end();
-    };
-
-    template<typename T>
-    inline unordered_map<string, T> combine(
-            const unordered_map<string, T> &map1,
-            const unordered_map<string, T> &map2
-    ) {
-        unordered_map<string, T> res(map1);
-        res.insert(map2.begin(), map2.end());
-        return res;
-    }
-
-    template<typename K, typename V>
-    inline unordered_map<V, K> reverse(
-            const unordered_map<K, V> &map1
-    ) {
-        unordered_map<V, K> res;
-        for (auto &&i: map1) {
-            res[i.second] = i.first;
-        }
-        return res;
-    }
-
-    template<typename K, typename T>
-    inline optional<T> get(const unordered_map<K, T> &m, K key) {
-        auto v = m.find(key);
-        if (v == m.end()) return std::nullopt;
-        return v->second;
-    }
-
-    template<typename K, typename T>
-    inline optional<T> set(unordered_map<K, T> &m, K key, T v) {
+template<typename K, typename T>
+inline optional <T> set(unordered_map <K, T> &m, K key, T v) {
 //        m.insert_or_assign(key, v);
-        throw std::runtime_error("not implemented");
-        std::cout << "set map: " << key << ", " << v << "\n";
+    throw std::runtime_error("not implemented");
+    std::cout<<"set map: "<<key<<", "<<v<<"\n";
 //        m.insert({key, v});
 //        m[key] = v;
+}
+
+template<typename T, typename U>
+inline bool has(unordered_map <T, U> &map, T key) {
+    return map.find(key) != map.end();
+};
+
+template<typename T, typename U>
+inline bool has(map <T, U> &map, T key) {
+    return map.find(key) != map.end();
+};
+
+//template<typename T, typename...Args>
+//inline void debug(T fmt, Args &&...args) {
+////        fmt::print(fmt, std::forward<Args>(args)...);
+//    std::vformat(fmt, std::make_format_args(std::forward<Args>(args)...));
+//    std::cout<<fmt::format(fmt, std::forward<Args>(args)...)<<"\n";
+////        std::cout << fmt::format(fmt, args...) << "\n";
+//}
+
+template <typename... Args>
+inline void debug(fmt::format_string<Args...> s, Args&&... args)
+{
+    std::cout << fmt::format(s, std::forward<Args>(args)...);
+}
+
+inline std::chrono::duration<double, std::milli> benchRun(int iterations, const function<void()> &callback) {
+    auto start = std::chrono::high_resolution_clock::now();
+    for (auto i = 0; i<iterations; i++) {
+        callback();
     }
 
-    template<typename T, typename U>
-    inline bool has(unordered_map<T, U> &map, T key) {
-        return map.find(key) != map.end();
-    };
+    return std::chrono::high_resolution_clock::now() - start;
+}
 
-    template<typename T, typename U>
-    inline bool has(map<T, U> &map, T key) {
-        return map.find(key) != map.end();
-    };
+inline void bench(string title, int iterations, const function<void()> &callback) {
+    auto took = benchRun(iterations, callback);
+    std::cout<<fmt::format("{} {} iterations took {:.9f}ms, {:.9f}ms per iteration\n", title, iterations, took.count(), took.count() / iterations);
+}
 
-    template<typename T, typename...Args>
-    inline void debug(T fmt, Args &&...args) {
-//        fmt::print(fmt, std::forward<Args>(args)...);
-        std::cout << fmt::format(fmt, std::forward<Args>(args)...) << "\n";
-//        std::cout << fmt::format(fmt, args...) << "\n";
-    }
+inline void bench(int iterations, const function<void()> &callback) {
+    bench("", iterations, callback);
+}
 
-    inline std::chrono::duration<double, std::milli> benchRun(int iterations, const function<void()> &callback) {
-        auto start = std::chrono::high_resolution_clock::now();
-        for (auto i = 0; i <iterations; i++) {
-            callback();
-        }
+inline std::string red;
+inline std::string green;
+inline std::string yellow;
+inline std::string cyan;
+inline std::string magenta;
+inline std::string reset;
 
-        return std::chrono::high_resolution_clock::now() - start;
-    }
-
-    inline void bench(string title, int iterations, const function<void()> &callback) {
-        auto took = benchRun(iterations, callback);
-        std::cout << fmt::format("{} {} iterations took {:.9f}ms, {:.9f}ms per iteration\n", title, iterations, took.count(), took.count()/iterations);
-    }
-
-    inline void bench(int iterations, const function<void()> &callback) {
-        bench("", iterations, callback);
-    }
-
-    inline std::string red;
-    inline std::string green;
-    inline std::string yellow;
-    inline std::string cyan;
-    inline std::string magenta;
-    inline std::string reset;
-
-    inline void enableColors() {
-        red = "\033[0;31m";
-        green = "\033[1;32m";
-        yellow = "\033[1;33m";
-        cyan = "\033[0;36m";
-        magenta = "\033[0;35m";
-        reset = "\033[0m";
-    }
+inline void enableColors() {
+    red = "\033[0;31m";
+    green = "\033[1;32m";
+    yellow = "\033[1;33m";
+    cyan = "\033[0;36m";
+    magenta = "\033[0;35m";
+    reset = "\033[0m";
+}
 }

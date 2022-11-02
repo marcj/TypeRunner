@@ -1,5 +1,3 @@
-#pragma once
-
 #include "Tracy.hpp"
 #include "types.h"
 #include "utilities.h"
@@ -14,41 +12,48 @@ namespace tr {
         return scriptKind == ScriptKind::TSX || scriptKind == ScriptKind::JSX || scriptKind == ScriptKind::JS || scriptKind == ScriptKind::JSON ? LanguageVariant::JSX : LanguageVariant::Standard;
     }
 
-    sharedOpt<Node> lastOrUndefined(sharedOpt<NodeArray> array) {
+    optionalNode<Node> lastOrUndefined(optionalNode<NodeArray> array) {
         if (!array) return nullptr;
-        auto last = lastOrUndefined(array->list);
-        if (last) *last;
+        if (array->last) return array->last;
         return nullptr;
     }
 
-    NodeArray &setTextRangePosEnd(NodeArray &range, int pos, int end) {
-        range.pos = pos;
-        range.end = end;
+    node<NodeArray> setTextRangePosEnd(node<NodeArray> range, int pos, int end) {
+        range->pos = pos;
+        range->posEnd = end;
+        return range;
+    }
+
+    node<NodeArray> setArrayTextRange(node<NodeArray> range, optional<NodeArray> location) {
+        if (location) {
+            range->pos = location->pos;
+            range->posEnd = location->posEnd;
+        }
         return range;
     }
 
     /**
      * Gets a custom text range to use when emitting source maps.
      */
-    shared<SourceMapRange> getSourceMapRange(shared<Node> node) {
+    node<SourceMapRange> getSourceMapRange(node<Node> node) {
         if (!node->emitNode) return node;
         return node->emitNode->sourceMapRange;
     }
     /**
      * Gets a custom text range to use when emitting comments.
      */
-    shared<TextRange> getCommentRange(shared<Node> node) {
+    node<TextRange> getCommentRange(node<Node> node) {
         if (!node->emitNode) return node;
         if (!node->emitNode->commentRange) return node;
         return node->emitNode->commentRange;
     }
 
-    optional<vector<SynthesizedComment>> getSyntheticLeadingComments(shared<Node> node) {
+    optional<vector<SynthesizedComment>> getSyntheticLeadingComments(node<Node> node) {
         if (!node->emitNode) return nullopt;
         return node->emitNode->leadingComments;
     }
 
-    optional<vector<SynthesizedComment>> getSyntheticTrailingComments(shared<Node> node) {
+    optional<vector<SynthesizedComment>> getSyntheticTrailingComments(node<Node> node) {
         if (!node->emitNode) return nullopt;
         return node->emitNode->trailingComments;
     }
@@ -59,12 +64,8 @@ namespace tr {
         return !(pos >= 0);
     }
 
-    bool nodeIsSynthesized(shared<TextRange> range) {
+    bool nodeIsSynthesized(node<TextRange> range) {
         return positionIsSynthesized(range->pos) || positionIsSynthesized(range->end);
-    }
-
-    NodeArray setTextRange(NodeArray range, optional<NodeArray> location) {
-        return location ? setTextRangePosEnd(range, location->pos, location->end) : range;
     }
 
     string parsePseudoBigInt(string &stringValue) {
@@ -175,7 +176,7 @@ namespace tr {
         return false;
     }
 
-    bool isCommaSequence(shared<Expression> node) {
+    bool isCommaSequence(node<Expression> node) {
         return (node->kind == SyntaxKind::BinaryExpression && to<BinaryExpression>(node)->operatorToken->kind == SyntaxKind::CommaToken) || node->kind == SyntaxKind::CommaListExpression;
     }
 
@@ -194,15 +195,15 @@ namespace tr {
         return SyntaxKind::FirstTemplateToken <= kind && kind <= SyntaxKind::LastTemplateToken;
     }
 
-    bool isTemplateLiteralToken(shared<Node> &node) {
+    bool isTemplateLiteralToken(node<Node> &node) {
         return isTemplateLiteralKind(node->kind);
     }
 
-    bool isTemplateMiddleOrTemplateTail(shared<Node> &node) {
+    bool isTemplateMiddleOrTemplateTail(node<Node> &node) {
         return node->kind == SyntaxKind::TemplateMiddle || node->kind == SyntaxKind::TemplateTail;
     }
 
-    bool isImportOrExportSpecifier(shared<Node> &node) {
+    bool isImportOrExportSpecifier(node<Node> &node) {
         return isImportSpecifier(node) || isExportSpecifier(node);
     }
 
@@ -249,7 +250,7 @@ namespace tr {
 
     //unordered_map<string, string> localizedDiagnosticMessages{};
 
-    string_view getLocaleSpecificMessage(const shared<DiagnosticMessage> &message) {
+    string_view getLocaleSpecificMessage(const shared_ptr<DiagnosticMessage> &message) {
 //        if (has(localizedDiagnosticMessages, message.key)) {
 //            return localizedDiagnosticMessages[message.key];
 //        }
@@ -267,7 +268,7 @@ namespace tr {
         return v; //currently only string supported
     }
 
-    DiagnosticWithDetachedLocation createDetachedDiagnostic(string fileName, int start, int length, const shared<DiagnosticMessage> &message, vector<DiagnosticArg> textArg) {
+    DiagnosticWithDetachedLocation createDetachedDiagnostic(string fileName, int start, int length, const shared_ptr<DiagnosticMessage> &message, vector<DiagnosticArg> textArg) {
         //    assertDiagnosticLocation(/*file*/ undefined, start, length);
         auto text = getLocaleSpecificMessage(message);
 
@@ -324,13 +325,13 @@ namespace tr {
 //        return getScriptKindFromFileName(fileName) || ScriptKind::TS;
     }
     /** @internal */
-    bool hasInvalidEscape(shared<NodeUnion(TemplateLiteralTypes)> templateLiteral) {
+    bool hasInvalidEscape(node<NodeUnion(TemplateLiteralTypes)> templateLiteral) {
         if (isNoSubstitutionTemplateLiteral(templateLiteral)) {
             return !!to<NoSubstitutionTemplateLiteral>(templateLiteral)->templateFlags;
         }
 
         return !!to<TemplateExpression>(templateLiteral)->head->templateFlags
-               || some<TemplateSpan>(to<TemplateExpression>(templateLiteral)->templateSpans, [](shared<TemplateSpan> span) {
+               || some<TemplateSpan>(to<TemplateExpression>(templateLiteral)->templateSpans, [](node<TemplateSpan> span) {
             if (span->literal->kind == SyntaxKind::TemplateTail) return !!to<TemplateTail>(span->literal)->templateFlags;
             if (span->literal->kind == SyntaxKind::TemplateMiddle) return !!to<TemplateMiddle>(span->literal)->templateFlags;
             return false;
@@ -364,7 +365,7 @@ namespace tr {
         }
     }
 
-    bool isOuterExpression(sharedOpt<Node> node, int kinds) {
+    bool isOuterExpression(optionalNode<Node> node, int kinds) {
         if (!node) return false;
         switch (node->kind) {
             case SyntaxKind::ParenthesizedExpression:
@@ -380,7 +381,7 @@ namespace tr {
         return false;
     }
 
-    sharedOpt<Expression> getExpression(sharedOpt<Node> node) {
+    optionalNode<Expression> getExpression(optionalNode<Node> node) {
         if (!node) return nullptr;
         switch (node->kind) {
             case SyntaxKind::ParenthesizedExpression:return to<ParenthesizedExpression>(node)->expression;
@@ -395,14 +396,14 @@ namespace tr {
         throw runtime_error(fmt::format("No expression found in type {}", (int) node->kind));
     }
 
-    shared<Node> skipOuterExpressions(shared<Node> node, int kinds) {
+    node<Node> skipOuterExpressions(node<Node> node, int kinds) {
         while (isOuterExpression(node, kinds)) {
             node = getExpression(node);
         }
         return node;
     }
 
-    shared<Node> skipPartiallyEmittedExpressions(shared<Node> node) {
+    node<Node> skipPartiallyEmittedExpressions(node<Node> node) {
         ZoneScoped;
         return skipOuterExpressions(node, (int) OuterExpressionKinds::PartiallyEmittedExpressions);
     }
@@ -458,7 +459,7 @@ namespace tr {
     }
 
     /* @internal */
-    bool isUnaryExpression(shared<Node> node) {
+    bool isUnaryExpression(node<Node> node) {
         return isUnaryExpressionKind(skipPartiallyEmittedExpressions(node)->kind);
     }
 
@@ -546,7 +547,7 @@ namespace tr {
         }
     }
 
-    SyntaxKind getOperator(shared<Node> expression) {
+    SyntaxKind getOperator(node<Node> expression) {
         if (expression->kind == SyntaxKind::BinaryExpression) {
             return to<BinaryExpression>(expression)->operatorToken->kind;
         } else if (expression->kind == SyntaxKind::PrefixUnaryExpression) {
@@ -559,17 +560,17 @@ namespace tr {
     }
 
     /* @internal */
-    bool isGeneratedIdentifier(shared<Node> node) {
+    bool isGeneratedIdentifier(node<Node> node) {
         return node->kind == SyntaxKind::Identifier && (defaultTo<int>(to<Identifier>(node)->autoGenerateFlags, 0) & (int) GeneratedIdentifierFlags::KindMask) > (int) GeneratedIdentifierFlags::None;
     }
 
-    int getExpressionPrecedence(shared<Node> expression) {
+    int getExpressionPrecedence(node<Node> expression) {
         auto operatorNode = getOperator(expression);
         bool hasArguments = expression->is<NewExpression>() ? !!to<NewExpression>(expression)->arguments : false;
         return getOperatorPrecedence(expression->kind, operatorNode, hasArguments);
     }
 
-    bool isLeftHandSideExpression(shared<Node> node) {
+    bool isLeftHandSideExpression(node<Node> node) {
         ZoneScoped;
         return isLeftHandSideExpressionKind(skipPartiallyEmittedExpressions(node)->kind);
     }
@@ -586,7 +587,7 @@ namespace tr {
     // code). So the parser will attempt to parse out a type, and will create an actual node.
     // However, this node will be 'missing' in the sense that no actual source-code/tokens are
     // contained within it.
-    bool nodeIsMissing(sharedOpt<Node> node) {
+    bool nodeIsMissing(optionalNode<Node> node) {
         if (!node) {
             return true;
         }
@@ -594,11 +595,11 @@ namespace tr {
         return node->pos == node->end && node->pos >= 0 && node->kind != SyntaxKind::EndOfFileToken;
     }
 
-    bool nodeIsPresent(sharedOpt<Node> node) {
+    bool nodeIsPresent(optionalNode<Node> node) {
         return !nodeIsMissing(node);
     }
 
-    string getTextOfNodeFromSourceText(string &sourceText, shared<Node> node, bool includeTrivia) {
+    string getTextOfNodeFromSourceText(string &sourceText, node<Node> node, bool includeTrivia) {
         if (nodeIsMissing(node)) {
             return "";
         }
@@ -615,7 +616,7 @@ namespace tr {
         return text;
     }
 
-    int getFullWidth(shared<Node> node) {
+    int getFullWidth(node<Node> node) {
         return node->end - node->pos;
     }
 
@@ -629,11 +630,11 @@ namespace tr {
         return id.size() >= 3 && charCodeAt(id, 0).code == CharacterCodes::_ && charCodeAt(id, 1).code == CharacterCodes::_ && charCodeAt(id, 2).code == CharacterCodes::_ ? substr(id, 1) : id;
     }
 
-    string idText(shared<NodeUnion(Identifier | PrivateIdentifier)> identifierOrPrivateName) {
+    string idText(node<NodeUnion(Identifier | PrivateIdentifier)> identifierOrPrivateName) {
         return unescapeLeadingUnderscores(getEscapedName(identifierOrPrivateName));
     }
 
-    shared<Expression> getLeftmostExpression(shared<Expression> node, bool stopAtCallExpressions) {
+    node<Expression> getLeftmostExpression(node<Expression> node, bool stopAtCallExpressions) {
         while (true) {
             switch (node->kind) {
                 case SyntaxKind::PostfixUnaryExpression:node = to<PostfixUnaryExpression>(node)->operand;
@@ -724,13 +725,13 @@ namespace tr {
         return Associativity::Left;
     }
 
-    Associativity getExpressionAssociativity(shared<Expression> expression) {
+    Associativity getExpressionAssociativity(node<Expression> expression) {
         auto operatorKind = getOperator(expression);
         auto hasArguments = expression->kind == SyntaxKind::NewExpression && to<NewExpression>(expression)->arguments;
         return getOperatorAssociativity(expression->kind, operatorKind, hasArguments);
     }
 
-    shared<NodeArray> getElementsOfBindingOrAssignmentPattern(shared<Node> name) {
+    node<NodeArray> getElementsOfBindingOrAssignmentPattern(node<Node> name) {
         switch (name->kind) {
             case SyntaxKind::ObjectBindingPattern: return to<ObjectBindingPattern>(name)->elements;
             case SyntaxKind::ArrayBindingPattern: return to<ArrayBindingPattern>(name)->elements;

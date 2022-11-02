@@ -10,7 +10,7 @@ namespace tr {
         return currentToken = scanner.scan();
     }
 
-    optional<DiagnosticWithDetachedLocation> Parser::parseErrorAtPosition(int start, int length, const shared<DiagnosticMessage> &message, DiagnosticArg arg) {
+    optional<DiagnosticWithDetachedLocation> Parser::parseErrorAtPosition(int start, int length, const shared_ptr<DiagnosticMessage> &message, DiagnosticArg arg) {
         ZoneScoped;
 
         auto lastError = lastOrUndefined(parseDiagnostics);
@@ -28,7 +28,7 @@ namespace tr {
         return nullopt;
     }
 
-    shared<Node> Parser::countNode(const shared<Node> &node) {
+    node<Node> Parser::countNode(const node<Node> &node) {
         nodeCount++;
         return node;
     }

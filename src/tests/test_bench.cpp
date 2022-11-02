@@ -154,7 +154,7 @@ TEST(bench, types) {
     });
 
     bench("simple type array", 1000, [&] {
-        auto simpleTypes = vector<shared<SimpleType>>();
+        auto simpleTypes = vector<node<SimpleType>>();
         simpleTypes.reserve(1000);
         for (auto i = 0; i < 1000; i++) {
             simpleTypes.emplace_back();
@@ -188,7 +188,7 @@ TEST(bench, types) {
     });
 
     bench("string type array", 1000, [&] {
-        auto simpleTypes = vector<shared<vm::TypeString>>();
+        auto simpleTypes = vector<node<vm::TypeString>>();
         simpleTypes.reserve(1000);
         for (auto i = 0; i < 1000; i++) {
             simpleTypes.emplace_back();
@@ -203,7 +203,7 @@ TEST(bench, types) {
     });
 
     bench("string literal type array", 1000, [&] {
-        auto simpleTypes = vector<shared<vm::TypeLiteral>>();
+        auto simpleTypes = vector<node<vm::TypeLiteral>>();
         simpleTypes.reserve(1000);
         for (auto i = 0; i < 1000; i++) {
             simpleTypes.emplace_back();

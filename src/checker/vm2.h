@@ -1,6 +1,5 @@
 #pragma once
 
-#include <asmjit/a64.h>
 #include <stdio.h>
 #include "./pool_single.h"
 #include "./pool_array.h"
@@ -177,8 +176,8 @@ namespace tr::vm2 {
 
     void process();
 
-    void clear(shared<tr::vm2::Module> &module);
-    void prepare(shared<tr::vm2::Module> &module);
+    void clear(shared_ptr<tr::vm2::Module> &module);
+    void prepare(shared_ptr<tr::vm2::Module> &module);
     void drop(Type *type);
     void drop(std::span<TypeRef> *types);
     void gc(std::span<TypeRef> *types);
@@ -195,7 +194,7 @@ namespace tr::vm2 {
 
     std::span<Type *> popFrame();
 
-    static void run(shared<Module> module) {
+    static void run(shared_ptr<Module> module) {
 //        profiler.clear();
 //        pool = MemoryPool<Type, poolSize>();
 //        poolRef = MemoryPool<TypeRef, poolSize>();
@@ -210,7 +209,7 @@ namespace tr::vm2 {
         process();
     }
 
-    void call(shared<Module> &module, unsigned int index = 0, unsigned int arguments = 0);
+    void call(shared_ptr<Module> &module, unsigned int index = 0, unsigned int arguments = 0);
 
     struct CStack {
         vector<Type *> iterator;

@@ -19,7 +19,7 @@ namespace tr {
     };
 
     using ErrorCallback = function<
-            void(const shared<DiagnosticMessage>
+            void(const shared_ptr<DiagnosticMessage>
                  &message,
                  int length
             )>;
@@ -668,7 +668,7 @@ namespace tr {
 
         bool isOctalDigit(const CharCode &code);
 
-        int error(const shared<DiagnosticMessage> &message, int errPos = -1, int length = -1);
+        int error(const shared_ptr<DiagnosticMessage> &message, int errPos = -1, int length = -1);
 
         vector<CommentDirective> appendIfCommentDirective(vector<CommentDirective> &commentDirectives, const string &text, const regex &commentDirectiveRegEx, int lineStart);
 

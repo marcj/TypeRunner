@@ -44,27 +44,29 @@ namespace tr {
         return location ? setTextRangePosEnd<T>(range, location->pos, location->end) : range;
     }
 
-    sharedOpt<Node> lastOrUndefined(sharedOpt<NodeArray> array);
+    optionalNode<Node> lastOrUndefined(optionalNode<NodeArray> array);
 
-    NodeArray &setTextRangePosEnd(NodeArray &range, int pos, int end);
+    node<NodeArray> setTextRangePosEnd(node<NodeArray> range, int pos, int end);
+
+    node<NodeArray> setArrayTextRange(node<NodeArray> range, optional<NodeArray> location);
 
     /**
      * Gets a custom text range to use when emitting source maps.
      */
-    shared<SourceMapRange> getSourceMapRange(shared<Node> node);
+    node<SourceMapRange> getSourceMapRange(node<Node> node);
 
     /**
      * Gets a custom text range to use when emitting comments.
      */
-    shared<TextRange> getCommentRange(shared<Node> node);
+    node<TextRange> getCommentRange(node<Node> node);
 
-    optional<vector<SynthesizedComment>> getSyntheticLeadingComments(shared<Node> node);
+    optional<vector<SynthesizedComment>> getSyntheticLeadingComments(node<Node> node);
 
-    optional<vector<SynthesizedComment>> getSyntheticTrailingComments(shared<Node> node);
+    optional<vector<SynthesizedComment>> getSyntheticTrailingComments(node<Node> node);
 
     bool positionIsSynthesized(int pos);
 
-    bool nodeIsSynthesized(shared<TextRange> range);
+    bool nodeIsSynthesized(node<TextRange> range);
 
     NodeArray setTextRange(NodeArray range, optional<NodeArray> location);
 
@@ -82,7 +84,7 @@ namespace tr {
     /* @internal */
     bool isModifierKind(SyntaxKind token);
 
-    bool isCommaSequence(shared<Expression> node);
+    bool isCommaSequence(node<Expression> node);
 
     bool isLiteralKind(SyntaxKind kind);
 
@@ -92,11 +94,11 @@ namespace tr {
     /* @internal */
     bool isTemplateLiteralKind(SyntaxKind kind);
 
-    bool isTemplateLiteralToken(shared<Node> &node);
+    bool isTemplateLiteralToken(node<Node> &node);
 
-    bool isTemplateMiddleOrTemplateTail(shared<Node> &node);
+    bool isTemplateMiddleOrTemplateTail(node<Node> &node);
 
-    bool isImportOrExportSpecifier(shared<Node> &node);
+    bool isImportOrExportSpecifier(node<Node> &node);
 
     enum class OperatorPrecedence {
         // Expression:
@@ -298,7 +300,7 @@ namespace tr {
 
     //unordered_map<string, string> localizedDiagnosticMessages{};
 
-    string_view getLocaleSpecificMessage(const shared<DiagnosticMessage> &message);
+    string_view getLocaleSpecificMessage(const node<DiagnosticMessage> &message);
 
     using DiagnosticArg = string;
 
@@ -306,44 +308,44 @@ namespace tr {
 
     string DiagnosticArgToString(DiagnosticArg &v) ;
 
-    DiagnosticWithDetachedLocation createDetachedDiagnostic(string fileName, int start, int length, const shared<DiagnosticMessage> &message, vector<DiagnosticArg> textArg = {});
+    DiagnosticWithDetachedLocation createDetachedDiagnostic(string fileName, int start, int length, const shared_ptr<DiagnosticMessage> &message, vector<DiagnosticArg> textArg = {});
 
     DiagnosticWithDetachedLocation &addRelatedInfo(DiagnosticWithDetachedLocation &diagnostic, vector<DiagnosticRelatedInformation> relatedInformation) ;
 
     ScriptKind ensureScriptKind(string fileName, optional<ScriptKind> scriptKind);
 
     /** @internal */
-    bool hasInvalidEscape(shared<NodeUnion(TemplateLiteralTypes)> templateLiteral);
+    bool hasInvalidEscape(node<NodeUnion(TemplateLiteralTypes)> templateLiteral);
 
     string fileExt(const string &filename);
 
     ScriptKind getScriptKindFromFileName(const string &fileName);
 
-    bool isOuterExpression(sharedOpt<Node> node, int kinds = (int) OuterExpressionKinds::All);
+    bool isOuterExpression(optionalNode<Node> node, int kinds = (int) OuterExpressionKinds::All);
 
-    sharedOpt<Expression> getExpression(sharedOpt<Node> node);
+    optionalNode<Expression> getExpression(optionalNode<Node> node);
 
-    shared<Node> skipOuterExpressions(shared<Node> node, int kinds = (int) OuterExpressionKinds::All);
+    node<Node> skipOuterExpressions(node<Node> node, int kinds = (int) OuterExpressionKinds::All);
 
-    shared<Node> skipPartiallyEmittedExpressions(shared<Node> node);
+    node<Node> skipPartiallyEmittedExpressions(node<Node> node);
 
     bool isLeftHandSideExpressionKind(SyntaxKind kind) ;
 
     bool isUnaryExpressionKind(SyntaxKind kind);
 
     /* @internal */
-    bool isUnaryExpression(shared<Node> node);
+    bool isUnaryExpression(node<Node> node);
 
     int getOperatorPrecedence(SyntaxKind nodeKind, SyntaxKind operatorKind, optional<bool> hasArguments = {});
 
-    SyntaxKind getOperator(shared<Node> expression);
+    SyntaxKind getOperator(node<Node> expression);
 
     /* @internal */
-    bool isGeneratedIdentifier(shared<Node> node);
+    bool isGeneratedIdentifier(node<Node> node);
 
-    int getExpressionPrecedence(shared<Node> expression);
+    int getExpressionPrecedence(node<Node> expression);
 
-    bool isLeftHandSideExpression(shared<Node> node);
+    bool isLeftHandSideExpression(node<Node> node);
 
     // Returns true if this node is missing from the actual source code. A 'missing' node is different
     // from 'undefined/defined'. When a node is undefined (which can happen for optional nodes
@@ -357,13 +359,13 @@ namespace tr {
     // code). So the parser will attempt to parse out a type, and will create an actual node.
     // However, this node will be 'missing' in the sense that no actual source-code/tokens are
     // contained within it.
-    bool nodeIsMissing(sharedOpt<Node> node);
+    bool nodeIsMissing(optionalNode<Node> node);
 
-    bool nodeIsPresent(sharedOpt<Node> node);
+    bool nodeIsPresent(optionalNode<Node> node);
 
-    string getTextOfNodeFromSourceText(string &sourceText, shared<Node> node, bool includeTrivia = false);
+    string getTextOfNodeFromSourceText(string &sourceText, node<Node> node, bool includeTrivia = false);
 
-    int getFullWidth(shared<Node> node);
+    int getFullWidth(node<Node> node);
 
     /**
      * Remove extra underscore from escaped identifier text content.
@@ -373,9 +375,9 @@ namespace tr {
      */
     string unescapeLeadingUnderscores(__String id);
 
-    string idText(shared<NodeUnion(Identifier | PrivateIdentifier)> identifierOrPrivateName);
+    string idText(node<NodeUnion(Identifier | PrivateIdentifier)> identifierOrPrivateName);
 
-    shared<Expression> getLeftmostExpression(shared<Expression> node, bool stopAtCallExpressions);
+    node<Expression> getLeftmostExpression(node<Expression> node, bool stopAtCallExpressions);
 
     Comparison compareComparableValues(optional<double> a, optional<double> b) ;
 
@@ -429,9 +431,9 @@ namespace tr {
 
     Associativity getOperatorAssociativity(SyntaxKind kind, SyntaxKind operatorKind, bool hasArguments = false);
 
-    Associativity getExpressionAssociativity(shared<Expression> expression);
+    Associativity getExpressionAssociativity(node<Expression> expression);
 
-    shared<NodeArray> getElementsOfBindingOrAssignmentPattern(shared<Node> name);
+    node<NodeArray> getElementsOfBindingOrAssignmentPattern(node<Node> name);
 
     bool isLogicalOrCoalescingAssignmentOperator(SyntaxKind token); //: token is LogicalOrCoalescingAssignmentOperator
 
@@ -439,7 +441,7 @@ namespace tr {
      * Determines whether the BindingOrAssignmentElement is a BindingElement-like declaration
      */
     /* @internal */
-    inline bool isDeclarationBindingElement(shared<Node> bindingElement) {//: bindingElement is VariableDeclaration | ParameterDeclaration | BindingElement {
+    inline bool isDeclarationBindingElement(node<Node> bindingElement) {//: bindingElement is VariableDeclaration | ParameterDeclaration | BindingElement {
         switch (bindingElement->kind) {
             case SyntaxKind::VariableDeclaration:
             case SyntaxKind::Parameter:
@@ -450,7 +452,7 @@ namespace tr {
         return false;
     }
 
-    inline bool isObjectLiteralElementLike(shared<Node> node) {//: node is ObjectLiteralElementLike {
+    inline bool isObjectLiteralElementLike(node<Node> node) {//: node is ObjectLiteralElementLike {
         auto kind = node->kind;
         return kind == SyntaxKind::PropertyAssignment
             || kind == SyntaxKind::ShorthandPropertyAssignment
@@ -460,7 +462,7 @@ namespace tr {
             || kind == SyntaxKind::SetAccessor;
     }
 
-    inline bool isAssignmentExpression(shared<Node> node, bool excludeCompoundAssignment = false) {//: node is AssignmentExpression<AssignmentOperatorToken> {
+    inline bool isAssignmentExpression(node<Node> node, bool excludeCompoundAssignment = false) {//: node is AssignmentExpression<AssignmentOperatorToken> {
         return isBinaryExpression(node)
             && (excludeCompoundAssignment
                 ? to<BinaryExpression>(node)->operatorToken->kind == SyntaxKind::EqualsToken
@@ -469,7 +471,7 @@ namespace tr {
     }
 
     /* @internal */
-    inline bool isAssignmentPattern(shared<Node> node) { //: node is AssignmentPattern {
+    inline bool isAssignmentPattern(node<Node> node) { //: node is AssignmentPattern {
         auto kind = node->kind;
         return kind == SyntaxKind::ArrayLiteralExpression
             || kind == SyntaxKind::ObjectLiteralExpression;
@@ -479,7 +481,7 @@ namespace tr {
     /**
      * Gets the name of an BindingOrAssignmentElement.
      */
-    inline sharedOpt<Node> getTargetOfBindingOrAssignmentElement(shared<Node> bindingElement) {
+    inline optionalNode<Node> getTargetOfBindingOrAssignmentElement(node<Node> bindingElement) {
         if (isDeclarationBindingElement(bindingElement)) {
             // `a` in `let { a } = ...`
             // `a` in `let { a = 1 } = ...`

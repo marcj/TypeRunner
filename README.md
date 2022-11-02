@@ -213,9 +213,14 @@ $ cd TypeRunner
 then make sure cmake and a C++ compiler is installed. We use LLVM toolchain per default. To build the project run the usual cmake command:
 
 ```sh
+$ git clone https://github.com/marcj/TypeRunner.git
+$ cd TypeRunner
+$ git submodule update --init --recursive
 $ mkdir build
 $ cd build
-$ cmake ..
+$ cmake -DCMAKE_CXX_COMPILER=clang++-14 -DCMAKE_C_COMPILER=clang-14 -DCMAKE_BUILD_TYPE=Release ..
+$ make bench -j 8
+$ ./bench ../tests/objectLiterals1.ts
 ```
 
 Now you find in the build folder some binaries you can execute.
